@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.8
+
+- Force MQTT project sensors to refresh on every sync and include a sync timestamp in project state payloads.
+
 ## 0.1.7
 
 - Fix project parsing to prefer `dashboardMerchTargeting.projects` when `reportableProjectsInfo` is empty.

@@ -151,6 +151,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_project_count`,
       state_topic: this._topic('projects/summary'),
       value_template: '{{ value_json.count }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -163,6 +164,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_total_tasks`,
       state_topic: this._topic('projects/summary'),
       value_template: '{{ value_json.total_tasks }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -363,14 +365,14 @@ class DataAnnotationMqttBridge {
     this._publishJson(this._topic('last_sync'), attributes, true);
   }
 
-  publishProjects(projects) {
+  publishProjects(projects, scrapedAt = new Date().toISOString()) {
     this.logger.debug(`Publishing ${projects.length} project entities`);
     const currentSlugs = new Set();
 
     for (const project of projects) {
       currentSlugs.add(project.slug);
       this._publishProjectDiscovery(project);
-      this._publishProjectState(project);
+      this._publishProjectState(project, scrapedAt);
       this._publish(this._projectAvailabilityTopic(project.slug), 'online', true);
       this.publishedProjectSlugs.add(project.slug);
     }
@@ -401,6 +403,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_${project.slug}`,
       state_topic: this._projectStateTopic(project.slug),
       value_template: '{{ value_json.tasks if value_json.tasks is not none else 0 }}',
+      force_update: true,
       json_attributes_topic: this._projectStateTopic(project.slug),
       availability_topic: this._projectAvailabilityTopic(project.slug),
       payload_available: 'online',
@@ -410,8 +413,8 @@ class DataAnnotationMqttBridge {
     });
   }
 
-  _publishProjectState(project) {
-    const payload = { ...project };
+  _publishProjectState(project, scrapedAt) {
+    const payload = { ...project, scraped_at: scrapedAt };
     delete payload.slug;
     this._publishJson(this._projectStateTopic(project.slug), payload, true);
   }

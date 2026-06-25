@@ -145,7 +145,7 @@ async function doSync(
       lastSuccessfulSyncAt: completedAt,
       lastError: null,
     });
-    bridge.publishProjects(result.projects);
+    bridge.publishProjects(result.projects, completedAt);
 
     const payments = await client.collectPayments();
     logger.info(`Payments snapshot complete: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
