@@ -1,11 +1,9 @@
 const crypto = require('crypto');
 
 function extractProjects(props) {
-  const list = Array.isArray(props?.reportableProjectsInfo)
-    ? props.reportableProjectsInfo
-    : Array.isArray(props?.dashboardMerchTargeting?.projects)
-      ? props.dashboardMerchTargeting.projects
-      : [];
+  const reportableProjects = Array.isArray(props?.reportableProjectsInfo) ? props.reportableProjectsInfo : [];
+  const dashboardProjects = Array.isArray(props?.dashboardMerchTargeting?.projects) ? props.dashboardMerchTargeting.projects : [];
+  const list = reportableProjects.length > 0 ? reportableProjects : dashboardProjects;
 
   return list.map(normalizeProject).filter(Boolean);
 }

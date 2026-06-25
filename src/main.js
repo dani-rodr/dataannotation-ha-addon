@@ -168,15 +168,7 @@ async function doSync(
       lastError: error.message,
     });
     bridge.publishWithdrawLockState(withdrawLocked);
-    bridge.publishSummary({
-      count: lastSuccessfulProjectCount || 0,
-      total_tasks: lastSuccessfulTotalTaskCount || 0,
-      profile: config.profile || 'Data Annotation',
-      login_state: 'login_failed',
-      lastAttemptedSyncAt: startedAt,
-      lastSuccessfulSyncAt: lastSuccessfulSyncAt,
-      lastError: error.message,
-    });
+    logger.warning('Retaining last known project summary because sync did not complete');
     return {
       lastSuccessfulSyncAt,
       lastSuccessfulProjectCount,

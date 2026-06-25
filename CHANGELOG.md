@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7
+
+- Fix project parsing to prefer `dashboardMerchTargeting.projects` when `reportableProjectsInfo` is empty.
+
 ## 0.1.6
 
 - Add a locked-by-default `Withdraw Locked` switch and a `Withdraw Funds` button.
