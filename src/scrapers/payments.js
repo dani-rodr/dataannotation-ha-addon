@@ -6,6 +6,7 @@ function extractPaymentsSnapshot({ pageProps, earningsSummary, buttonText, butto
   const totalPaidOutCents = numberOrZero(earningsSummary?.totalPaidOut);
   const thisMonthCents = numberOrZero(earningsSummary?.currentMonthEarnings);
   const bestMonthSource = normalizeBestMonth(earningsSummary?.bestMonth);
+  const nextWithdrawalAt = normalizeNextWithdrawalAt(pageProps?.paymentStatus?.nextEligibleAt, nextWithdrawalText);
 
   return {
     available_amount_cents: availableAmountCents,
@@ -14,7 +15,7 @@ function extractPaymentsSnapshot({ pageProps, earningsSummary, buttonText, butto
     can_withdraw: canWithdraw,
     button_enabled: !buttonDisabled,
     button_text: buttonText || formatButtonText(availableAmountCents),
-    next_withdrawal_at: pageProps?.paymentStatus?.nextEligibleAt || null,
+    next_withdrawal_at: nextWithdrawalAt,
     next_withdrawal_text: nextWithdrawalText || null,
     payment_status: pageProps?.paymentStatus?.type || null,
     total_earnings_cents: totalEarningsCents,
@@ -81,6 +82,87 @@ function numberOrZero(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeNextWithdrawalAt(nextEligibleAt, nextWithdrawalText) {
+  const direct = normalizeIsoDate(nextEligibleAt);
+  if (direct) {
+    return direct;
+  }
+
+  const parsed = parseNextWithdrawalText(nextWithdrawalText);
+  return parsed ? parsed.toISOString() : null;
+}
+
+function normalizeIsoDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function parseNextWithdrawalText(text) {
+  if (!text) {
+    return null;
+  }
+
+  const match = String(text)
+    .trim()
+    .match(/^Next withdrawal:\s+([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})\s+at\s+(\d{1,2}):(\d{2})\s+(AM|PM)\s+GMT([+-]\d{1,2}(?::\d{2})?)$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, monthName, day, year, hour, minute, meridiem, gmtOffset] = match;
+  const monthIndex = MONTH_NAMES.indexOf(monthName.toLowerCase());
+  if (monthIndex === -1) {
+    return null;
+  }
+
+  const hour12 = Number(hour);
+  let hour24 = hour12 % 12;
+  if (meridiem.toUpperCase() === 'PM') {
+    hour24 += 12;
+  }
+
+  const offsetMinutes = parseGmtOffsetMinutes(gmtOffset);
+  if (offsetMinutes === null) {
+    return null;
+  }
+
+  const utcMillis = Date.UTC(Number(year), monthIndex, Number(day), hour24, Number(minute)) - offsetMinutes * 60 * 1000;
+  return new Date(utcMillis);
+}
+
+function parseGmtOffsetMinutes(value) {
+  const match = String(value).match(/^([+-])(\d{1,2})(?::(\d{2}))?$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, sign, hoursRaw, minutesRaw] = match;
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw || '0');
+  const total = hours * 60 + minutes;
+  return sign === '-' ? -total : total;
+}
+
+const MONTH_NAMES = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+];
+
 async function scrapePayments(page) {
   const rawProps = await page.$eval(
     'div[id="workers/TransferFundsPage-hybrid-root"]',
@@ -102,11 +184,12 @@ async function scrapePayments(page) {
   const buttonInfo = await page.evaluate(() => {
     const buttons = Array.from(document.querySelectorAll('button'));
     const button = buttons.find((node) => /available$/i.test((node.innerText || node.textContent || '').trim()));
-    const nextWithdrawal = Array.from(document.querySelectorAll('p')).find((node) => /Next withdrawal:/i.test((node.innerText || node.textContent || '').trim()));
+    const bodyText = (document.body?.innerText || document.body?.textContent || '').replace(/\s+/g, ' ').trim();
+    const nextWithdrawalMatch = bodyText.match(/Next withdrawal:\s+[^$]+?(?:GMT[+-]\d{1,2}(?::\d{2})?)?/i);
     return {
       buttonText: button ? (button.innerText || button.textContent || '').trim().replace(/\s+/g, ' ') : '',
       buttonDisabled: button ? Boolean(button.disabled) : false,
-      nextWithdrawalText: nextWithdrawal ? (nextWithdrawal.innerText || nextWithdrawal.textContent || '').trim().replace(/\s+/g, ' ') : '',
+      nextWithdrawalText: nextWithdrawalMatch ? nextWithdrawalMatch[0].trim().replace(/\s+/g, ' ') : '',
     };
   });
 
@@ -124,4 +207,6 @@ module.exports = {
   scrapePayments,
   formatMonthLabel,
   formatCents,
+  normalizeNextWithdrawalAt,
+  parseNextWithdrawalText,
 };

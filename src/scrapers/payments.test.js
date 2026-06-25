@@ -37,7 +37,7 @@ test('extractPaymentsSnapshot maps the observed cooldown state', () => {
   assert.equal(snapshot.can_withdraw, false);
   assert.equal(snapshot.button_enabled, false);
   assert.equal(snapshot.button_text, '$0.00 available');
-  assert.equal(snapshot.next_withdrawal_at, '2026-06-25T14:05:02Z');
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-25T14:05:02.000Z');
   assert.equal(snapshot.next_withdrawal_text, 'Next withdrawal: June 25, 2026 at 10:05 PM GMT+8');
   assert.equal(snapshot.total_earnings, 2236.19);
   assert.equal(snapshot.total_paid_out, 403.76);
@@ -82,4 +82,37 @@ test('extractPaymentsSnapshot marks withdrawable funds as available', () => {
   assert.equal(snapshot.button_enabled, true);
   assert.equal(snapshot.payment_status, 'available');
   assert.equal(snapshot.next_withdrawal_at, null);
+});
+
+test('extractPaymentsSnapshot falls back to visible next withdrawal text', () => {
+  const snapshot = extractPaymentsSnapshot({
+    pageProps: {
+      totalLifetimeEarnings: 50000,
+      unapprovedAmount: 0,
+      paymentStatus: {
+        type: 'cooldown',
+        nextEligibleAt: null,
+        amountInCents: 0,
+      },
+      unpaidPendingAmountInCents: 0,
+      lastPayoutAt: '2026-06-24T14:05:02.298Z',
+      showFundsHistoryTable: true,
+    },
+    earningsSummary: {
+      totalPaidOut: 0,
+      currentMonthEarnings: 50000,
+      bestMonth: {
+        month: '2026-06',
+        withdrawnInCents: 50000,
+        earnedInCents: 0,
+        pendingInCents: 0,
+      },
+    },
+    buttonText: '$0.00 available',
+    buttonDisabled: true,
+    nextWithdrawalText: 'Next withdrawal: June 25, 2026 at 10:05 PM GMT+8',
+  });
+
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-25T14:05:00.000Z');
+  assert.equal(snapshot.next_withdrawal_text, 'Next withdrawal: June 25, 2026 at 10:05 PM GMT+8');
 });

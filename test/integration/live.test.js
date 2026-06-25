@@ -66,6 +66,8 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
     t.diagnostic(`available funds: ${payments.available_amount_formatted}`);
     t.diagnostic(`can withdraw: ${payments.can_withdraw}`);
     t.diagnostic(`payment status: ${payments.payment_status}`);
+    t.diagnostic(`next withdrawal at: ${payments.next_withdrawal_at}`);
+    t.diagnostic(`next withdrawal text: ${payments.next_withdrawal_text}`);
 
     await t.test('payments snapshot shape is valid', () => {
       assert.equal(payments.authenticated, true);
