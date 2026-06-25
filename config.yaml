@@ -1,0 +1,26 @@
+name: DataAnnotation Projects
+version: "0.1.0"
+slug: dataannotation-projects
+description: Scrapes DataAnnotation worker projects and publishes count and per-project entities to Home Assistant via MQTT auto-discovery.
+url: "https://github.com/dani-rodr/dataannotation-projects-ha-addon"
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+services:
+  - mqtt:want
+options:
+  profile_name: ""
+  dataannotation_email: ""
+  dataannotation_password: ""
+  poll_interval_minutes: 5
+  mqtt_topic_prefix: dataannotation
+  log_level: info
+schema:
+  profile_name: str
+  dataannotation_email: password
+  dataannotation_password: password
+  poll_interval_minutes: int(1,1440)
+  mqtt_topic_prefix: str
+  log_level: list(debug|info|warning|error)
