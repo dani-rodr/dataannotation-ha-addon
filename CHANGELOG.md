@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9
+
+- Force refresh all read-only MQTT telemetry entities on each sync.
+- Add sync timestamps to payment payloads so automation state always republishes.
+
 ## 0.1.8
 
 - Force MQTT project sensors to refresh on every sync and include a sync timestamp in project state payloads.

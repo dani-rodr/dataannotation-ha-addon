@@ -139,6 +139,7 @@ class DataAnnotationMqttBridge {
       name: names.profile,
       unique_id: `${this.topicPrefix}_profile_name`,
       state_topic: this._topic('profile/state'),
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -180,6 +181,7 @@ class DataAnnotationMqttBridge {
       state_topic: this._topic('status/state'),
       payload_on: 'ON',
       payload_off: 'OFF',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -192,6 +194,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_last_sync`,
       state_topic: this._topic('last_sync'),
       value_template: '{{ value_json.lastSuccessfulSyncAt }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -205,6 +208,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_available_funds`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.available_amount }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -221,6 +225,7 @@ class DataAnnotationMqttBridge {
       value_template: "{{ 'ON' if value_json.can_withdraw else 'OFF' }}",
       payload_on: 'ON',
       payload_off: 'OFF',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -233,6 +238,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_next_withdrawal`,
       state_topic: this._topic('payments/summary'),
       value_template: "{{ value_json.next_withdrawal_at if value_json.next_withdrawal_at else 'unknown' }}",
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -246,6 +252,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_total_earnings`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.total_earnings }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -260,6 +267,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_total_paid_out`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.total_paid_out }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -274,6 +282,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_this_month`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.this_month }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -288,6 +297,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_best_month`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.best_month }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -302,6 +312,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_pending_approval`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.pending_approval }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -316,6 +327,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_last_payout`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.last_payout_at if value_json.last_payout_at else "unknown" }}',
+      force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -386,9 +398,9 @@ class DataAnnotationMqttBridge {
     this.publishedProjectSlugs = currentSlugs;
   }
 
-  publishPayments(payments) {
+  publishPayments(payments, scrapedAt = new Date().toISOString()) {
     this.logger.debug(`Publishing payments summary: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
-    this._publishJson(this._topic('payments/summary'), payments, true);
+    this._publishJson(this._topic('payments/summary'), { ...payments, scraped_at: scrapedAt }, true);
   }
 
   async close() {
