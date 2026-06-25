@@ -2,7 +2,7 @@ const fs = require('fs');
 const puppeteer = require('puppeteer-core');
 
 const { extractProjects } = require('./scrapers/projects');
-const { scrapePayments } = require('./scrapers/payments');
+const { chooseWithdrawalButton, scrapePayments } = require('./scrapers/payments');
 
 const NULL_LOGGER = {
   debug() {},
@@ -69,6 +69,50 @@ class DataAnnotationClient {
         loginState: 'authenticated',
         pageUrl: page.url(),
         ...payments,
+      };
+    } finally {
+      await page.close().catch(() => {});
+    }
+  }
+
+  async withdrawAvailableFunds() {
+    const page = await this._newPage();
+
+    try {
+      this.logger.debug('Opening DataAnnotation payments page for withdrawal');
+      await this._loadAuthenticatedPage(page, PAYMENTS_URL, 'div[id="workers/TransferFundsPage-hybrid-root"][data-props]');
+      const payments = await scrapePayments(page);
+
+      if (!payments.can_withdraw || payments.available_amount <= 0 || !payments.button_enabled) {
+        return {
+          status: 'not_available',
+          pageUrl: page.url(),
+          payments,
+        };
+      }
+
+      const button = await this._findWithdrawalButton(page);
+      if (!button) {
+        return {
+          status: 'not_available',
+          pageUrl: page.url(),
+          payments,
+        };
+      }
+
+      this.logger.info('Clicking DataAnnotation withdrawal button');
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 5000 }).catch(() => {}),
+        button.click(),
+      ]);
+
+      await sleep(2000);
+
+      const refreshedPayments = await scrapePayments(page).catch(() => payments);
+      return {
+        status: 'submitted',
+        pageUrl: page.url(),
+        payments: refreshedPayments,
       };
     } finally {
       await page.close().catch(() => {});
@@ -147,6 +191,34 @@ class DataAnnotationClient {
 
     const props = JSON.parse(rawProps);
     return extractProjects(props);
+  }
+
+  async _findWithdrawalButton(page) {
+    const buttons = await page.evaluate(() => {
+      const normalizeText = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+      return Array.from(document.querySelectorAll('button')).map((node) => ({
+        text: normalizeText(node.innerText || node.textContent || ''),
+        disabled: Boolean(node.disabled),
+        ariaLabel: normalizeText(node.getAttribute('aria-label') || ''),
+        title: normalizeText(node.getAttribute('title') || ''),
+      }));
+    });
+
+    const withdrawButton = chooseWithdrawalButton(buttons);
+    if (!withdrawButton.present || withdrawButton.count !== 1 || !withdrawButton.enabled || !withdrawButton.text) {
+      return null;
+    }
+
+    const handles = await page.$$('button');
+    for (const button of handles) {
+      const text = await button.evaluate((node) => (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ')).catch(() => '');
+      const disabled = await button.evaluate((node) => Boolean(node.disabled)).catch(() => true);
+      if (!disabled && text === withdrawButton.text) {
+        return button;
+      }
+    }
+
+    return null;
   }
 
   async _newPage() {

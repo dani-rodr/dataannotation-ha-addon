@@ -20,5 +20,7 @@ test('discovery names stay short', () => {
     total_tasks: 'Total Tasks',
     status: 'Status',
     last_sync: 'Last Sync',
+    withdraw_locked: 'Withdraw Locked',
+    withdraw_funds: 'Withdraw Funds',
   });
 });

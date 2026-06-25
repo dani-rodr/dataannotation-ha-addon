@@ -1,6 +1,7 @@
 function extractPaymentsSnapshot({ pageProps, earningsSummary, buttonText, buttonDisabled, nextWithdrawalText, now = new Date() }) {
   const availableAmountCents = numberOrZero(pageProps?.paymentStatus?.amountInCents);
-  const canWithdraw = Boolean(!buttonDisabled && availableAmountCents > 0);
+  const withdrawButton = normalizeWithdrawalButton(buttonText, buttonDisabled);
+  const canWithdraw = Boolean(withdrawButton.present && withdrawButton.enabled && availableAmountCents > 0);
   const totalEarningsCents = numberOrZero(pageProps?.totalLifetimeEarnings);
   const pendingApprovalCents = numberOrZero(pageProps?.unapprovedAmount);
   const totalPaidOutCents = numberOrZero(earningsSummary?.totalPaidOut);
@@ -18,8 +19,12 @@ function extractPaymentsSnapshot({ pageProps, earningsSummary, buttonText, butto
     available_amount: centsToNumber(availableAmountCents),
     available_amount_formatted: formatCents(availableAmountCents),
     can_withdraw: canWithdraw,
-    button_enabled: !buttonDisabled,
-    button_text: buttonText || formatButtonText(availableAmountCents),
+    button_enabled: withdrawButton.enabled,
+    button_text: withdrawButton.text,
+    withdraw_button_present: withdrawButton.present,
+    withdraw_button_text: withdrawButton.text,
+    withdraw_button_count: withdrawButton.count,
+    withdraw_button_disabled: withdrawButton.present ? withdrawButton.disabled : null,
     next_withdrawal_at: nextWithdrawalAt,
     next_withdrawal_text: nextWithdrawalText || null,
     payment_status: pageProps?.paymentStatus?.type || null,
@@ -55,6 +60,38 @@ function normalizeBestMonth(bestMonth) {
 
 function formatButtonText(amountCents) {
   return `${formatCents(amountCents)} available`;
+}
+
+function normalizeWithdrawalButton(buttonText, buttonDisabled) {
+  const text = normalizeText(buttonText);
+  if (!text) {
+    return {
+      present: false,
+      enabled: false,
+      disabled: null,
+      text: null,
+      count: 0,
+    };
+  }
+
+  if (!WITHDRAW_BUTTON_TEXT_PATTERN.test(text)) {
+    return {
+      present: false,
+      enabled: false,
+      disabled: null,
+      text: null,
+      count: 0,
+    };
+  }
+
+  const disabled = Boolean(buttonDisabled);
+  return {
+    present: true,
+    enabled: !disabled,
+    disabled,
+    text,
+    count: 1,
+  };
 }
 
 function formatCents(value) {
@@ -196,6 +233,8 @@ const MONTH_NAMES = [
   'december',
 ];
 
+const WITHDRAW_BUTTON_TEXT_PATTERN = /^\$[\d,]+(?:\.\d{2})?\s+available$/i;
+
 async function scrapePayments(page) {
   const rawProps = await page.$eval(
     'div[id="workers/TransferFundsPage-hybrid-root"]',
@@ -216,28 +255,78 @@ async function scrapePayments(page) {
 
   const buttonInfo = await page.evaluate(() => {
     const buttons = Array.from(document.querySelectorAll('button'));
-    const button = buttons.find((node) => /available$/i.test((node.innerText || node.textContent || '').trim()));
+    const mapButton = (node) => ({
+      text: (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' '),
+      disabled: Boolean(node.disabled),
+      ariaLabel: (node.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' '),
+      title: (node.getAttribute('title') || '').trim().replace(/\s+/g, ' '),
+    });
     const bodyText = (document.body?.innerText || document.body?.textContent || '').replace(/\s+/g, ' ').trim();
     const nextWithdrawalMatch = bodyText.match(/Next withdrawal:\s+[^$]+?(?:GMT[+-]\d{1,2}(?::\d{2})?)?/i);
     return {
-      buttonText: button ? (button.innerText || button.textContent || '').trim().replace(/\s+/g, ' ') : '',
-      buttonDisabled: button ? Boolean(button.disabled) : false,
+      buttons: buttons.map(mapButton),
       nextWithdrawalText: nextWithdrawalMatch ? nextWithdrawalMatch[0].trim().replace(/\s+/g, ' ') : '',
     };
   });
 
+  const withdrawButton = chooseWithdrawalButton(buttonInfo.buttons);
+
   return extractPaymentsSnapshot({
     pageProps,
     earningsSummary,
-    buttonText: buttonInfo.buttonText,
-    buttonDisabled: buttonInfo.buttonDisabled,
+    buttonText: withdrawButton.text,
+    buttonDisabled: withdrawButton.disabled,
     nextWithdrawalText: buttonInfo.nextWithdrawalText,
   });
+}
+
+function chooseWithdrawalButton(buttons) {
+  const candidates = Array.isArray(buttons)
+    ? buttons
+        .map(normalizeButtonCandidate)
+        .filter((button) => button && WITHDRAW_BUTTON_TEXT_PATTERN.test(button.text))
+    : [];
+
+  if (candidates.length !== 1) {
+    return {
+      present: candidates.length > 0,
+      enabled: false,
+      disabled: null,
+      text: null,
+      count: candidates.length,
+    };
+  }
+
+  const button = candidates[0];
+  return {
+    present: true,
+    enabled: !button.disabled,
+    disabled: button.disabled,
+    text: button.text,
+    count: 1,
+  };
+}
+
+function normalizeButtonCandidate(button) {
+  if (!button) {
+    return null;
+  }
+
+  const text = normalizeText(button.text || button.ariaLabel || button.title);
+  return {
+    text,
+    disabled: Boolean(button.disabled),
+  };
+}
+
+function normalizeText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
 module.exports = {
   extractPaymentsSnapshot,
   scrapePayments,
+  chooseWithdrawalButton,
   formatMonthLabel,
   formatCents,
   estimateNextWithdrawalAt,

@@ -16,6 +16,8 @@ class DataAnnotationMqttBridge {
     this.logger = options.logger || NULL_LOGGER;
     this.publishTargets = new Set(options.publishTargets || ['projects', 'status']);
     this.scanRequested = { value: false };
+    this.withdrawRequested = { value: false };
+    this.withdrawLockChange = { value: null };
     this.publishedProjectSlugs = new Set();
     this.connected = false;
     this._availabilityState = 'offline';
@@ -40,18 +42,32 @@ class DataAnnotationMqttBridge {
     this.client.on('connect', () => {
       this.connected = true;
       this.logger.info('Connected to MQTT broker');
-      this.client.subscribe(this._topic('command/sync'), { qos: 1 });
+      this.client.subscribe(
+        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set')],
+        { qos: 1 }
+      );
       this.logger.debug(`Subscribed to ${this._topic('command/sync')}`);
+      this.logger.debug(`Subscribed to ${this._topic('command/withdraw')}`);
+      this.logger.debug(`Subscribed to ${this._topic('withdraw/lock/set')}`);
     });
     this.client.on('close', () => {
       this.connected = false;
       this.logger.warning('MQTT connection closed');
     });
-    this.client.on('message', (_, payload) => {
+    this.client.on('message', (topic, payload) => {
       const message = String(payload || '').trim().toLowerCase();
-      if (message === 'now') {
+      if (topic === this._topic('command/sync') && message === 'now') {
         this.logger.info('Received manual sync request via MQTT');
         this.scanRequested.value = true;
+      } else if (topic === this._topic('command/withdraw') && message === 'withdraw') {
+        this.logger.info('Received withdraw request via MQTT');
+        this.withdrawRequested.value = true;
+      } else if (topic === this._topic('withdraw/lock/set') && message === 'on') {
+        this.logger.info('Received withdraw lock request: ON');
+        this.withdrawLockChange.value = true;
+      } else if (topic === this._topic('withdraw/lock/set') && message === 'off') {
+        this.logger.info('Received withdraw lock request: OFF');
+        this.withdrawLockChange.value = false;
       }
     });
   }
@@ -88,6 +104,34 @@ class DataAnnotationMqttBridge {
       payload_available: 'online',
       payload_not_available: 'offline',
       icon: 'mdi:refresh',
+      device: this.device,
+    });
+
+    this._publishDiscovery('switch', 'withdraw_locked', {
+      name: names.withdraw_locked,
+      unique_id: `${this.topicPrefix}_withdraw_locked`,
+      state_topic: this._topic('withdraw/lock/state'),
+      command_topic: this._topic('withdraw/lock/set'),
+      payload_on: 'ON',
+      payload_off: 'OFF',
+      state_on: 'ON',
+      state_off: 'OFF',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:lock',
+      device: this.device,
+    });
+
+    this._publishDiscovery('button', 'withdraw_funds', {
+      name: names.withdraw_funds,
+      unique_id: `${this.topicPrefix}_withdraw_funds`,
+      command_topic: this._topic('command/withdraw'),
+      payload_press: 'withdraw',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:cash-sync',
       device: this.device,
     });
 
@@ -294,6 +338,12 @@ class DataAnnotationMqttBridge {
     this._publish(this._topic('profile/state'), profileName || '', true);
   }
 
+  publishWithdrawLockState(locked) {
+    const state = locked ? 'ON' : 'OFF';
+    this.logger.debug(`Publishing withdraw lock state: ${state}`);
+    this._publish(this._topic('withdraw/lock/state'), state, true);
+  }
+
   publishSummary(summary) {
     this.logger.debug(`Publishing project summary: ${summary.count} projects, ${summary.total_tasks || 0} total tasks`);
     this._publishJson(this._topic('projects/summary'), summary, true);
@@ -417,6 +467,8 @@ function buildDiscoveryNames() {
     total_tasks: 'Total Tasks',
     status: 'Status',
     last_sync: 'Last Sync',
+    withdraw_locked: 'Withdraw Locked',
+    withdraw_funds: 'Withdraw Funds',
   };
 }
 

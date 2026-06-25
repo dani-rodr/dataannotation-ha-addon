@@ -1,6 +1,6 @@
 {
   "name": "dataannotation-projects-ha-addon",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "private": true,
   "description": "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
   "main": "src/main.js",

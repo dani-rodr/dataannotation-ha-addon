@@ -8,7 +8,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 
 - 5 minute polling by default
 - Persistent browser session handling with automatic relogin when the session expires
-- MQTT auto-discovery for count, status, profile, sync button, and per-project sensors
+- MQTT auto-discovery for count, status, profile, sync button, withdraw lock switch, withdraw button, and per-project sensors
 - Read-only scraping only; no project actions are clicked
 - First iteration targets the projects page only
 
@@ -31,6 +31,8 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - `Status`
 - `Last Sync`
 - `Sync Now`
+- `Withdraw Locked`
+- `Withdraw Funds`
 - One sensor per active project
 - `Available Funds`
 - `Can Withdraw`
@@ -58,7 +60,10 @@ Each project sensor uses the task count as its state and exposes attributes such
 ## Notes
 
 - The add-on keeps a persistent Chromium profile under `/data/chrome-profile`.
+- Withdraw lock state is stored under `/data/withdraw-lock-state.json` and restored on restart.
 - If DataAnnotation logs the session out, the add-on will detect the login page, sign back in, and continue scraping.
+- Withdrawal attempts that are blocked create a Home Assistant persistent notification.
+- Home Assistant Core API access is enabled so the add-on can create persistent notifications.
 - Fund history scraping is intentionally deferred to a later iteration.
 
 ## Install

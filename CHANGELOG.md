@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.5
+
+- Enable Home Assistant Core API access for persistent notifications.
+- Tighten withdrawal button detection to the exact `$x.xx available` pattern.
+
+## 0.1.4
+
+- Add a retained `Withdraw Locked` switch that defaults to ON.
+- Add a `Withdraw Funds` MQTT button.
+- Persist withdraw lock state across restarts and syncs.
+- Create Home Assistant persistent notifications for blocked withdrawal attempts.
+
 ## 0.1.3
 
 - Remove redundant JSON attributes from aggregate entities.

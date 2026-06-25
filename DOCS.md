@@ -14,6 +14,10 @@
 - Opens only `/users/sign_in` and `/workers/projects`
 - Opens `/workers/payments` to scrape withdrawal and earnings data
 - Clicks only the login submit button when a session refresh is required
+- Keeps withdraw state in `/data/withdraw-lock-state.json` so it survives restarts and syncs
+- Publishes `Withdraw Locked` as ON when withdrawals are locked
+- Emits a Home Assistant persistent notification if a withdrawal is requested while locked or unavailable
+- Uses Home Assistant Core API access for persistent notifications
 - Publishes retained MQTT entities and discovery payloads
 - Publishes `0` and empty state when no projects are available
 

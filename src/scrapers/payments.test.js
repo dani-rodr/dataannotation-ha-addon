@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { estimateNextWithdrawalAt, extractPaymentsSnapshot } = require('./payments');
+const { chooseWithdrawalButton, estimateNextWithdrawalAt, extractPaymentsSnapshot } = require('./payments');
 
 test('extractPaymentsSnapshot maps the observed cooldown state', () => {
   const snapshot = extractPaymentsSnapshot({
@@ -193,4 +193,64 @@ test('extractPaymentsSnapshot clamps estimated next withdrawal to now after the 
   });
 
   assert.equal(snapshot.next_withdrawal_at, '2026-06-25T14:05:02.298Z');
+});
+
+test('chooseWithdrawalButton accepts only the exact money available button', () => {
+  const choice = chooseWithdrawalButton([
+    { text: 'Share', disabled: false },
+    { text: '$12.34 available', disabled: false },
+  ]);
+
+  assert.equal(choice.present, true);
+  assert.equal(choice.enabled, true);
+  assert.equal(choice.text, '$12.34 available');
+  assert.equal(choice.count, 1);
+});
+
+test('chooseWithdrawalButton ignores nearby share buttons and requires a unique match', () => {
+  const choice = chooseWithdrawalButton([
+    { text: '$12.34 available', disabled: false },
+    { text: '$12.34 available', disabled: false },
+    { text: 'Share', disabled: false },
+  ]);
+
+  assert.equal(choice.present, true);
+  assert.equal(choice.enabled, false);
+  assert.equal(choice.text, null);
+  assert.equal(choice.count, 2);
+});
+
+test('extractPaymentsSnapshot reports no withdraw button when the exact button is missing', () => {
+  const snapshot = extractPaymentsSnapshot({
+    pageProps: {
+      totalLifetimeEarnings: 50000,
+      unapprovedAmount: 0,
+      paymentStatus: {
+        type: 'cooldown',
+        nextEligibleAt: null,
+        amountInCents: 0,
+      },
+      unpaidPendingAmountInCents: 0,
+      lastPayoutAt: '2026-06-24T14:05:02.298Z',
+      showFundsHistoryTable: true,
+    },
+    earningsSummary: {
+      totalPaidOut: 0,
+      currentMonthEarnings: 50000,
+      bestMonth: {
+        month: '2026-06',
+        withdrawnInCents: 50000,
+        earnedInCents: 0,
+        pendingInCents: 0,
+      },
+    },
+    buttonText: 'Share',
+    buttonDisabled: false,
+    nextWithdrawalText: '',
+  });
+
+  assert.equal(snapshot.withdraw_button_present, false);
+  assert.equal(snapshot.button_enabled, false);
+  assert.equal(snapshot.can_withdraw, false);
+  assert.equal(snapshot.button_text, null);
 });
