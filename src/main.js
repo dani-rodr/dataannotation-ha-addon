@@ -1,6 +1,7 @@
 const { readConfig, configureLogging } = require('./config');
 const { DataAnnotationClient } = require('./dataannotation_client');
 const { DataAnnotationMqttBridge } = require('./mqtt_bridge');
+const { createLogger } = require('./logger');
 
 const { version } = require('../package.json');
 
@@ -17,6 +18,12 @@ process.on('SIGTERM', () => {
 async function main() {
   const config = await readConfig();
   configureLogging(config.log_level);
+  const logger = createLogger(config.log_level);
+
+  logger.info(`Starting Data Annotation add-on v${version}`);
+  logger.debug(
+    `Config loaded: profile="${config.profile || 'Data Annotation'}", topic="${config.mqtt_topic_prefix}", poll=${config.poll_interval_minutes}m, mqtt_host="${config.mqtt_host}"`
+  );
 
   const bridge = new DataAnnotationMqttBridge({
     host: config.mqtt_host,
@@ -24,31 +31,36 @@ async function main() {
     username: config.mqtt_username || undefined,
     password: config.mqtt_password || undefined,
     topicPrefix: config.mqtt_topic_prefix,
-    profileName: config.profile_name,
+    profileName: config.profile || 'Data Annotation',
     version,
+    logger,
     publishTargets: ['projects', 'status'],
   });
 
   const client = new DataAnnotationClient({
-    email: config.dataannotation_email,
-    password: config.dataannotation_password,
+    email: config.email,
+    password: config.password,
     profileDir: config.browser_profile_dir,
+    logger,
   });
 
   try {
     await bridge.waitForConnection();
     bridge.publishOnline();
     bridge.publishDiscovery();
-    bridge.publishProfile(config.profile_name);
+    bridge.publishProfile(config.profile || 'Data Annotation');
 
     let lastSuccessfulSyncAt = null;
+    let lastSuccessfulProjectCount = 0;
     let nextRunAt = Date.now();
 
     while (running) {
       const now = Date.now();
       if (bridge.scanRequested.value || now >= nextRunAt) {
         bridge.scanRequested.value = false;
-        lastSuccessfulSyncAt = await doSync(client, bridge, config, lastSuccessfulSyncAt);
+        const syncResult = await doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessfulProjectCount, logger);
+        lastSuccessfulSyncAt = syncResult.lastSuccessfulSyncAt;
+        lastSuccessfulProjectCount = syncResult.lastSuccessfulProjectCount;
         nextRunAt = Date.now() + config.poll_interval_minutes * 60 * 1000;
       }
 
@@ -60,18 +72,22 @@ async function main() {
   }
 }
 
-async function doSync(client, bridge, config, lastSuccessfulSyncAt) {
+async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessfulProjectCount, logger) {
   const startedAt = new Date().toISOString();
+  logger.info(`Starting sync at ${startedAt}`);
 
   try {
     const result = await client.collectProjects();
     const completedAt = new Date().toISOString();
 
+    logger.info(`Sync complete: ${result.count} projects`);
+    logger.debug(`Projects page URL: ${result.pageUrl}`);
+
     bridge.publishOnline();
-    bridge.publishProfile(config.profile_name);
+    bridge.publishProfile(config.profile || 'Data Annotation');
     bridge.publishSummary({
       count: result.count,
-      profile_name: config.profile_name,
+      profile: config.profile || 'Data Annotation',
       login_state: result.loginState,
       lastAttemptedSyncAt: startedAt,
       lastSuccessfulSyncAt: completedAt,
@@ -85,8 +101,9 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt) {
       lastError: null,
     });
     bridge.publishProjects(result.projects);
-    return completedAt;
+    return { lastSuccessfulSyncAt: completedAt, lastSuccessfulProjectCount: result.count };
   } catch (error) {
+    logger.error(`Sync failed: ${error.stack || error.message}`);
     bridge.publishStatusError({
       trigger: 'poll',
       state: 'offline',
@@ -95,7 +112,15 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt) {
       lastSuccessfulSyncAt: lastSuccessfulSyncAt,
       lastError: error.message,
     });
-    return lastSuccessfulSyncAt;
+    bridge.publishSummary({
+      count: lastSuccessfulProjectCount || 0,
+      profile: config.profile || 'Data Annotation',
+      login_state: 'login_failed',
+      lastAttemptedSyncAt: startedAt,
+      lastSuccessfulSyncAt: lastSuccessfulSyncAt,
+      lastError: error.message,
+    });
+    return { lastSuccessfulSyncAt, lastSuccessfulProjectCount };
   }
 }
 

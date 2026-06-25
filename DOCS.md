@@ -2,9 +2,9 @@
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `profile_name` | required | Friendly name shown in MQTT device metadata |
-| `dataannotation_email` | required | DataAnnotation login email |
-| `dataannotation_password` | required | DataAnnotation login password |
+| `profile` | required | Friendly name shown in MQTT device metadata |
+| `email` | required | DataAnnotation login email |
+| `password` | required | DataAnnotation login password |
 | `poll_interval_minutes` | `5` | Minutes between automatic scrapes |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
 | `log_level` | `info` | Logging level |

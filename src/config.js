@@ -2,9 +2,9 @@ const fs = require('fs');
 const http = require('http');
 
 const DEFAULT_CONFIG = {
-  profile_name: 'DataAnnotation',
-  dataannotation_email: '',
-  dataannotation_password: '',
+  profile: '',
+  email: '',
+  password: '',
   poll_interval_minutes: 5,
   mqtt_topic_prefix: 'dataannotation',
   log_level: 'info',
@@ -16,30 +16,30 @@ async function readConfig() {
 
   if (fs.existsSync(optionsPath)) {
     const options = JSON.parse(fs.readFileSync(optionsPath, 'utf8'));
-    config.profile_name = stringOrDefault(options.profile_name, config.profile_name);
-    config.dataannotation_email = stringOrDefault(options.dataannotation_email, config.dataannotation_email);
-    config.dataannotation_password = stringOrDefault(options.dataannotation_password, config.dataannotation_password);
+    config.profile = stringOrDefault(options.profile ?? options.profile_name, config.profile);
+    config.email = stringOrDefault(options.email ?? options.dataannotation_email, config.email);
+    config.password = stringOrDefault(options.password ?? options.dataannotation_password, config.password);
     config.poll_interval_minutes = numberOrDefault(options.poll_interval_minutes, config.poll_interval_minutes, 1, 1440);
     config.mqtt_topic_prefix = stringOrDefault(options.mqtt_topic_prefix, config.mqtt_topic_prefix);
     config.log_level = stringOrDefault(options.log_level, config.log_level);
   }
 
-  if (process.env.DATAANNOTATION_EMAIL) {
-    config.dataannotation_email = process.env.DATAANNOTATION_EMAIL;
+  if (process.env.EMAIL || process.env.DATAANNOTATION_EMAIL) {
+    config.email = process.env.EMAIL || process.env.DATAANNOTATION_EMAIL;
   }
-  if (process.env.DATAANNOTATION_PASSWORD) {
-    config.dataannotation_password = process.env.DATAANNOTATION_PASSWORD;
+  if (process.env.PASSWORD || process.env.DATAANNOTATION_PASSWORD) {
+    config.password = process.env.PASSWORD || process.env.DATAANNOTATION_PASSWORD;
   }
-  if (process.env.DATAANNOTATION_PROFILE_NAME) {
-    config.profile_name = process.env.DATAANNOTATION_PROFILE_NAME;
+  if (process.env.PROFILE || process.env.DATAANNOTATION_PROFILE_NAME) {
+    config.profile = process.env.PROFILE || process.env.DATAANNOTATION_PROFILE_NAME;
   }
   if (process.env.MQTT_TOPIC_PREFIX) {
     config.mqtt_topic_prefix = process.env.MQTT_TOPIC_PREFIX;
   }
 
-  config.profile_name = stringOrDefault(config.profile_name, DEFAULT_CONFIG.profile_name);
-  config.dataannotation_email = stringOrDefault(config.dataannotation_email, '');
-  config.dataannotation_password = stringOrDefault(config.dataannotation_password, '');
+  config.profile = stringOrDefault(config.profile, DEFAULT_CONFIG.profile);
+  config.email = stringOrDefault(config.email, '');
+  config.password = stringOrDefault(config.password, '');
   config.mqtt_topic_prefix = normalizeSlug(config.mqtt_topic_prefix || DEFAULT_CONFIG.mqtt_topic_prefix);
   config.log_level = normalizeLogLevel(config.log_level);
   config.browser_profile_dir = '/data/chrome-profile';
@@ -50,12 +50,12 @@ async function readConfig() {
   config.mqtt_username = stringOrDefault(process.env.MQTT_USERNAME || config.mqtt_username, '');
   config.mqtt_password = stringOrDefault(process.env.MQTT_PASSWORD || config.mqtt_password, '');
 
-  if (!config.dataannotation_email) {
-    throw new Error("Configuration value 'dataannotation_email' is required");
+  if (!config.email) {
+    throw new Error("Configuration value 'email' is required");
   }
 
-  if (!config.dataannotation_password) {
-    throw new Error("Configuration value 'dataannotation_password' is required");
+  if (!config.password) {
+    throw new Error("Configuration value 'password' is required");
   }
 
   if (!config.mqtt_host) {
@@ -161,4 +161,5 @@ module.exports = {
   readConfig,
   configureLogging,
   normalizeSlug,
+  normalizeLogLevel,
 };

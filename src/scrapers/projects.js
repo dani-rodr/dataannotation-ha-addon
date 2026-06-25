@@ -35,10 +35,9 @@ function normalizeProject(project) {
 function buildTags(project) {
   const tags = [];
   for (const badge of Array.isArray(project?.badges) ? project.badges : []) {
-    if (badge?.label) {
-      tags.push(String(badge.label));
-    } else if (badge?.kind) {
-      tags.push(String(badge.kind));
+    const normalized = normalizeBadgeTag(badge);
+    if (normalized) {
+      tags.push(normalized);
     }
   }
 
@@ -51,6 +50,23 @@ function buildTags(project) {
   }
 
   return [...new Set(tags)].filter(Boolean);
+}
+
+function normalizeBadgeTag(badge) {
+  if (!badge) {
+    return null;
+  }
+
+  switch (badge.kind) {
+    case 'priority_pay':
+      return 'Priority Pay';
+    case 'domain_coding':
+      return 'Coding';
+    case 'qualification':
+      return 'Qualification';
+    default:
+      return badge.label ? String(badge.label) : badge.kind ? String(badge.kind) : null;
+  }
 }
 
 function classifyCategory(project) {
@@ -110,4 +126,5 @@ module.exports = {
   normalizeProject,
   formatCreated,
   classifyCategory,
+  normalizeBadgeTag,
 };

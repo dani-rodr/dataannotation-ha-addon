@@ -1,8 +1,14 @@
 const fs = require('fs');
-const path = require('path');
 const puppeteer = require('puppeteer-core');
 
 const { extractProjects } = require('./scrapers/projects');
+
+const NULL_LOGGER = {
+  debug() {},
+  info() {},
+  warning() {},
+  error() {},
+};
 
 const PROJECTS_URL = 'https://app.dataannotation.tech/workers/projects';
 const SIGN_IN_URL = 'https://app.dataannotation.tech/users/sign_in';
@@ -13,6 +19,7 @@ class DataAnnotationClient {
     this.password = options.password;
     this.profileDir = options.profileDir;
     this.executablePath = options.executablePath || resolveExecutablePath();
+    this.logger = options.logger || NULL_LOGGER;
     this.browser = null;
   }
 
@@ -27,8 +34,10 @@ class DataAnnotationClient {
     const page = await this._newPage();
 
     try {
+      this.logger.debug('Opening DataAnnotation projects page');
       const loginState = await this._ensureAuthenticated(page);
       const projects = await this._scrapeProjects(page);
+      this.logger.debug(`Scraped ${projects.length} DataAnnotation projects`);
 
       return {
         authenticated: true,
@@ -44,15 +53,17 @@ class DataAnnotationClient {
 
   async _ensureAuthenticated(page) {
     await page.goto(PROJECTS_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(2000);
+    await sleep(2000);
 
     if (this._looksLoggedOut(page)) {
+      this.logger.debug('Detected sign-in page, refreshing session');
       await this._login(page);
       await page.goto(PROJECTS_URL, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]', { timeout: 30000 });
       return 'authenticated';
     }
 
+    this.logger.debug('Authenticated session detected, waiting for projects payload');
     await page.waitForSelector('div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]', { timeout: 30000 });
     return 'authenticated';
   }
@@ -62,18 +73,24 @@ class DataAnnotationClient {
   }
 
   async _login(page) {
+    this.logger.debug('Opening sign-in page');
     await page.goto(SIGN_IN_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#user_email', { timeout: 30000 });
     await page.type('#user_email', this.email, { delay: 20 });
     await page.type('#user_password', this.password, { delay: 20 });
 
     const submitSelector = 'form[action$="/users/sign_in"] button[type="submit"]';
+    this.logger.debug('Submitting sign-in form');
+    const submitButton = (await page.$(submitSelector)) || (await page.$('button[type="submit"]'));
+    if (!submitButton) {
+      throw new Error('Could not find the DataAnnotation sign-in submit button');
+    }
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
-      page.click(submitSelector),
+      submitButton.click(),
     ]);
 
-    await page.waitForTimeout(2000);
+    await sleep(2000);
 
     if (page.url().includes('/users/sign_in')) {
       throw new Error('DataAnnotation login failed or session was rejected');
@@ -81,6 +98,7 @@ class DataAnnotationClient {
   }
 
   async _scrapeProjects(page) {
+    this.logger.debug('Reading DataAnnotation project data-props payload');
     const rawProps = await page.$eval(
       'div[id="workers/WorkerProjectsTable-hybrid-root"]',
       (element) => element.getAttribute('data-props') || '{}'
@@ -107,6 +125,11 @@ class DataAnnotationClient {
       fs.mkdirSync(this.profileDir, { recursive: true });
     }
 
+    if (!this.executablePath) {
+      throw new Error('Chromium executable not found in expected locations');
+    }
+
+    this.logger.debug(`Launching Chromium: ${this.executablePath}`);
     this.browser = await puppeteer.launch({
       executablePath: this.executablePath,
       headless: 'new',
@@ -140,6 +163,10 @@ function resolveExecutablePath() {
   }
 
   return undefined;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 module.exports = {

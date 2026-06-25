@@ -1,11 +1,19 @@
-const mqtt = require('mqtt');
 const crypto = require('crypto');
+
+const NULL_LOGGER = {
+  debug() {},
+  info() {},
+  warning() {},
+  error() {},
+};
 
 class DataAnnotationMqttBridge {
   constructor(options) {
+    const mqtt = require('mqtt');
     this.topicPrefix = options.topicPrefix;
     this.profileName = options.profileName;
     this.version = options.version;
+    this.logger = options.logger || NULL_LOGGER;
     this.publishTargets = new Set(options.publishTargets || ['projects', 'status']);
     this.scanRequested = { value: false };
     this.publishedProjectSlugs = new Set();
@@ -27,24 +35,22 @@ class DataAnnotationMqttBridge {
       },
     });
 
-    this.device = {
-      identifiers: [`dataannotation_${slugify(this.profileName)}`],
-      name: `DataAnnotation - ${this.profileName}`,
-      manufacturer: 'DataAnnotation',
-      model: 'Worker Projects Scraper',
-      sw_version: this.version,
-    };
+    this.device = buildDeviceInfo(this.profileName, this.version);
 
     this.client.on('connect', () => {
       this.connected = true;
+      this.logger.info('Connected to MQTT broker');
       this.client.subscribe(this._topic('command/sync'), { qos: 1 });
+      this.logger.debug(`Subscribed to ${this._topic('command/sync')}`);
     });
     this.client.on('close', () => {
       this.connected = false;
+      this.logger.warning('MQTT connection closed');
     });
     this.client.on('message', (_, payload) => {
       const message = String(payload || '').trim().toLowerCase();
       if (message === 'now') {
+        this.logger.info('Received manual sync request via MQTT');
         this.scanRequested.value = true;
       }
     });
@@ -71,8 +77,10 @@ class DataAnnotationMqttBridge {
   }
 
   publishDiscovery() {
+    const names = buildDiscoveryNames();
+    this.logger.debug('Publishing MQTT discovery payloads');
     this._publishDiscovery('button', 'sync_now', {
-      name: 'DataAnnotation Sync Now',
+      name: names.button,
       unique_id: `${this.topicPrefix}_sync_now`,
       command_topic: this._topic('command/sync'),
       payload_press: 'now',
@@ -84,7 +92,7 @@ class DataAnnotationMqttBridge {
     });
 
     this._publishDiscovery('sensor', 'profile_name', {
-      name: 'DataAnnotation Profile',
+      name: names.profile,
       unique_id: `${this.topicPrefix}_profile_name`,
       state_topic: this._topic('profile/state'),
       availability_topic: this._topic('availability'),
@@ -95,7 +103,7 @@ class DataAnnotationMqttBridge {
     });
 
     this._publishDiscovery('sensor', 'project_count', {
-      name: 'DataAnnotation Project Count',
+      name: names.project_count,
       unique_id: `${this.topicPrefix}_project_count`,
       state_topic: this._topic('projects/summary'),
       value_template: '{{ value_json.count }}',
@@ -108,7 +116,7 @@ class DataAnnotationMqttBridge {
     });
 
     this._publishDiscovery('binary_sensor', 'status', {
-      name: 'DataAnnotation Status',
+      name: names.status,
       unique_id: `${this.topicPrefix}_status`,
       state_topic: this._topic('status/state'),
       payload_on: 'ON',
@@ -122,7 +130,7 @@ class DataAnnotationMqttBridge {
     });
 
     this._publishDiscovery('sensor', 'last_sync', {
-      name: 'DataAnnotation Last Sync',
+      name: names.last_sync,
       unique_id: `${this.topicPrefix}_last_sync`,
       state_topic: this._topic('last_sync'),
       value_template: '{{ value_json.lastSuccessfulSyncAt }}',
@@ -147,26 +155,31 @@ class DataAnnotationMqttBridge {
   }
 
   publishProfile(profileName) {
+    this.logger.debug(`Publishing profile name: ${profileName || ''}`);
     this._publish(this._topic('profile/state'), profileName || '', true);
   }
 
   publishSummary(summary) {
+    this.logger.debug(`Publishing project summary: ${summary.count} projects`);
     this._publishJson(this._topic('projects/summary'), summary, true);
   }
 
   publishStatusSuccess(attributes) {
+    this.logger.debug('Publishing status success');
     this._publish(this._topic('status/state'), 'ON', true);
     this._publishJson(this._topic('status/attributes'), attributes, true);
     this._publishJson(this._topic('last_sync'), attributes, true);
   }
 
   publishStatusError(attributes) {
+    this.logger.debug('Publishing status error');
     this._publish(this._topic('status/state'), 'OFF', true);
     this._publishJson(this._topic('status/attributes'), attributes, true);
     this._publishJson(this._topic('last_sync'), attributes, true);
   }
 
   publishProjects(projects) {
+    this.logger.debug(`Publishing ${projects.length} project entities`);
     const currentSlugs = new Set();
 
     for (const project of projects) {
@@ -187,6 +200,7 @@ class DataAnnotationMqttBridge {
   }
 
   async close() {
+    this.logger.info('Shutting down MQTT bridge');
     this.publishOffline();
     await new Promise((resolve) => this.client.end(false, {}, resolve));
   }
@@ -245,6 +259,28 @@ function slugify(value) {
   return normalized || 'dataannotation';
 }
 
+function buildDeviceInfo(profileName, version) {
+  return {
+    identifiers: [`dataannotation_${slugify(profileName)}`],
+    name: 'Data Annotation',
+    manufacturer: 'Data Annotation',
+    model: 'Worker Projects Scraper',
+    sw_version: version,
+  };
+}
+
+function buildDiscoveryNames() {
+  return {
+    button: 'Sync Now',
+    profile: 'Profile',
+    project_count: 'Project Count',
+    status: 'Status',
+    last_sync: 'Last Sync',
+  };
+}
+
 module.exports = {
   DataAnnotationMqttBridge,
+  buildDeviceInfo,
+  buildDiscoveryNames,
 };
