@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { extractPaymentsSnapshot } = require('./payments');
+const { estimateNextWithdrawalAt, extractPaymentsSnapshot } = require('./payments');
 
 test('extractPaymentsSnapshot maps the observed cooldown state', () => {
   const snapshot = extractPaymentsSnapshot({
@@ -81,7 +81,7 @@ test('extractPaymentsSnapshot marks withdrawable funds as available', () => {
   assert.equal(snapshot.can_withdraw, true);
   assert.equal(snapshot.button_enabled, true);
   assert.equal(snapshot.payment_status, 'available');
-  assert.equal(snapshot.next_withdrawal_at, null);
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-27T14:05:02.298Z');
 });
 
 test('extractPaymentsSnapshot falls back to visible next withdrawal text', () => {
@@ -115,4 +115,82 @@ test('extractPaymentsSnapshot falls back to visible next withdrawal text', () =>
 
   assert.equal(snapshot.next_withdrawal_at, '2026-06-25T14:05:00.000Z');
   assert.equal(snapshot.next_withdrawal_text, 'Next withdrawal: June 25, 2026 at 10:05 PM GMT+8');
+});
+
+test('estimateNextWithdrawalAt uses last payout plus three days while still in the future', () => {
+  const estimated = estimateNextWithdrawalAt('2026-06-22T14:05:02.298Z', '2026-06-23T14:05:02.298Z');
+
+  assert.equal(estimated, '2026-06-25T14:05:02.298Z');
+});
+
+test('estimateNextWithdrawalAt clamps to now when the three day window has passed', () => {
+  const estimated = estimateNextWithdrawalAt('2026-06-20T14:05:02.298Z', '2026-06-25T14:05:02.298Z');
+
+  assert.equal(estimated, '2026-06-25T14:05:02.298Z');
+});
+
+test('extractPaymentsSnapshot estimates next withdrawal from last payout when no direct value exists', () => {
+  const snapshot = extractPaymentsSnapshot({
+    pageProps: {
+      totalLifetimeEarnings: 50000,
+      unapprovedAmount: 0,
+      paymentStatus: {
+        type: 'cooldown',
+        nextEligibleAt: null,
+        amountInCents: 0,
+      },
+      unpaidPendingAmountInCents: 0,
+      lastPayoutAt: '2026-06-20T14:05:02.298Z',
+      showFundsHistoryTable: true,
+    },
+    earningsSummary: {
+      totalPaidOut: 0,
+      currentMonthEarnings: 50000,
+      bestMonth: {
+        month: '2026-06',
+        withdrawnInCents: 50000,
+        earnedInCents: 0,
+        pendingInCents: 0,
+      },
+    },
+    buttonText: '$0.00 available',
+    buttonDisabled: true,
+    nextWithdrawalText: '',
+    now: new Date('2026-06-22T14:05:02.298Z'),
+  });
+
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-23T14:05:02.298Z');
+});
+
+test('extractPaymentsSnapshot clamps estimated next withdrawal to now after the 3 day window', () => {
+  const snapshot = extractPaymentsSnapshot({
+    pageProps: {
+      totalLifetimeEarnings: 50000,
+      unapprovedAmount: 0,
+      paymentStatus: {
+        type: 'cooldown',
+        nextEligibleAt: null,
+        amountInCents: 0,
+      },
+      unpaidPendingAmountInCents: 0,
+      lastPayoutAt: '2026-06-20T14:05:02.298Z',
+      showFundsHistoryTable: true,
+    },
+    earningsSummary: {
+      totalPaidOut: 0,
+      currentMonthEarnings: 50000,
+      bestMonth: {
+        month: '2026-06',
+        withdrawnInCents: 50000,
+        earnedInCents: 0,
+        pendingInCents: 0,
+      },
+    },
+    buttonText: '$0.00 available',
+    buttonDisabled: true,
+    nextWithdrawalText: '',
+    now: new Date('2026-06-25T14:05:02.298Z'),
+  });
+
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-25T14:05:02.298Z');
 });

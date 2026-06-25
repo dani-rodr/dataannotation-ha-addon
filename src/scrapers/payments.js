@@ -1,4 +1,4 @@
-function extractPaymentsSnapshot({ pageProps, earningsSummary, buttonText, buttonDisabled, nextWithdrawalText }) {
+function extractPaymentsSnapshot({ pageProps, earningsSummary, buttonText, buttonDisabled, nextWithdrawalText, now = new Date() }) {
   const availableAmountCents = numberOrZero(pageProps?.paymentStatus?.amountInCents);
   const canWithdraw = Boolean(!buttonDisabled && availableAmountCents > 0);
   const totalEarningsCents = numberOrZero(pageProps?.totalLifetimeEarnings);
@@ -6,7 +6,12 @@ function extractPaymentsSnapshot({ pageProps, earningsSummary, buttonText, butto
   const totalPaidOutCents = numberOrZero(earningsSummary?.totalPaidOut);
   const thisMonthCents = numberOrZero(earningsSummary?.currentMonthEarnings);
   const bestMonthSource = normalizeBestMonth(earningsSummary?.bestMonth);
-  const nextWithdrawalAt = normalizeNextWithdrawalAt(pageProps?.paymentStatus?.nextEligibleAt, nextWithdrawalText);
+  const nextWithdrawalAt = normalizeNextWithdrawalAt({
+    nextEligibleAt: pageProps?.paymentStatus?.nextEligibleAt,
+    nextWithdrawalText,
+    lastPayoutAt: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
+    now,
+  });
 
   return {
     available_amount_cents: availableAmountCents,
@@ -82,23 +87,51 @@ function numberOrZero(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeNextWithdrawalAt(nextEligibleAt, nextWithdrawalText) {
+function normalizeNextWithdrawalAt({ nextEligibleAt, nextWithdrawalText, lastPayoutAt, now = new Date() }) {
   const direct = normalizeIsoDate(nextEligibleAt);
   if (direct) {
     return direct;
   }
 
   const parsed = parseNextWithdrawalText(nextWithdrawalText);
-  return parsed ? parsed.toISOString() : null;
+  if (parsed) {
+    return parsed.toISOString();
+  }
+
+  return estimateNextWithdrawalAt(lastPayoutAt, now);
+}
+
+function estimateNextWithdrawalAt(lastPayoutAt, now = new Date()) {
+  const lastPayout = normalizeDate(lastPayoutAt);
+  if (!lastPayout) {
+    return null;
+  }
+
+  const estimatedAt = new Date(lastPayout.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const current = normalizeDate(now);
+  if (!current) {
+    return estimatedAt.toISOString();
+  }
+
+  return estimatedAt < current ? current.toISOString() : estimatedAt.toISOString();
 }
 
 function normalizeIsoDate(value) {
+  const date = normalizeDate(value);
+  if (!date) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
+function normalizeDate(value) {
   if (!value) {
     return null;
   }
 
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function parseNextWithdrawalText(text) {
@@ -207,6 +240,7 @@ module.exports = {
   scrapePayments,
   formatMonthLabel,
   formatCents,
+  estimateNextWithdrawalAt,
   normalizeNextWithdrawalAt,
   parseNextWithdrawalText,
 };
