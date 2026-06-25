@@ -142,6 +142,139 @@ class DataAnnotationMqttBridge {
       icon: 'mdi:clock-check-outline',
       device: this.device,
     });
+
+    this._publishDiscovery('sensor', 'available_funds', {
+      name: 'Available Funds',
+      unique_id: `${this.topicPrefix}_available_funds`,
+      state_topic: this._topic('payments/summary'),
+      value_template: '{{ value_json.available_amount }}',
+      json_attributes_topic: this._topic('payments/summary'),
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      unit_of_measurement: 'USD',
+      state_class: 'measurement',
+      icon: 'mdi:cash',
+      device: this.device,
+    });
+
+    this._publishDiscovery('binary_sensor', 'can_withdraw', {
+      name: 'Can Withdraw',
+      unique_id: `${this.topicPrefix}_can_withdraw`,
+      state_topic: this._topic('payments/summary'),
+      value_template: "{{ 'ON' if value_json.can_withdraw else 'OFF' }}",
+      payload_on: 'ON',
+      payload_off: 'OFF',
+      json_attributes_topic: this._topic('payments/summary'),
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:cash-check',
+      device: this.device,
+    });
+
+    this._publishDiscovery('sensor', 'next_withdrawal', {
+      name: 'Next Withdrawal',
+      unique_id: `${this.topicPrefix}_next_withdrawal`,
+      state_topic: this._topic('payments/summary'),
+      value_template: "{{ value_json.next_withdrawal_at if value_json.next_withdrawal_at else 'unknown' }}",
+      json_attributes_topic: this._topic('payments/summary'),
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      device_class: 'timestamp',
+      icon: 'mdi:calendar-clock',
+      device: this.device,
+    });
+
+    this._publishDiscovery('sensor', 'total_earnings', {
+      name: 'Total Earnings',
+      unique_id: `${this.topicPrefix}_total_earnings`,
+      state_topic: this._topic('payments/summary'),
+      value_template: '{{ value_json.total_earnings }}',
+      json_attributes_topic: this._topic('payments/summary'),
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      unit_of_measurement: 'USD',
+      state_class: 'measurement',
+      icon: 'mdi:wallet',
+      device: this.device,
+    });
+
+    this._publishDiscovery('sensor', 'total_paid_out', {
+      name: 'Total Paid Out',
+      unique_id: `${this.topicPrefix}_total_paid_out`,
+      state_topic: this._topic('payments/summary'),
+      value_template: '{{ value_json.total_paid_out }}',
+      json_attributes_topic: this._topic('payments/summary'),
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      unit_of_measurement: 'USD',
+      state_class: 'measurement',
+      icon: 'mdi:cash-multiple',
+      device: this.device,
+    });
+
+    this._publishDiscovery('sensor', 'this_month', {
+      name: 'This Month',
+      unique_id: `${this.topicPrefix}_this_month`,
+      state_topic: this._topic('payments/summary'),
+      value_template: '{{ value_json.this_month }}',
+      json_attributes_topic: this._topic('payments/summary'),
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      unit_of_measurement: 'USD',
+      state_class: 'measurement',
+      icon: 'mdi:calendar-month',
+      device: this.device,
+    });
+
+    this._publishDiscovery('sensor', 'best_month', {
+      name: 'Best Month',
+      unique_id: `${this.topicPrefix}_best_month`,
+      state_topic: this._topic('payments/summary'),
+      value_template: '{{ value_json.best_month }}',
+      json_attributes_topic: this._topic('payments/summary'),
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      unit_of_measurement: 'USD',
+      state_class: 'measurement',
+      icon: 'mdi:trophy',
+      device: this.device,
+    });
+
+    this._publishDiscovery('sensor', 'pending_approval', {
+      name: 'Pending Approval',
+      unique_id: `${this.topicPrefix}_pending_approval`,
+      state_topic: this._topic('payments/summary'),
+      value_template: '{{ value_json.pending_approval }}',
+      json_attributes_topic: this._topic('payments/summary'),
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      unit_of_measurement: 'USD',
+      state_class: 'measurement',
+      icon: 'mdi:progress-clock',
+      device: this.device,
+    });
+
+    this._publishDiscovery('sensor', 'last_payout', {
+      name: 'Last Payout',
+      unique_id: `${this.topicPrefix}_last_payout`,
+      state_topic: this._topic('payments/summary'),
+      value_template: '{{ value_json.last_payout_at if value_json.last_payout_at else "unknown" }}',
+      json_attributes_topic: this._topic('payments/summary'),
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      device_class: 'timestamp',
+      icon: 'mdi:cash-check',
+      device: this.device,
+    });
   }
 
   publishOnline() {
@@ -197,6 +330,11 @@ class DataAnnotationMqttBridge {
     }
 
     this.publishedProjectSlugs = currentSlugs;
+  }
+
+  publishPayments(payments) {
+    this.logger.debug(`Publishing payments summary: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
+    this._publishJson(this._topic('payments/summary'), payments, true);
   }
 
   async close() {

@@ -60,6 +60,32 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
         assert.deepEqual(result.projects, []);
       });
     }
+
+    const payments = await client.collectPayments();
+    t.diagnostic(`payments page url: ${payments.pageUrl}`);
+    t.diagnostic(`available funds: ${payments.available_amount_formatted}`);
+    t.diagnostic(`can withdraw: ${payments.can_withdraw}`);
+    t.diagnostic(`payment status: ${payments.payment_status}`);
+
+    await t.test('payments snapshot shape is valid', () => {
+      assert.equal(payments.authenticated, true);
+      assert.equal(payments.loginState, 'authenticated');
+      assert.equal(typeof payments.available_amount, 'number');
+      assert.ok(payments.available_amount >= 0);
+      assert.equal(typeof payments.can_withdraw, 'boolean');
+      assert.equal(typeof payments.button_enabled, 'boolean');
+      assert.equal(payments.can_withdraw, payments.button_enabled && payments.available_amount > 0);
+      assert.ok(typeof payments.total_earnings === 'number');
+      assert.ok(payments.total_earnings >= 0);
+      assert.ok(typeof payments.total_paid_out === 'number');
+      assert.ok(payments.total_paid_out >= 0);
+      assert.ok(typeof payments.this_month === 'number');
+      assert.ok(typeof payments.best_month === 'number');
+      assert.ok(typeof payments.pending_approval === 'number');
+      assert.ok(payments.next_withdrawal_at === null || typeof payments.next_withdrawal_at === 'string');
+      assert.ok(payments.last_payout_at === null || typeof payments.last_payout_at === 'string');
+      assert.ok(payments.next_withdrawal_text === null || typeof payments.next_withdrawal_text === 'string');
+    });
   } finally {
     await client.close();
     fs.rmSync(profileDir, { recursive: true, force: true });

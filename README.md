@@ -31,6 +31,15 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - `Last Sync`
 - `Sync Now`
 - One sensor per active project
+- `Available Funds`
+- `Can Withdraw`
+- `Next Withdrawal`
+- `Total Earnings`
+- `Total Paid Out`
+- `This Month`
+- `Best Month`
+- `Pending Approval`
+- `Last Payout`
 
 ## Project sensors
 

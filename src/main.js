@@ -101,6 +101,12 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
       lastError: null,
     });
     bridge.publishProjects(result.projects);
+
+    const payments = await client.collectPayments();
+    logger.info(`Payments snapshot complete: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
+    logger.debug(`Payments page URL: ${payments.pageUrl}`);
+    bridge.publishPayments(payments);
+
     return { lastSuccessfulSyncAt: completedAt, lastSuccessfulProjectCount: result.count };
   } catch (error) {
     logger.error(`Sync failed: ${error.stack || error.message}`);

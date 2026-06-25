@@ -2,6 +2,7 @@ const fs = require('fs');
 const puppeteer = require('puppeteer-core');
 
 const { extractProjects } = require('./scrapers/projects');
+const { scrapePayments } = require('./scrapers/payments');
 
 const NULL_LOGGER = {
   debug() {},
@@ -11,6 +12,7 @@ const NULL_LOGGER = {
 };
 
 const PROJECTS_URL = 'https://app.dataannotation.tech/workers/projects';
+const PAYMENTS_URL = 'https://app.dataannotation.tech/workers/payments';
 const SIGN_IN_URL = 'https://app.dataannotation.tech/users/sign_in';
 
 class DataAnnotationClient {
@@ -51,6 +53,28 @@ class DataAnnotationClient {
     }
   }
 
+  async collectPayments() {
+    const page = await this._newPage();
+
+    try {
+      this.logger.debug('Opening DataAnnotation payments page');
+      await this._loadAuthenticatedPage(page, PAYMENTS_URL, 'div[id="workers/TransferFundsPage-hybrid-root"][data-props]');
+      const payments = await scrapePayments(page);
+      this.logger.debug(
+        `Scraped payments snapshot: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`
+      );
+
+      return {
+        authenticated: true,
+        loginState: 'authenticated',
+        pageUrl: page.url(),
+        ...payments,
+      };
+    } finally {
+      await page.close().catch(() => {});
+    }
+  }
+
   async _ensureAuthenticated(page) {
     await page.goto(PROJECTS_URL, { waitUntil: 'domcontentloaded' });
     await sleep(2000);
@@ -65,6 +89,23 @@ class DataAnnotationClient {
 
     this.logger.debug('Authenticated session detected, waiting for projects payload');
     await page.waitForSelector('div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]', { timeout: 30000 });
+    return 'authenticated';
+  }
+
+  async _loadAuthenticatedPage(page, url, readySelector) {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await sleep(2000);
+
+    if (this._looksLoggedOut(page)) {
+      this.logger.debug(`Detected sign-in page while loading ${url}, refreshing session`);
+      await this._login(page);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector(readySelector, { timeout: 30000 });
+      return 'authenticated';
+    }
+
+    this.logger.debug(`Authenticated session detected, waiting for payload at ${url}`);
+    await page.waitForSelector(readySelector, { timeout: 30000 });
     return 'authenticated';
   }
 

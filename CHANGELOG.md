@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Add DataAnnotation payments scrape and withdrawal availability entities.
+- Publish earnings summary, pending approval, and withdrawal timing sensors.
+
 ## 0.1.1
 
 - Rename add-on config fields to be UI-friendly.

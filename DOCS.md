@@ -12,9 +12,17 @@
 ## Behavior
 
 - Opens only `/users/sign_in` and `/workers/projects`
+- Opens `/workers/payments` to scrape withdrawal and earnings data
 - Clicks only the login submit button when a session refresh is required
 - Publishes retained MQTT entities and discovery payloads
 - Publishes `0` and empty state when no projects are available
+
+## Payments Entities
+
+- `Available Funds` is the current withdrawable amount shown on the button.
+- `Can Withdraw` is ON only when the button is enabled and the amount is greater than zero.
+- `Next Withdrawal` uses the cooldown timestamp when present.
+- `Total Earnings`, `Total Paid Out`, `This Month`, `Best Month`, `Pending Approval`, and `Last Payout` come from the structured payments payload.
 
 ## Integration Tests
 
