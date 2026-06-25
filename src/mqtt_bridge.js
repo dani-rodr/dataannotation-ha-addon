@@ -107,11 +107,24 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_project_count`,
       state_topic: this._topic('projects/summary'),
       value_template: '{{ value_json.count }}',
-      json_attributes_topic: this._topic('projects/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
       icon: 'mdi:counter',
+      device: this.device,
+    });
+
+    this._publishDiscovery('sensor', 'total_tasks', {
+      name: names.total_tasks,
+      unique_id: `${this.topicPrefix}_total_tasks`,
+      state_topic: this._topic('projects/summary'),
+      value_template: '{{ value_json.total_tasks }}',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      unit_of_measurement: 'tasks',
+      state_class: 'measurement',
+      icon: 'mdi:counter-plus',
       device: this.device,
     });
 
@@ -121,7 +134,6 @@ class DataAnnotationMqttBridge {
       state_topic: this._topic('status/state'),
       payload_on: 'ON',
       payload_off: 'OFF',
-      json_attributes_topic: this._topic('status/attributes'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -134,7 +146,6 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_last_sync`,
       state_topic: this._topic('last_sync'),
       value_template: '{{ value_json.lastSuccessfulSyncAt }}',
-      json_attributes_topic: this._topic('last_sync'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -148,7 +159,6 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_available_funds`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.available_amount }}',
-      json_attributes_topic: this._topic('payments/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -165,7 +175,6 @@ class DataAnnotationMqttBridge {
       value_template: "{{ 'ON' if value_json.can_withdraw else 'OFF' }}",
       payload_on: 'ON',
       payload_off: 'OFF',
-      json_attributes_topic: this._topic('payments/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -178,7 +187,6 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_next_withdrawal`,
       state_topic: this._topic('payments/summary'),
       value_template: "{{ value_json.next_withdrawal_at if value_json.next_withdrawal_at else 'unknown' }}",
-      json_attributes_topic: this._topic('payments/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -192,7 +200,6 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_total_earnings`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.total_earnings }}',
-      json_attributes_topic: this._topic('payments/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -207,7 +214,6 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_total_paid_out`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.total_paid_out }}',
-      json_attributes_topic: this._topic('payments/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -222,7 +228,6 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_this_month`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.this_month }}',
-      json_attributes_topic: this._topic('payments/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -237,7 +242,6 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_best_month`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.best_month }}',
-      json_attributes_topic: this._topic('payments/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -252,7 +256,6 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_pending_approval`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.pending_approval }}',
-      json_attributes_topic: this._topic('payments/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -267,7 +270,6 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_last_payout`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.last_payout_at if value_json.last_payout_at else "unknown" }}',
-      json_attributes_topic: this._topic('payments/summary'),
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
@@ -293,7 +295,7 @@ class DataAnnotationMqttBridge {
   }
 
   publishSummary(summary) {
-    this.logger.debug(`Publishing project summary: ${summary.count} projects`);
+    this.logger.debug(`Publishing project summary: ${summary.count} projects, ${summary.total_tasks || 0} total tasks`);
     this._publishJson(this._topic('projects/summary'), summary, true);
   }
 
@@ -412,6 +414,7 @@ function buildDiscoveryNames() {
     button: 'Sync Now',
     profile: 'Profile',
     project_count: 'Project Count',
+    total_tasks: 'Total Tasks',
     status: 'Status',
     last_sync: 'Last Sync',
   };

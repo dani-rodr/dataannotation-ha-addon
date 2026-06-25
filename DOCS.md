@@ -23,6 +23,7 @@
 - `Can Withdraw` is ON only when the button is enabled and the amount is greater than zero.
 - `Next Withdrawal` uses the cooldown timestamp when present.
 - `Total Earnings`, `Total Paid Out`, `This Month`, `Best Month`, `Pending Approval`, and `Last Payout` come from the structured payments payload.
+- `Total Tasks` is the sum of all project task counts.
 
 ## Integration Tests
 

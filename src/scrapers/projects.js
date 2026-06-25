@@ -10,6 +10,15 @@ function extractProjects(props) {
   return list.map(normalizeProject).filter(Boolean);
 }
 
+function summarizeProjects(projects) {
+  return {
+    count: Array.isArray(projects) ? projects.length : 0,
+    total_tasks: Array.isArray(projects)
+      ? projects.reduce((sum, project) => sum + numberOrZero(project?.tasks), 0)
+      : 0,
+  };
+}
+
 function normalizeProject(project) {
   const name = stringOrEmpty(project?.name) || stringOrEmpty(project?.workerSubtitle) || 'Unknown project';
   const tasks = numberOrZero(project?.availableTasksFor);
@@ -123,6 +132,7 @@ function numberOrZero(value) {
 
 module.exports = {
   extractProjects,
+  summarizeProjects,
   normalizeProject,
   formatCreated,
   classifyCategory,

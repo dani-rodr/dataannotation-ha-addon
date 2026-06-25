@@ -2,6 +2,7 @@ const { readConfig, configureLogging } = require('./config');
 const { DataAnnotationClient } = require('./dataannotation_client');
 const { DataAnnotationMqttBridge } = require('./mqtt_bridge');
 const { createLogger } = require('./logger');
+const { summarizeProjects } = require('./scrapers/projects');
 
 const { version } = require('../package.json');
 
@@ -52,15 +53,25 @@ async function main() {
 
     let lastSuccessfulSyncAt = null;
     let lastSuccessfulProjectCount = 0;
+    let lastSuccessfulTotalTaskCount = 0;
     let nextRunAt = Date.now();
 
     while (running) {
       const now = Date.now();
       if (bridge.scanRequested.value || now >= nextRunAt) {
         bridge.scanRequested.value = false;
-        const syncResult = await doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessfulProjectCount, logger);
+        const syncResult = await doSync(
+          client,
+          bridge,
+          config,
+          lastSuccessfulSyncAt,
+          lastSuccessfulProjectCount,
+          lastSuccessfulTotalTaskCount,
+          logger
+        );
         lastSuccessfulSyncAt = syncResult.lastSuccessfulSyncAt;
         lastSuccessfulProjectCount = syncResult.lastSuccessfulProjectCount;
+        lastSuccessfulTotalTaskCount = syncResult.lastSuccessfulTotalTaskCount;
         nextRunAt = Date.now() + config.poll_interval_minutes * 60 * 1000;
       }
 
@@ -72,21 +83,31 @@ async function main() {
   }
 }
 
-async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessfulProjectCount, logger) {
+async function doSync(
+  client,
+  bridge,
+  config,
+  lastSuccessfulSyncAt,
+  lastSuccessfulProjectCount,
+  lastSuccessfulTotalTaskCount,
+  logger
+) {
   const startedAt = new Date().toISOString();
   logger.info(`Starting sync at ${startedAt}`);
 
   try {
     const result = await client.collectProjects();
     const completedAt = new Date().toISOString();
+    const projectSummary = summarizeProjects(result.projects);
 
-    logger.info(`Sync complete: ${result.count} projects`);
+    logger.info(`Sync complete: ${projectSummary.count} projects, ${projectSummary.total_tasks} total tasks`);
     logger.debug(`Projects page URL: ${result.pageUrl}`);
 
     bridge.publishOnline();
     bridge.publishProfile(config.profile || 'Data Annotation');
     bridge.publishSummary({
-      count: result.count,
+      count: projectSummary.count,
+      total_tasks: projectSummary.total_tasks,
       profile: config.profile || 'Data Annotation',
       login_state: result.loginState,
       lastAttemptedSyncAt: startedAt,
@@ -107,7 +128,11 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
     logger.debug(`Payments page URL: ${payments.pageUrl}`);
     bridge.publishPayments(payments);
 
-    return { lastSuccessfulSyncAt: completedAt, lastSuccessfulProjectCount: result.count };
+    return {
+      lastSuccessfulSyncAt: completedAt,
+      lastSuccessfulProjectCount: result.count,
+      lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
+    };
   } catch (error) {
     logger.error(`Sync failed: ${error.stack || error.message}`);
     bridge.publishStatusError({
@@ -120,13 +145,18 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
     });
     bridge.publishSummary({
       count: lastSuccessfulProjectCount || 0,
+      total_tasks: lastSuccessfulTotalTaskCount || 0,
       profile: config.profile || 'Data Annotation',
       login_state: 'login_failed',
       lastAttemptedSyncAt: startedAt,
       lastSuccessfulSyncAt: lastSuccessfulSyncAt,
       lastError: error.message,
     });
-    return { lastSuccessfulSyncAt, lastSuccessfulProjectCount };
+    return {
+      lastSuccessfulSyncAt,
+      lastSuccessfulProjectCount,
+      lastSuccessfulTotalTaskCount,
+    };
   }
 }
 

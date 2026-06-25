@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Remove redundant JSON attributes from aggregate entities.
+- Add a total project task count sensor.
+
 ## 0.1.2
 
 - Add DataAnnotation payments scrape and withdrawal availability entities.

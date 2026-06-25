@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { extractProjects } = require('./projects');
+const { extractProjects, summarizeProjects } = require('./projects');
 
 test('extractProjects normalizes a DataAnnotation project payload', () => {
   const projects = extractProjects({
@@ -30,4 +30,15 @@ test('extractProjects normalizes a DataAnnotation project payload', () => {
   assert.deepEqual(projects[0].tags, ['Priority Pay', 'Coding']);
   assert.equal(projects[0].category, 'coding');
   assert.equal(projects[0].created, 'Jun 11');
+});
+
+test('summarizeProjects totals task counts', () => {
+  const summary = summarizeProjects([
+    { tasks: 5 },
+    { tasks: 2 },
+    { tasks: 0 },
+  ]);
+
+  assert.equal(summary.count, 3);
+  assert.equal(summary.total_tasks, 7);
 });

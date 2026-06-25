@@ -17,6 +17,7 @@ test('discovery names stay short', () => {
     button: 'Sync Now',
     profile: 'Profile',
     project_count: 'Project Count',
+    total_tasks: 'Total Tasks',
     status: 'Status',
     last_sync: 'Last Sync',
   });

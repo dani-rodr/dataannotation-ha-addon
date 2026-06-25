@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 
 const { DataAnnotationClient } = require('../../src/dataannotation_client');
+const { summarizeProjects } = require('../../src/scrapers/projects');
 const { loadIntegrationCredentials } = require('../helpers/integration-credentials');
 
 const credentials = loadIntegrationCredentials();
@@ -36,6 +37,17 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
       assert.equal(typeof result.count, 'number');
       assert.equal(result.count, result.projects.length);
       assert.ok(Array.isArray(result.projects));
+    });
+
+    const projectSummary = summarizeProjects(result.projects);
+    t.diagnostic(`total tasks: ${projectSummary.total_tasks}`);
+
+    await t.test('project task total is valid', () => {
+      assert.equal(projectSummary.count, result.projects.length);
+      assert.equal(
+        projectSummary.total_tasks,
+        result.projects.reduce((sum, project) => sum + project.tasks, 0)
+      );
     });
 
     for (const [index, project] of result.projects.entries()) {

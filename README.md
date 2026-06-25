@@ -27,6 +27,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 
 - `Profile`
 - `Project Count`
+- `Total Tasks`
 - `Status`
 - `Last Sync`
 - `Sync Now`
