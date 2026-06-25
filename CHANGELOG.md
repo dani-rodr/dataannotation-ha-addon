@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6
+
+- Add a locked-by-default `Withdraw Locked` switch and a `Withdraw Funds` button.
+- Enable Home Assistant Core API access for persistent notifications.
+- Tighten withdrawal button detection to the exact `$x.xx available` pattern.
+- Make withdrawal-blocked notifications lock-first and UI-friendly.
+
 ## 0.1.5
 
 - Enable Home Assistant Core API access for persistent notifications.

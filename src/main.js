@@ -188,17 +188,11 @@ async function doSync(
 async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
   logger.info('Processing withdraw request');
 
-  const payments = await client.collectPayments();
-
   if (withdrawLocked) {
-    const nextWithdrawalText = payments.next_withdrawal_at
-      ? `Next withdrawal is at ${payments.next_withdrawal_at}. `
-      : '';
-
     try {
       await createPersistentNotification({
         title: 'Data Annotation Withdrawal Locked',
-        message: `${nextWithdrawalText}Turn off Withdraw Locked before trying again.`,
+        message: buildWithdrawalLockedMessage(),
         notificationId: 'dataannotation_withdrawal_locked',
         logger,
       });
@@ -206,19 +200,18 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
       logger.warning(`Failed to create withdrawal locked notification: ${error.message}`);
     }
     logger.warning('Withdrawal request blocked because the lock is on');
-    bridge.publishPayments(payments);
     return;
   }
 
-  if (!payments.can_withdraw || payments.available_amount <= 0 || !payments.button_enabled) {
-    const nextWithdrawalText = payments.next_withdrawal_at
-      ? `Next withdrawal is at ${payments.next_withdrawal_at}.`
-      : 'DataAnnotation did not provide a next withdrawal time.';
+  const payments = await client.collectPayments();
+
+  if (!payments.withdraw_button_present || !payments.button_enabled || payments.available_amount <= 0) {
+    const message = buildWithdrawalNotReadyMessage(payments, 'funds');
 
     try {
       await createPersistentNotification({
         title: 'Data Annotation Withdrawal Not Ready',
-        message: `Cannot withdraw yet. ${nextWithdrawalText}`,
+        message,
         notificationId: 'dataannotation_withdrawal_not_ready',
         logger,
       });
@@ -230,9 +223,68 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
     return;
   }
 
+  const nextWithdrawalAt = parseDate(payments.next_withdrawal_at);
+  if (nextWithdrawalAt && nextWithdrawalAt.getTime() > Date.now()) {
+    try {
+      await createPersistentNotification({
+        title: 'Data Annotation Withdrawal Not Ready',
+        message: buildWithdrawalNotReadyMessage(payments, 'time'),
+        notificationId: 'dataannotation_withdrawal_not_ready',
+        logger,
+      });
+    } catch (error) {
+      logger.warning(`Failed to create withdrawal not-ready notification: ${error.message}`);
+    }
+    logger.warning('Withdrawal request blocked because withdrawal is still cooling down');
+    bridge.publishPayments(payments);
+    return;
+  }
+
   const result = await client.withdrawAvailableFunds();
   bridge.publishPayments(result.payments || payments);
   logger.info(`Withdrawal request submitted: ${result.status}`);
+}
+
+function buildWithdrawalLockedMessage() {
+  return 'Withdrawals are currently locked.\n\nTurn off Withdraw Locked, then press Withdraw Funds again.';
+}
+
+function buildWithdrawalNotReadyMessage(payments, reason) {
+  if (reason === 'time') {
+    const nextWithdrawalText = formatFriendlyDate(payments.next_withdrawal_at);
+    return `Withdrawal is not available yet.\n\nNext withdrawal: ${nextWithdrawalText || 'unknown'}.`;
+  }
+
+  if (!payments.withdraw_button_present) {
+    return 'Withdrawal is not available right now.\n\nThe withdrawal button is not visible on DataAnnotation.';
+  }
+
+  return `Withdrawal is not available right now.\n\nAvailable funds: ${payments.available_amount_formatted}.`;
+}
+
+function formatFriendlyDate(value) {
+  const date = parseDate(value);
+  if (!date) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  }).format(date) + ' UTC';
+}
+
+function parseDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function sleep(ms) {
