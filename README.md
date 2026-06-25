@@ -56,3 +56,11 @@ Each project sensor uses the task count as its state and exposes attributes such
 Use the Home Assistant shortcut above to add the repository directly, or add this repository URL in Home Assistant:
 
 `https://github.com/dani-rodr/dataannotation-ha-addon`
+
+## Testing
+
+- Copy `integration.local.example.json` to `integration.local.json` for local live integration runs.
+- Or set `DATAANNOTATION_EMAIL` and `DATAANNOTATION_PASSWORD` in your shell or GitHub Actions secrets.
+- `npm test` runs the fast unit suite.
+- `npm run test:integration:fixture` checks the exact parsed project fixture.
+- `npm run test:integration:live` runs the live read-only browser scrape when credentials and a Chrome path are available.

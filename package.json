@@ -8,7 +8,10 @@
   "license": "MIT",
   "scripts": {
     "start": "node src/main.js",
-    "test": "node --test"
+    "test": "node --test src/*.test.js src/scrapers/*.test.js",
+    "test:integration:fixture": "node --test test/integration/projects.fixture.test.js",
+    "test:integration:live": "node --test test/integration/live.test.js",
+    "test:integration": "node --test test/integration/*.test.js"
   },
   "dependencies": {
     "mqtt": "^5.10.3",

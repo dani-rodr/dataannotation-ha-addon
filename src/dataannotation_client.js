@@ -149,6 +149,18 @@ class DataAnnotationClient {
 }
 
 function resolveExecutablePath() {
+  const envCandidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.CHROME_PATH,
+    process.env.GOOGLE_CHROME_BIN,
+  ].filter(Boolean);
+
+  for (const candidate of envCandidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
   const candidates = [
     '/usr/bin/chromium-browser',
     '/usr/bin/chromium',

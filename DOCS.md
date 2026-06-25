@@ -15,3 +15,9 @@
 - Clicks only the login submit button when a session refresh is required
 - Publishes retained MQTT entities and discovery payloads
 - Publishes `0` and empty state when no projects are available
+
+## Integration Tests
+
+- Local live tests can read credentials from `integration.local.json` or `DATAANNOTATION_EMAIL` and `DATAANNOTATION_PASSWORD`.
+- GitHub Actions should pass credentials as secrets-backed environment variables.
+- A Chrome binary path can be supplied with `PUPPETEER_EXECUTABLE_PATH`, `CHROME_PATH`, or `GOOGLE_CHROME_BIN`.
