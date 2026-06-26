@@ -400,7 +400,7 @@ class DataAnnotationMqttBridge {
 
   publishPayments(payments, scrapedAt = new Date().toISOString()) {
     this.logger.debug(`Publishing payments summary: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
-    this._publishJson(this._topic('payments/summary'), { ...payments, scraped_at: scrapedAt }, true);
+    this._publishJson(this._topic('payments/summary'), { ...payments, scraped_at: payments.scraped_at || scrapedAt }, true);
   }
 
   async close() {
@@ -484,6 +484,7 @@ function buildDiscoveryNames() {
     last_sync: 'Last Sync',
     withdraw_locked: 'Withdraw Locked',
     withdraw_funds: 'Withdraw Funds',
+    next_payout: 'Next Payout',
   };
 }
 

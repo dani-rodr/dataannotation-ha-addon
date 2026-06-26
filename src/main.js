@@ -150,7 +150,7 @@ async function doSync(
     const payments = await client.collectPayments();
     logger.info(`Payments snapshot complete: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
     logger.debug(`Payments page URL: ${payments.pageUrl}`);
-    bridge.publishPayments(payments);
+    bridge.publishPayments(payments, payments.scraped_at || completedAt);
 
     return {
       lastSuccessfulSyncAt: completedAt,

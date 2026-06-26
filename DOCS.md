@@ -21,6 +21,13 @@
 - Publishes retained MQTT entities and discovery payloads
 - Publishes `0` and empty state when no projects are available
 
+## Next Payout
+
+- The add-on opens the Funds History tab read-only.
+- It expands the visible monthly and project rows to inspect pending entries.
+- Hourly pending entries use a 7 day wait; task submissions use a 3 day wait.
+- The `Next Payout` sensor reports the smallest remaining number of days.
+
 ## Payments Entities
 
 - `Available Funds` is the current withdrawable amount shown on the button.

@@ -81,7 +81,7 @@ class DataAnnotationClient {
     try {
       this.logger.debug('Opening DataAnnotation payments page for withdrawal');
       await this._loadAuthenticatedPage(page, PAYMENTS_URL, 'div[id="workers/TransferFundsPage-hybrid-root"][data-props]');
-      const payments = await scrapePayments(page);
+      const payments = await scrapePayments(page, { includeFundsHistory: false });
 
       if (!payments.can_withdraw || payments.available_amount <= 0 || !payments.button_enabled) {
         return {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- Add a `Next Payout` telemetry sensor based on Funds History pending entries.
+- Scrape and expand Funds History rows read-only to compute payout delays.
+- Force refresh all telemetry sensors on sync and add timestamps to payment payloads.
+
 ## 0.1.9
 
 - Force refresh all read-only MQTT telemetry entities on each sync.

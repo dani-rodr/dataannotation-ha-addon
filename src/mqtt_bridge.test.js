@@ -22,5 +22,6 @@ test('discovery names stay short', () => {
     last_sync: 'Last Sync',
     withdraw_locked: 'Withdraw Locked',
     withdraw_funds: 'Withdraw Funds',
+    next_payout: 'Next Payout',
   });
 });

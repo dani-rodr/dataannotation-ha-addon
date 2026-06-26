@@ -78,6 +78,8 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
     t.diagnostic(`available funds: ${payments.available_amount_formatted}`);
     t.diagnostic(`can withdraw: ${payments.can_withdraw}`);
     t.diagnostic(`payment status: ${payments.payment_status}`);
+    t.diagnostic(`next payout days: ${payments.next_payout_days}`);
+    t.diagnostic(`next payout entries: ${payments.next_payout_entries_count}`);
     t.diagnostic(`next withdrawal at: ${payments.next_withdrawal_at}`);
     t.diagnostic(`next withdrawal text: ${payments.next_withdrawal_text}`);
 
@@ -96,6 +98,11 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
       assert.ok(typeof payments.this_month === 'number');
       assert.ok(typeof payments.best_month === 'number');
       assert.ok(typeof payments.pending_approval === 'number');
+      assert.equal(typeof payments.next_payout_days, 'number');
+      assert.ok(payments.next_payout_days >= 0);
+      assert.equal(typeof payments.next_payout_entries_count, 'number');
+      assert.ok(Array.isArray(payments.pending_payout_entries));
+      assert.equal(payments.next_payout_entries_count, payments.pending_payout_entries.length);
       assert.ok(payments.next_withdrawal_at === null || typeof payments.next_withdrawal_at === 'string');
       assert.ok(payments.last_payout_at === null || typeof payments.last_payout_at === 'string');
       assert.ok(payments.next_withdrawal_text === null || typeof payments.next_withdrawal_text === 'string');

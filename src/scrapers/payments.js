@@ -1,4 +1,17 @@
-function extractPaymentsSnapshot({ pageProps, earningsSummary, buttonText, buttonDisabled, nextWithdrawalText, now = new Date() }) {
+const { scrapeFundsHistory } = require('./funds_history');
+
+function extractPaymentsSnapshot({
+  pageProps,
+  earningsSummary,
+  buttonText,
+  buttonDisabled,
+  nextWithdrawalText,
+  next_payout_days = 0,
+  next_payout_entries_count = 0,
+  pending_payout_entries = [],
+  scrapedAt = null,
+  now = new Date(),
+}) {
   const availableAmountCents = numberOrZero(pageProps?.paymentStatus?.amountInCents);
   const withdrawButton = normalizeWithdrawalButton(buttonText, buttonDisabled);
   const canWithdraw = Boolean(withdrawButton.present && withdrawButton.enabled && availableAmountCents > 0);
@@ -45,6 +58,10 @@ function extractPaymentsSnapshot({ pageProps, earningsSummary, buttonText, butto
     pending_approval: centsToNumber(pendingApprovalCents),
     pending_approval_formatted: formatCents(pendingApprovalCents),
     last_payout_at: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
+    next_payout_days: numberOrZero(next_payout_days),
+    next_payout_entries_count: numberOrZero(next_payout_entries_count),
+    pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
+    scraped_at: normalizeIsoDate(scrapedAt) || null,
   };
 }
 
@@ -235,7 +252,7 @@ const MONTH_NAMES = [
 
 const WITHDRAW_BUTTON_TEXT_PATTERN = /^\$[\d,]+(?:\.\d{2})?\s+available$/i;
 
-async function scrapePayments(page) {
+async function scrapePayments(page, { includeFundsHistory = true } = {}) {
   const rawProps = await page.$eval(
     'div[id="workers/TransferFundsPage-hybrid-root"]',
     (element) => element.getAttribute('data-props') || '{}'
@@ -270,6 +287,12 @@ async function scrapePayments(page) {
   });
 
   const withdrawButton = chooseWithdrawalButton(buttonInfo.buttons);
+  const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page) : {
+    next_payout_days: 0,
+    next_payout_entries_count: 0,
+    pending_payout_entries: [],
+  };
+  const scrapedAt = new Date().toISOString();
 
   return extractPaymentsSnapshot({
     pageProps,
@@ -277,6 +300,8 @@ async function scrapePayments(page) {
     buttonText: withdrawButton.text,
     buttonDisabled: withdrawButton.disabled,
     nextWithdrawalText: buttonInfo.nextWithdrawalText,
+    scrapedAt,
+    ...fundsHistory,
   });
 }
 
