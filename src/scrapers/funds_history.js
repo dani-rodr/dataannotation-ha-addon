@@ -45,7 +45,7 @@ function parseFundsHistoryEntries(rows) {
   return entries;
 }
 
-function summarizeFundsHistoryEntries(entries) {
+function summarizeFundsHistoryEntries(entries, now = new Date()) {
   const pendingEntries = Array.isArray(entries)
     ? entries.filter((entry) => entry.status === 'pending')
     : [];
@@ -53,9 +53,13 @@ function summarizeFundsHistoryEntries(entries) {
   const nextPayoutDays = pendingEntries.length > 0
     ? Math.min(...pendingEntries.map((entry) => entry.days_until_available))
     : 0;
+  const nextPayoutAt = pendingEntries.length > 0
+    ? toLocalMidnightAtOffset(now, nextPayoutDays)
+    : null;
 
   return {
     next_payout_days: nextPayoutDays,
+    next_payout_at: nextPayoutAt,
     next_payout_entries_count: pendingEntries.length,
     pending_payout_entries: pendingEntries,
   };
@@ -96,6 +100,25 @@ function isProjectSummaryRow(text) {
 
 function extractProjectName(text) {
   return text.replace(/\s+\$[\d,]+(?:\.\d{2})?$/, '').trim();
+}
+
+function toLocalMidnightAtOffset(now, daysOffset) {
+  const date = normalizeDate(now) || new Date();
+  const localMidnight = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() + numberOrZero(daysOffset),
+    0,
+    0,
+    0,
+    0
+  );
+
+  if (localMidnight <= date) {
+    localMidnight.setDate(localMidnight.getDate() + 1);
+  }
+
+  return localMidnight.toISOString();
 }
 
 async function openFundsHistoryTab(page) {
@@ -171,6 +194,20 @@ async function clickFundsHistoryRows(page, kind) {
 
 function normalizeText(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function numberOrZero(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function sleep(ms) {

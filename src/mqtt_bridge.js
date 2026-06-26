@@ -247,6 +247,20 @@ class DataAnnotationMqttBridge {
       device: this.device,
     });
 
+    this._publishDiscovery('sensor', 'next_payout', {
+      name: names.next_payout,
+      unique_id: `${this.topicPrefix}_next_payout`,
+      state_topic: this._topic('payments/summary'),
+      value_template: "{{ value_json.next_payout_at if value_json.next_payout_at else 'unknown' }}",
+      force_update: true,
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      device_class: 'timestamp',
+      icon: 'mdi:calendar-arrow-right',
+      device: this.device,
+    });
+
     this._publishDiscovery('sensor', 'total_earnings', {
       name: 'Total Earnings',
       unique_id: `${this.topicPrefix}_total_earnings`,
@@ -312,6 +326,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_pending_approval`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.pending_approval }}',
+      json_attributes_topic: this._topic('payments/summary'),
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',

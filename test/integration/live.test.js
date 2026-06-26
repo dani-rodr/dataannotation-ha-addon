@@ -79,6 +79,7 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
     t.diagnostic(`can withdraw: ${payments.can_withdraw}`);
     t.diagnostic(`payment status: ${payments.payment_status}`);
     t.diagnostic(`next payout days: ${payments.next_payout_days}`);
+    t.diagnostic(`next payout at: ${payments.next_payout_at}`);
     t.diagnostic(`next payout entries: ${payments.next_payout_entries_count}`);
     t.diagnostic(`next withdrawal at: ${payments.next_withdrawal_at}`);
     t.diagnostic(`next withdrawal text: ${payments.next_withdrawal_text}`);
@@ -100,6 +101,7 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
       assert.ok(typeof payments.pending_approval === 'number');
       assert.equal(typeof payments.next_payout_days, 'number');
       assert.ok(payments.next_payout_days >= 0);
+      assert.ok(payments.next_payout_at === null || typeof payments.next_payout_at === 'string');
       assert.equal(typeof payments.next_payout_entries_count, 'number');
       assert.ok(Array.isArray(payments.pending_payout_entries));
       assert.equal(payments.next_payout_entries_count, payments.pending_payout_entries.length);

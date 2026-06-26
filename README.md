@@ -65,7 +65,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - If DataAnnotation logs the session out, the add-on will detect the login page, sign back in, and continue scraping.
 - Withdrawal attempts that are blocked create a Home Assistant persistent notification.
 - Home Assistant Core API access is enabled so the add-on can create persistent notifications.
-- Funds History is opened read-only and expanded only to calculate the next payout delay.
+- Funds History is opened read-only and expanded only to calculate the next payout timestamp.
 - Funds History is expanded read-only to calculate the `Next Payout` sensor.
 
 ## Install

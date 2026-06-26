@@ -7,6 +7,7 @@ function extractPaymentsSnapshot({
   buttonDisabled,
   nextWithdrawalText,
   next_payout_days = 0,
+  next_payout_at = null,
   next_payout_entries_count = 0,
   pending_payout_entries = [],
   scrapedAt = null,
@@ -26,8 +27,8 @@ function extractPaymentsSnapshot({
     lastPayoutAt: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
     canWithdraw,
     availableAmountCents,
+    nextPayoutAt: next_payout_at,
     nextPayoutDays: next_payout_days,
-    pendingPayoutEntries: pending_payout_entries,
     now,
   });
 
@@ -63,6 +64,7 @@ function extractPaymentsSnapshot({
     pending_approval_formatted: formatCents(pendingApprovalCents),
     last_payout_at: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
     next_payout_days: numberOrZero(next_payout_days),
+    next_payout_at: normalizeIsoDate(next_payout_at),
     next_payout_entries_count: numberOrZero(next_payout_entries_count),
     pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
     scraped_at: normalizeIsoDate(scrapedAt) || null,
@@ -151,8 +153,8 @@ function normalizeNextWithdrawalAt({
   lastPayoutAt,
   canWithdraw = false,
   availableAmountCents = 0,
+  nextPayoutAt = null,
   nextPayoutDays = 0,
-  pendingPayoutEntries = [],
   now = new Date(),
 }) {
   const direct = normalizeIsoDate(nextEligibleAt);
@@ -174,18 +176,19 @@ function normalizeNextWithdrawalAt({
 
   if (availableAmount > 0) {
     const estimated = estimateNextWithdrawalAt(lastPayoutAt, current);
-    return estimated || startOfDay(addDays(current, 3)).toISOString();
+    return estimated || nextLocalMidnight(current, 3);
+  }
+
+  const payoutAt = normalizeIsoDate(nextPayoutAt);
+  if (payoutAt) {
+    return payoutAt;
   }
 
   if (numberOrZero(nextPayoutDays) > 0) {
-    return addDays(current, nextPayoutDays).toISOString();
+    return nextLocalMidnight(current, nextPayoutDays);
   }
 
-  if (Array.isArray(pendingPayoutEntries) && pendingPayoutEntries.length > 0) {
-    return startOfNextDay(current).toISOString();
-  }
-
-  return startOfDay(addDays(current, 3)).toISOString();
+  return nextLocalMidnight(current, 3);
 }
 
 function estimateNextWithdrawalAt(lastPayoutAt, now = new Date()) {
@@ -212,31 +215,27 @@ function addMinutes(value, minutes) {
   return new Date(date.getTime() + numberOrZero(minutes) * 60 * 1000);
 }
 
-function addDays(value, days) {
+function nextLocalMidnight(value, daysOffset) {
   const date = normalizeDate(value);
   if (!date) {
     return null;
   }
 
-  return new Date(date.getTime() + numberOrZero(days) * 24 * 60 * 60 * 1000);
-}
+  const midnight = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() + numberOrZero(daysOffset),
+    0,
+    0,
+    0,
+    0
+  );
 
-function startOfNextDay(value) {
-  const date = normalizeDate(value);
-  if (!date) {
-    return null;
+  if (midnight <= date) {
+    midnight.setDate(midnight.getDate() + 1);
   }
 
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1, 0, 0, 0, 0));
-}
-
-function startOfDay(value) {
-  const date = normalizeDate(value);
-  if (!date) {
-    return null;
-  }
-
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+  return midnight.toISOString();
 }
 
 function normalizeIsoDate(value) {

@@ -3,6 +3,19 @@ const test = require('node:test');
 
 const { parseFundsHistoryEntries, summarizeFundsHistoryEntries, parseFundsHistoryDetailRow } = require('./funds_history');
 
+function localMidnightIsoFrom(now, daysOffset) {
+  const date = new Date(now);
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() + daysOffset,
+    0,
+    0,
+    0,
+    0
+  ).toISOString();
+}
+
 test('parseFundsHistoryEntries computes hourly payout delay from pending approval rows', () => {
   const entries = parseFundsHistoryEntries([
     'Jun 25 $371.25',
@@ -45,13 +58,15 @@ test('parseFundsHistoryDetailRow parses task pending entries', () => {
 });
 
 test('summarizeFundsHistoryEntries returns the earliest next payout day', () => {
+  const now = new Date('2026-06-26T14:05:02.298Z');
   const summary = summarizeFundsHistoryEntries([
     { status: 'pending', days_until_available: 6 },
     { status: 'pending', days_until_available: 2 },
     { status: 'pending', days_until_available: 4 },
     { status: 'paid', days_until_available: 0 },
-  ]);
+  ], now);
 
   assert.equal(summary.next_payout_days, 2);
   assert.equal(summary.next_payout_entries_count, 3);
+  assert.equal(summary.next_payout_at, localMidnightIsoFrom(now, 2));
 });

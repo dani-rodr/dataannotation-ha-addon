@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Change `Next Payout` to a timestamp sensor at local midnight.
+- Add `next_payout_at` and related timing attributes to payments payloads.
+- Expose payout timing attributes on `Pending Approval`.
+
 ## 0.2.0
 
 - Add a `Next Payout` telemetry sensor based on Funds History pending entries.
