@@ -1,6 +1,20 @@
-const MONTH_SUMMARY_PATTERN = /^[A-Z][a-z]{2}\s+\d{1,2}$/;
+const MONTH_SUMMARY_PATTERN = /^[A-Z][a-z]{2}\s+\d{1,2}(?:\s+\$[\d,]+(?:\.\d{2})?)?$/;
 const DETAIL_STATUS_PATTERN = /\b(Pending Approval|Paid)\s*·\s*(\d+)\s+day(?:s)?\s+ago\b/i;
 const DETAIL_KIND_PATTERN = /\b(Time Entry|Task Submission)\b/i;
+const MONTH_NAMES = [
+  'jan',
+  'feb',
+  'mar',
+  'apr',
+  'may',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'oct',
+  'nov',
+  'dec',
+];
 
 async function scrapeFundsHistory(page) {
   await openFundsHistoryTab(page);
@@ -16,9 +30,10 @@ async function scrapeFundsHistory(page) {
   return summarizeFundsHistoryEntries(parseFundsHistoryEntries(rows));
 }
 
-function parseFundsHistoryEntries(rows) {
+function parseFundsHistoryEntries(rows, now = new Date()) {
   const entries = [];
   let currentProject = null;
+  let currentMonthDate = null;
 
   for (const rowText of Array.isArray(rows) ? rows : []) {
     const text = normalizeText(rowText);
@@ -27,6 +42,7 @@ function parseFundsHistoryEntries(rows) {
     }
 
     if (MONTH_SUMMARY_PATTERN.test(text)) {
+      currentMonthDate = parseMonthSummaryDate(text, now);
       currentProject = null;
       continue;
     }
@@ -36,7 +52,7 @@ function parseFundsHistoryEntries(rows) {
       continue;
     }
 
-    const entry = parseFundsHistoryDetailRow(text, currentProject);
+    const entry = parseFundsHistoryDetailRow(text, currentProject, currentMonthDate);
     if (entry) {
       entries.push(entry);
     }
@@ -54,7 +70,10 @@ function summarizeFundsHistoryEntries(entries, now = new Date()) {
     ? Math.min(...pendingEntries.map((entry) => entry.days_until_available))
     : 0;
   const nextPayoutAt = pendingEntries.length > 0
-    ? toLocalMidnightAtOffset(now, nextPayoutDays + 1)
+    ? pendingEntries
+        .map((entry) => computeNextPayoutAt(entry, now))
+        .filter(Boolean)
+        .sort()[0] || null
     : null;
 
   return {
@@ -65,7 +84,7 @@ function summarizeFundsHistoryEntries(entries, now = new Date()) {
   };
 }
 
-function parseFundsHistoryDetailRow(text, project) {
+function parseFundsHistoryDetailRow(text, project, entryDate = null) {
   const kindMatch = text.match(DETAIL_KIND_PATTERN);
   const statusMatch = text.match(DETAIL_STATUS_PATTERN);
 
@@ -88,6 +107,8 @@ function parseFundsHistoryDetailRow(text, project) {
     status,
     days_ago: Number.isFinite(daysAgo) ? daysAgo : 0,
     days_until_available: Math.max(0, dueDays - (Number.isFinite(daysAgo) ? daysAgo : 0)),
+    entry_date: normalizeDate(entryDate) ? normalizeDate(entryDate).toISOString() : null,
+    due_days: dueDays,
   };
 }
 
@@ -100,6 +121,63 @@ function isProjectSummaryRow(text) {
 
 function extractProjectName(text) {
   return text.replace(/\s+\$[\d,]+(?:\.\d{2})?$/, '').trim();
+}
+
+function parseMonthSummaryDate(text, now = new Date()) {
+  const match = String(text).trim().match(/^([A-Z][a-z]{2})\s+(\d{1,2})/);
+  if (!match) {
+    return null;
+  }
+
+  const monthIndex = MONTH_NAMES.indexOf(match[1].toLowerCase());
+  if (monthIndex === -1) {
+    return null;
+  }
+
+  const current = normalizeDate(now) || new Date();
+  const year = inferYearForMonth(monthIndex, current);
+  return new Date(year, monthIndex, Number(match[2]), 0, 0, 0, 0);
+}
+
+function inferYearForMonth(monthIndex, now) {
+  let year = now.getFullYear();
+  if (monthIndex > now.getMonth() + 1) {
+    year -= 1;
+  }
+
+  return year;
+}
+
+function computeNextPayoutAt(entry, now = new Date()) {
+  if (!entry || entry.status !== 'pending') {
+    return null;
+  }
+
+  const entryDate = normalizeDate(entry.entry_date);
+  if (entryDate && Number.isFinite(Number(entry.due_days))) {
+    const payoutDate = new Date(
+      entryDate.getFullYear(),
+      entryDate.getMonth(),
+      entryDate.getDate() + numberOrZero(entry.due_days) + 1,
+      0,
+      0,
+      0,
+      0
+    );
+
+    const current = normalizeDate(now) || new Date();
+    if (payoutDate <= current) {
+      payoutDate.setDate(payoutDate.getDate() + 1);
+    }
+
+    return payoutDate.toISOString();
+  }
+
+  if (Number.isFinite(Number(entry.days_until_available))) {
+    return toLocalMidnightAtOffset(now, numberOrZero(entry.days_until_available) + 1);
+  }
+
+  return null;
 }
 
 function toLocalMidnightAtOffset(now, daysOffset) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4
+
+- Anchor `Next Payout` to the Funds History row date so it no longer drifts forward each day.
+- Keep `Next Withdrawal` behavior unchanged.
+
 ## 0.2.3
 
 - Move `Next Payout` to the next local midnight after the due day.

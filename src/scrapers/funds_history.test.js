@@ -70,3 +70,19 @@ test('summarizeFundsHistoryEntries returns the earliest next payout day', () => 
   assert.equal(summary.next_payout_entries_count, 3);
   assert.equal(summary.next_payout_at, localMidnightIsoFrom(now, 3));
 });
+
+test('parseFundsHistoryEntries anchors next payout to the row date', () => {
+  const rows = [
+    'Jun 20',
+    'Boxing 🥊 - Create Complex Coding Task Prompts for your Assigned Interaction Mode - 06/14/26 $331.84',
+    'Time Entry ··· $331.84 6h 2 min Pending Approval · 6 days ago',
+  ];
+
+  const entries = parseFundsHistoryEntries(rows, new Date(2026, 5, 27, 12, 0, 0, 0));
+
+  assert.equal(entries.length, 1);
+  assert.equal(new Date(entries[0].entry_date).getFullYear(), 2026);
+  assert.equal(new Date(entries[0].entry_date).getMonth(), 5);
+  assert.equal(new Date(entries[0].entry_date).getDate(), 20);
+  assert.equal(entries[0].days_until_available, 1);
+});
