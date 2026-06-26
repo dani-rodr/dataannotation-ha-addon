@@ -49,6 +49,7 @@ test('extractPaymentsSnapshot maps the observed cooldown state', () => {
 });
 
 test('extractPaymentsSnapshot marks withdrawable funds as available', () => {
+  const now = new Date('2026-06-26T14:05:02.298Z');
   const snapshot = extractPaymentsSnapshot({
     pageProps: {
       totalLifetimeEarnings: 50000,
@@ -75,16 +76,18 @@ test('extractPaymentsSnapshot marks withdrawable funds as available', () => {
     buttonText: '$500.00 available',
     buttonDisabled: false,
     nextWithdrawalText: '',
+    now,
   });
 
   assert.equal(snapshot.available_amount, 500);
   assert.equal(snapshot.can_withdraw, true);
   assert.equal(snapshot.button_enabled, true);
   assert.equal(snapshot.payment_status, 'available');
-  assert.equal(snapshot.next_withdrawal_at, '2026-06-27T14:05:02.298Z');
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-26T14:10:02.298Z');
 });
 
-test('extractPaymentsSnapshot falls back to visible next withdrawal text', () => {
+test('extractPaymentsSnapshot uses the next payout delay when funds are zero', () => {
+  const now = new Date('2026-06-26T14:05:02.298Z');
   const snapshot = extractPaymentsSnapshot({
     pageProps: {
       totalLifetimeEarnings: 50000,
@@ -110,11 +113,51 @@ test('extractPaymentsSnapshot falls back to visible next withdrawal text', () =>
     },
     buttonText: '$0.00 available',
     buttonDisabled: true,
-    nextWithdrawalText: 'Next withdrawal: June 25, 2026 at 10:05 PM GMT+8',
+    next_payout_days: 1,
+    next_payout_entries_count: 1,
+    pending_payout_entries: [{ project: 'Example Project', status: 'pending' }],
+    nextWithdrawalText: '',
+    now,
   });
 
-  assert.equal(snapshot.next_withdrawal_at, '2026-06-25T14:05:00.000Z');
-  assert.equal(snapshot.next_withdrawal_text, 'Next withdrawal: June 25, 2026 at 10:05 PM GMT+8');
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-27T14:05:02.298Z');
+});
+
+test('extractPaymentsSnapshot waits until the next day when pending funds exist but no payout delay is known', () => {
+  const now = new Date('2026-06-26T14:05:02.298Z');
+  const snapshot = extractPaymentsSnapshot({
+    pageProps: {
+      totalLifetimeEarnings: 50000,
+      unapprovedAmount: 0,
+      paymentStatus: {
+        type: 'none',
+        nextEligibleAt: null,
+        amountInCents: 0,
+      },
+      unpaidPendingAmountInCents: 0,
+      lastPayoutAt: '2026-06-24T14:05:02.298Z',
+      showFundsHistoryTable: true,
+    },
+    earningsSummary: {
+      totalPaidOut: 0,
+      currentMonthEarnings: 50000,
+      bestMonth: {
+        month: '2026-06',
+        withdrawnInCents: 50000,
+        earnedInCents: 0,
+        pendingInCents: 0,
+      },
+    },
+    buttonText: '$0.00 available',
+    buttonDisabled: true,
+    next_payout_days: 0,
+    next_payout_entries_count: 1,
+    pending_payout_entries: [{ project: 'Example Project', status: 'pending' }],
+    nextWithdrawalText: '',
+    now,
+  });
+
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-27T00:00:00.000Z');
 });
 
 test('estimateNextWithdrawalAt uses last payout plus three days while still in the future', () => {
@@ -129,7 +172,8 @@ test('estimateNextWithdrawalAt clamps to now when the three day window has passe
   assert.equal(estimated, '2026-06-25T14:05:02.298Z');
 });
 
-test('extractPaymentsSnapshot estimates next withdrawal from last payout when no direct value exists', () => {
+test('extractPaymentsSnapshot falls back to a three day estimate when no future payout is known', () => {
+  const now = new Date('2026-06-26T14:05:02.298Z');
   const snapshot = extractPaymentsSnapshot({
     pageProps: {
       totalLifetimeEarnings: 50000,
@@ -156,13 +200,13 @@ test('extractPaymentsSnapshot estimates next withdrawal from last payout when no
     buttonText: '$0.00 available',
     buttonDisabled: true,
     nextWithdrawalText: '',
-    now: new Date('2026-06-22T14:05:02.298Z'),
+    now,
   });
 
-  assert.equal(snapshot.next_withdrawal_at, '2026-06-23T14:05:02.298Z');
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-29T00:00:00.000Z');
 });
 
-test('extractPaymentsSnapshot clamps estimated next withdrawal to now after the 3 day window', () => {
+test('extractPaymentsSnapshot falls back to three days from now when no future payout is known', () => {
   const snapshot = extractPaymentsSnapshot({
     pageProps: {
       totalLifetimeEarnings: 50000,
@@ -192,7 +236,7 @@ test('extractPaymentsSnapshot clamps estimated next withdrawal to now after the 
     now: new Date('2026-06-25T14:05:02.298Z'),
   });
 
-  assert.equal(snapshot.next_withdrawal_at, '2026-06-25T14:05:02.298Z');
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-28T00:00:00.000Z');
 });
 
 test('chooseWithdrawalButton accepts only the exact money available button', () => {

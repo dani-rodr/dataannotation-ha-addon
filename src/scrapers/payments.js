@@ -24,6 +24,10 @@ function extractPaymentsSnapshot({
     nextEligibleAt: pageProps?.paymentStatus?.nextEligibleAt,
     nextWithdrawalText,
     lastPayoutAt: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
+    canWithdraw,
+    availableAmountCents,
+    nextPayoutDays: next_payout_days,
+    pendingPayoutEntries: pending_payout_entries,
     now,
   });
 
@@ -141,7 +145,16 @@ function numberOrZero(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeNextWithdrawalAt({ nextEligibleAt, nextWithdrawalText, lastPayoutAt, now = new Date() }) {
+function normalizeNextWithdrawalAt({
+  nextEligibleAt,
+  nextWithdrawalText,
+  lastPayoutAt,
+  canWithdraw = false,
+  availableAmountCents = 0,
+  nextPayoutDays = 0,
+  pendingPayoutEntries = [],
+  now = new Date(),
+}) {
   const direct = normalizeIsoDate(nextEligibleAt);
   if (direct) {
     return direct;
@@ -152,7 +165,27 @@ function normalizeNextWithdrawalAt({ nextEligibleAt, nextWithdrawalText, lastPay
     return parsed.toISOString();
   }
 
-  return estimateNextWithdrawalAt(lastPayoutAt, now);
+  const availableAmount = numberOrZero(availableAmountCents);
+  const current = normalizeDate(now) || new Date();
+
+  if (canWithdraw && availableAmount > 0) {
+    return addMinutes(current, 5).toISOString();
+  }
+
+  if (availableAmount > 0) {
+    const estimated = estimateNextWithdrawalAt(lastPayoutAt, current);
+    return estimated || startOfDay(addDays(current, 3)).toISOString();
+  }
+
+  if (numberOrZero(nextPayoutDays) > 0) {
+    return addDays(current, nextPayoutDays).toISOString();
+  }
+
+  if (Array.isArray(pendingPayoutEntries) && pendingPayoutEntries.length > 0) {
+    return startOfNextDay(current).toISOString();
+  }
+
+  return startOfDay(addDays(current, 3)).toISOString();
 }
 
 function estimateNextWithdrawalAt(lastPayoutAt, now = new Date()) {
@@ -168,6 +201,42 @@ function estimateNextWithdrawalAt(lastPayoutAt, now = new Date()) {
   }
 
   return estimatedAt < current ? current.toISOString() : estimatedAt.toISOString();
+}
+
+function addMinutes(value, minutes) {
+  const date = normalizeDate(value);
+  if (!date) {
+    return null;
+  }
+
+  return new Date(date.getTime() + numberOrZero(minutes) * 60 * 1000);
+}
+
+function addDays(value, days) {
+  const date = normalizeDate(value);
+  if (!date) {
+    return null;
+  }
+
+  return new Date(date.getTime() + numberOrZero(days) * 24 * 60 * 60 * 1000);
+}
+
+function startOfNextDay(value) {
+  const date = normalizeDate(value);
+  if (!date) {
+    return null;
+  }
+
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1, 0, 0, 0, 0));
+}
+
+function startOfDay(value) {
+  const date = normalizeDate(value);
+  if (!date) {
+    return null;
+  }
+
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
 }
 
 function normalizeIsoDate(value) {
