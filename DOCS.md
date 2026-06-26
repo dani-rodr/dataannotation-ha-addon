@@ -26,7 +26,7 @@
 - The add-on opens the Funds History tab read-only.
 - It expands the visible monthly and project rows to inspect pending entries.
 - Hourly pending entries use a 7 day wait; task submissions use a 3 day wait.
-- The `Next Payout` sensor reports the next local midnight when pending funds should become available.
+- The `Next Payout` sensor reports the next local midnight after pending funds should become available.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
 
 ## Payments Entities

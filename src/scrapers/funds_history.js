@@ -54,7 +54,7 @@ function summarizeFundsHistoryEntries(entries, now = new Date()) {
     ? Math.min(...pendingEntries.map((entry) => entry.days_until_available))
     : 0;
   const nextPayoutAt = pendingEntries.length > 0
-    ? toLocalMidnightAtOffset(now, nextPayoutDays)
+    ? toLocalMidnightAtOffset(now, nextPayoutDays + 1)
     : null;
 
   return {

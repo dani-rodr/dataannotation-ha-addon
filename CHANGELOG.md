@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+- Move `Next Payout` to the next local midnight after the due day.
+- Keep `next_payout_at` and `Pending Approval` timing attributes in the payments payload.
+
 ## 0.2.2
 
 - Change `Next Payout` to a timestamp sensor at local midnight.

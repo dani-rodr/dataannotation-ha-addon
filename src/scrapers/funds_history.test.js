@@ -68,5 +68,5 @@ test('summarizeFundsHistoryEntries returns the earliest next payout day', () => 
 
   assert.equal(summary.next_payout_days, 2);
   assert.equal(summary.next_payout_entries_count, 3);
-  assert.equal(summary.next_payout_at, localMidnightIsoFrom(now, 2));
+  assert.equal(summary.next_payout_at, localMidnightIsoFrom(now, 3));
 });
