@@ -1,4 +1,23 @@
 {
+  "dashboardMerchTargeting": {
+    "projects": [
+      {
+        "id": "project-123",
+        "name": "Boxing 🥊 - Create Complex Coding Task Prompts for your Assigned Interaction Mode - 06/14/26",
+        "availableTasksFor": 5,
+        "created": "2026-06-11T21:29:35.231Z",
+        "isCoding": true,
+        "qualification": false,
+        "payPerHourInCents": 5500,
+        "priorityPayPerHourInCents": 1500,
+        "badges": [
+          { "kind": "priority_pay", "label": "Priority Pay $15/hr" },
+          { "kind": "domain_coding", "label": "Coding" }
+        ]
+      }
+    ],
+    "easyProjects": []
+  },
   "reportableProjectsInfo": [
     {
       "id": "project-123",

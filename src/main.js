@@ -216,7 +216,7 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
   }
 
   const nextWithdrawalAt = parseDate(payments.next_withdrawal_at);
-  if (nextWithdrawalAt && nextWithdrawalAt.getTime() > Date.now()) {
+  if (!payments.can_withdraw && nextWithdrawalAt && nextWithdrawalAt.getTime() > Date.now()) {
     try {
       await createPersistentNotification({
         title: 'Data Annotation Withdrawal Not Ready',

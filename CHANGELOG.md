@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.7
+
+- Let `Withdraw Funds` proceed when `Can Withdraw` is already true, even if the UI timestamp is still 5 minutes out.
+
 ## 0.2.6
 
 - Fix `Can Withdraw` detection for the live `Get paid $x.xx` submit button.
