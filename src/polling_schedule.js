@@ -1,5 +1,6 @@
 const DEFAULT_POLL_CRON = '*/5 * * * *';
 const DEFAULT_FAST_POLL_CRON = '*/30 * * * * *';
+const DEFAULT_FUNDS_HISTORY_CRON = '*/30 * * * *';
 const MINIMUM_INTERVAL_SECONDS = 15;
 
 function normalizePollingCron(value, fallback = DEFAULT_POLL_CRON) {
@@ -128,6 +129,7 @@ function normalizeDate(value) {
 module.exports = {
   DEFAULT_FAST_POLL_CRON,
   DEFAULT_POLL_CRON,
+  DEFAULT_FUNDS_HISTORY_CRON,
   MINIMUM_INTERVAL_SECONDS,
   computeNextRunAt,
   getPollingCronIntervalSeconds,

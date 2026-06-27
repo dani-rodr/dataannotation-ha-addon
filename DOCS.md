@@ -7,6 +7,7 @@
 | `password` | required | DataAnnotation login password |
 | `poll_cron` | `*/5 * * * *` | Cron schedule for normal polling |
 | `fast_poll_cron` | `*/30 * * * * *` | Cron schedule when Fast Polling is enabled |
+| `funds_history_cron` | `*/30 * * * *` | Cron schedule for the slower Funds History refresh |
 | `poll_interval_minutes` | `5` | Legacy minute-based normal polling option |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
 | `log_level` | `info` | Logging level |
@@ -20,6 +21,7 @@
 - Publishes `Withdraw Locked` as ON when withdrawals are locked
 - Keeps fast polling state in `/data/fast-polling-state.json` so it survives restarts and syncs
 - Publishes `Fast Polling` as ON when the fast schedule is active
+- Refreshes normal payment telemetry on the regular poll and only expands Funds History on the slower schedule
 - Emits a Home Assistant persistent notification if a withdrawal is requested while locked or unavailable
 - Uses Home Assistant Core API access for persistent notifications
 - Publishes retained MQTT entities and discovery payloads
@@ -29,6 +31,7 @@
 
 - The add-on opens the Funds History tab read-only.
 - It expands the visible monthly and project rows to inspect pending entries.
+- Normal payment values still refresh on the regular poll; `Next Payout` is refreshed on the slower Funds History schedule.
 - Hourly pending entries use a 7 day wait; task submissions use a 3 day wait.
 - The `Next Payout` sensor reports the next local midnight after pending funds should become available.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.

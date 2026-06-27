@@ -3,6 +3,7 @@ const http = require('http');
 
 const {
   DEFAULT_FAST_POLL_CRON,
+  DEFAULT_FUNDS_HISTORY_CRON,
   DEFAULT_POLL_CRON,
   normalizePollingCron,
 } = require('./polling_schedule');
@@ -13,6 +14,7 @@ const DEFAULT_CONFIG = {
   password: '',
   poll_cron: DEFAULT_POLL_CRON,
   fast_poll_cron: DEFAULT_FAST_POLL_CRON,
+  funds_history_cron: DEFAULT_FUNDS_HISTORY_CRON,
   mqtt_topic_prefix: 'dataannotation',
   log_level: 'info',
 };
@@ -32,6 +34,7 @@ async function readConfig() {
       config.poll_cron = minutesToCron(options.poll_interval_minutes, config.poll_cron);
     }
     config.fast_poll_cron = stringOrDefault(options.fast_poll_cron, config.fast_poll_cron);
+    config.funds_history_cron = stringOrDefault(options.funds_history_cron, config.funds_history_cron);
     config.mqtt_topic_prefix = stringOrDefault(options.mqtt_topic_prefix, config.mqtt_topic_prefix);
     config.log_level = stringOrDefault(options.log_level, config.log_level);
   }
@@ -54,6 +57,9 @@ async function readConfig() {
   if (process.env.FAST_POLL_CRON) {
     config.fast_poll_cron = process.env.FAST_POLL_CRON;
   }
+  if (process.env.FUNDS_HISTORY_CRON) {
+    config.funds_history_cron = process.env.FUNDS_HISTORY_CRON;
+  }
 
   config.profile = stringOrDefault(config.profile, DEFAULT_CONFIG.profile);
   config.email = stringOrDefault(config.email, '');
@@ -62,6 +68,7 @@ async function readConfig() {
   config.log_level = normalizeLogLevel(config.log_level);
   config.poll_cron = normalizePollingCron(config.poll_cron, DEFAULT_POLL_CRON);
   config.fast_poll_cron = normalizePollingCron(config.fast_poll_cron, DEFAULT_FAST_POLL_CRON);
+  config.funds_history_cron = normalizePollingCron(config.funds_history_cron, DEFAULT_FUNDS_HISTORY_CRON);
   config.browser_profile_dir = '/data/chrome-profile';
   Object.assign(config, await getMqttFromSupervisor());
 

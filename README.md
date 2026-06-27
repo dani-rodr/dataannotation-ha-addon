@@ -8,6 +8,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 
 - Cron-based polling by default (`*/5 * * * *`)
 - Optional fast polling mode with a separate cron schedule
+- Optional slower Funds History cadence for payout timestamps
 - Persistent browser session handling with automatic relogin when the session expires
 - MQTT auto-discovery for count, status, profile, sync button, fast polling switch, withdraw lock switch, withdraw button, and per-project sensors
 - Read-only scraping only; no project actions are clicked
@@ -22,6 +23,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 | `password` | required | DataAnnotation login password |
 | `poll_cron` | `*/5 * * * *` | Cron schedule for normal polling |
 | `fast_poll_cron` | `*/30 * * * * *` | Cron schedule when Fast Polling is enabled |
+| `funds_history_cron` | `*/30 * * * *` | Cron schedule for Funds History expansion |
 | `poll_interval_minutes` | `5` | Legacy minute-based normal polling option |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
 | `log_level` | `info` | Logging level |
@@ -67,6 +69,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - The add-on keeps a persistent Chromium profile under `/data/chrome-profile`.
 - Withdraw lock state is stored under `/data/withdraw-lock-state.json` and restored on restart.
 - Fast polling state is stored under `/data/fast-polling-state.json` and restored on restart.
+- The slow Funds History schedule controls how often `Next Payout` is refreshed; normal payments telemetry still refreshes on the regular poll.
 - If DataAnnotation logs the session out, the add-on will detect the login page, sign back in, and continue scraping.
 - Withdrawal attempts that are blocked create a Home Assistant persistent notification.
 - Home Assistant Core API access is enabled so the add-on can create persistent notifications.

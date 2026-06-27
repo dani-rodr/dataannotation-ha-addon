@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Keep normal payment telemetry on the regular poll and move Funds History expansion to a slower schedule.
+- Add timing helpers for sync policy decisions.
+- Reduce fixed wait time usage where selector-based readiness is available.
+
 ## 0.2.9
 
 - Switch normal polling to cron schedules and add a persisted Fast Polling switch.

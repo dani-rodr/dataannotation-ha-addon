@@ -5,6 +5,12 @@ const { DataAnnotationMqttBridge } = require('./mqtt_bridge');
 const { createLogger } = require('./logger');
 const { summarizeProjects } = require('./scrapers/projects');
 const { computeNextRunAt } = require('./polling_schedule');
+const {
+  mergePaymentsWithFundsHistory,
+  pickFundsHistoryFields,
+  shouldIncludeFundsHistory,
+  shouldIncludePayments,
+} = require('./sync_policy');
 const { loadFastPollingState, saveFastPollingState } = require('./fast_polling_state');
 const { loadWithdrawLockState, saveWithdrawLockState } = require('./withdraw_lock_state');
 
@@ -30,7 +36,7 @@ async function main() {
 
   logger.info(`Starting Data Annotation add-on v${version}`);
   logger.debug(
-    `Config loaded: profile="${config.profile || 'Data Annotation'}", topic="${config.mqtt_topic_prefix}", poll="${config.poll_cron}", fast_poll="${config.fast_poll_cron}", mqtt_host="${config.mqtt_host}"`
+    `Config loaded: profile="${config.profile || 'Data Annotation'}", topic="${config.mqtt_topic_prefix}", poll="${config.poll_cron}", fast_poll="${config.fast_poll_cron}", funds_history="${config.funds_history_cron}", mqtt_host="${config.mqtt_host}"`
   );
 
   const bridge = new DataAnnotationMqttBridge({
@@ -67,6 +73,9 @@ async function main() {
     let lastSuccessfulProjectCount = 0;
     let lastSuccessfulTotalTaskCount = 0;
     let nextRunAt = Date.now();
+    let nextFundsHistoryAt = Date.now();
+    let hasCompletedInitialSync = false;
+    let lastFundsHistorySnapshot = null;
 
     while (running) {
       if (bridge.withdrawLockChange.value !== null) {
@@ -94,8 +103,22 @@ async function main() {
 
       const now = Date.now();
       if (bridge.scanRequested.value || now >= nextRunAt) {
-        const includePayments = bridge.scanRequested.value || !fastPollingEnabled;
+        const manualSyncRequested = bridge.scanRequested.value;
+        const includePayments = shouldIncludePayments({
+          initialSyncCompleted: hasCompletedInitialSync,
+          manualSyncRequested,
+          fastPollingEnabled,
+        });
+        const includeFundsHistory = shouldIncludeFundsHistory({
+          includePayments,
+          manualSyncRequested,
+          initialSyncCompleted: hasCompletedInitialSync,
+          fastPollingEnabled,
+          now,
+          nextFundsHistoryAt,
+        });
         bridge.scanRequested.value = false;
+        logger.debug(`Sync mode: manual=${manualSyncRequested}, payments=${includePayments}, fundsHistory=${includeFundsHistory}, fastPolling=${fastPollingEnabled}`);
         const syncResult = await doSync(
           client,
           bridge,
@@ -105,11 +128,20 @@ async function main() {
           lastSuccessfulTotalTaskCount,
           withdrawLocked,
           includePayments,
+          includeFundsHistory,
+          lastFundsHistorySnapshot,
           logger
         );
         lastSuccessfulSyncAt = syncResult.lastSuccessfulSyncAt;
         lastSuccessfulProjectCount = syncResult.lastSuccessfulProjectCount;
         lastSuccessfulTotalTaskCount = syncResult.lastSuccessfulTotalTaskCount;
+        if (syncResult.fundsHistorySnapshot) {
+          lastFundsHistorySnapshot = syncResult.fundsHistorySnapshot;
+        }
+        if (syncResult.includeFundsHistory) {
+          nextFundsHistoryAt = Date.parse(computeNextRunAt(config.funds_history_cron, new Date()));
+        }
+        hasCompletedInitialSync = true;
         nextRunAt = Date.parse(computeNextRunAt(getActivePollCron(config, fastPollingEnabled), new Date()));
       }
 
@@ -130,6 +162,8 @@ async function doSync(
   lastSuccessfulTotalTaskCount,
   withdrawLocked,
   includePayments,
+  includeFundsHistory,
+  lastFundsHistorySnapshot,
   logger
 ) {
   const startedAt = new Date().toISOString();
@@ -167,10 +201,24 @@ async function doSync(
     bridge.publishProjects(result.projects, completedAt);
 
     if (includePayments) {
-      const payments = await client.collectPayments();
-      logger.info(`Payments snapshot complete: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
-      logger.debug(`Payments page URL: ${payments.pageUrl}`);
-      bridge.publishPayments(payments, payments.scraped_at || completedAt);
+      const payments = await client.collectPayments({ includeFundsHistory });
+      const mergedPayments = includeFundsHistory
+        ? payments
+        : mergePaymentsWithFundsHistory(payments, lastFundsHistorySnapshot);
+      logger.info(`Payments snapshot complete: available=${mergedPayments.available_amount_formatted}, canWithdraw=${mergedPayments.can_withdraw}`);
+      logger.debug(`Payments page URL: ${mergedPayments.pageUrl}`);
+      if (!includeFundsHistory) {
+        logger.debug('Payments snapshot reused last known Funds History fields');
+      }
+      bridge.publishPayments(mergedPayments, mergedPayments.scraped_at || completedAt);
+
+      return {
+        lastSuccessfulSyncAt: completedAt,
+        lastSuccessfulProjectCount: result.count,
+        lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
+        fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(mergedPayments) : null,
+        includeFundsHistory,
+      };
     } else {
       logger.debug('Skipping payments scrape during fast sync');
     }
@@ -179,6 +227,8 @@ async function doSync(
       lastSuccessfulSyncAt: completedAt,
       lastSuccessfulProjectCount: result.count,
       lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
+      fundsHistorySnapshot: null,
+      includeFundsHistory: false,
     };
   } catch (error) {
     logger.error(`Sync failed: ${error.stack || error.message}`);

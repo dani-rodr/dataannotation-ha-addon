@@ -53,13 +53,13 @@ class DataAnnotationClient {
     }
   }
 
-  async collectPayments() {
+  async collectPayments(options = {}) {
     const page = await this._newPage();
 
     try {
       this.logger.debug('Opening DataAnnotation payments page');
       await this._loadAuthenticatedPage(page, PAYMENTS_URL, 'div[id="workers/TransferFundsPage-hybrid-root"][data-props]');
-      const payments = await scrapePayments(page);
+      const payments = await scrapePayments(page, { includeFundsHistory: options.includeFundsHistory !== false });
       this.logger.debug(
         `Scraped payments snapshot: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`
       );
@@ -131,7 +131,14 @@ class DataAnnotationClient {
 
   async _ensureAuthenticated(page) {
     await page.goto(PROJECTS_URL, { waitUntil: 'domcontentloaded' });
-    await sleep(2000);
+    await page
+      .waitForFunction(
+        () =>
+          Boolean(document.querySelector('div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]')) ||
+          Boolean(window.location.href.includes('/users/sign_in')),
+        { timeout: 30000 }
+      )
+      .catch(() => {});
 
     if (this._looksLoggedOut(page)) {
       this.logger.debug('Detected sign-in page, refreshing session');
@@ -148,7 +155,13 @@ class DataAnnotationClient {
 
   async _loadAuthenticatedPage(page, url, readySelector) {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-    await sleep(2000);
+    await page
+      .waitForFunction(
+        (selector) => Boolean(document.querySelector(selector)) || Boolean(window.location.href.includes('/users/sign_in')),
+        { timeout: 30000 },
+        readySelector
+      )
+      .catch(() => {});
 
     if (this._looksLoggedOut(page)) {
       this.logger.debug(`Detected sign-in page while loading ${url}, refreshing session`);
@@ -184,8 +197,6 @@ class DataAnnotationClient {
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
       submitButton.click(),
     ]);
-
-    await sleep(2000);
 
     if (page.url().includes('/users/sign_in')) {
       throw new Error('DataAnnotation login failed or session was rejected');
