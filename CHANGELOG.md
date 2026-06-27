@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.8
+
+- Make `Withdraw Locked` publish immediately and add debug logs for withdrawal flow timing.
+- Remove the duplicate withdrawal preflight scrape and sync after withdrawal attempts.
+
 ## 0.2.7
 
 - Let `Withdraw Funds` proceed when `Can Withdraw` is already true, even if the UI timestamp is still 5 minutes out.

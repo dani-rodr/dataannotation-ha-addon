@@ -81,9 +81,14 @@ class DataAnnotationClient {
     try {
       this.logger.debug('Opening DataAnnotation payments page for withdrawal');
       await this._loadAuthenticatedPage(page, PAYMENTS_URL, 'div[id="workers/TransferFundsPage-hybrid-root"][data-props]');
+      this.logger.debug('Reading fresh withdrawal eligibility snapshot');
       const payments = await scrapePayments(page, { includeFundsHistory: false });
+      this.logger.debug(
+        `Withdrawal preflight: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}, buttonPresent=${payments.withdraw_button_present}, buttonEnabled=${payments.button_enabled}`
+      );
 
       if (!payments.can_withdraw || payments.available_amount <= 0 || !payments.button_enabled) {
+        this.logger.debug('Withdrawal preflight rejected before click');
         return {
           status: 'not_available',
           pageUrl: page.url(),
@@ -93,6 +98,7 @@ class DataAnnotationClient {
 
       const button = await this._findWithdrawalButton(page, payments.available_amount_cents);
       if (!button) {
+        this.logger.debug('Withdrawal button lookup returned no exact match');
         return {
           status: 'not_available',
           pageUrl: page.url(),
@@ -106,9 +112,13 @@ class DataAnnotationClient {
         button.click(),
       ]);
 
+      this.logger.debug('Waiting for withdrawal navigation to settle');
       await sleep(2000);
 
       const refreshedPayments = await scrapePayments(page).catch(() => payments);
+      this.logger.debug(
+        `Withdrawal refresh snapshot: available=${refreshedPayments.available_amount_formatted}, canWithdraw=${refreshedPayments.can_withdraw}`
+      );
       return {
         status: 'submitted',
         pageUrl: page.url(),

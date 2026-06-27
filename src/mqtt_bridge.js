@@ -70,9 +70,13 @@ class DataAnnotationMqttBridge {
       } else if (topic === this._topic('withdraw/lock/set') && message === 'on') {
         this.logger.info('Received withdraw lock request: ON');
         this.withdrawLockChange.value = true;
+        this.logger.debug('Publishing optimistic withdraw lock state: ON');
+        this.publishWithdrawLockState(true);
       } else if (topic === this._topic('withdraw/lock/set') && message === 'off') {
         this.logger.info('Received withdraw lock request: OFF');
         this.withdrawLockChange.value = false;
+        this.logger.debug('Publishing optimistic withdraw lock state: OFF');
+        this.publishWithdrawLockState(false);
       }
     });
   }

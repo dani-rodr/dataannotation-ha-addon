@@ -195,10 +195,12 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
     return;
   }
 
-  const payments = await client.collectPayments();
+  logger.debug('Submitting withdrawal request through fresh eligibility check');
+  const result = await client.withdrawAvailableFunds();
+  const payments = result.payments;
 
-  if (!payments.withdraw_button_present || !payments.button_enabled || payments.available_amount <= 0) {
-    const message = buildWithdrawalNotReadyMessage(payments, 'funds');
+  if (result.status !== 'submitted') {
+    const message = buildWithdrawalNotReadyMessage(payments, payments?.withdraw_button_present ? 'funds' : 'button');
 
     try {
       await createPersistentNotification({
@@ -210,31 +212,14 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
     } catch (error) {
       logger.warning(`Failed to create withdrawal not-ready notification: ${error.message}`);
     }
-    logger.warning('Withdrawal request blocked because funds are not available yet');
-    bridge.publishPayments(payments);
-    return;
+    logger.warning(`Withdrawal request was not submitted: ${result.status}`);
+  } else {
+    logger.info('Withdrawal request submitted successfully');
   }
 
-  const nextWithdrawalAt = parseDate(payments.next_withdrawal_at);
-  if (!payments.can_withdraw && nextWithdrawalAt && nextWithdrawalAt.getTime() > Date.now()) {
-    try {
-      await createPersistentNotification({
-        title: 'Data Annotation Withdrawal Not Ready',
-        message: buildWithdrawalNotReadyMessage(payments, 'time'),
-        notificationId: 'dataannotation_withdrawal_not_ready',
-        logger,
-      });
-    } catch (error) {
-      logger.warning(`Failed to create withdrawal not-ready notification: ${error.message}`);
-    }
-    logger.warning('Withdrawal request blocked because withdrawal is still cooling down');
-    bridge.publishPayments(payments);
-    return;
-  }
-
-  const result = await client.withdrawAvailableFunds();
-  bridge.publishPayments(result.payments || payments);
-  logger.info(`Withdrawal request submitted: ${result.status}`);
+  bridge.publishPayments(payments);
+  bridge.scanRequested.value = true;
+  logger.debug('Scheduling sync after withdrawal request');
 }
 
 function buildWithdrawalLockedMessage() {
