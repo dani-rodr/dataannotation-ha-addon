@@ -1,11 +1,18 @@
 const fs = require('fs');
 const http = require('http');
 
+const {
+  DEFAULT_FAST_POLL_CRON,
+  DEFAULT_POLL_CRON,
+  normalizePollingCron,
+} = require('./polling_schedule');
+
 const DEFAULT_CONFIG = {
   profile: '',
   email: '',
   password: '',
-  poll_interval_minutes: 5,
+  poll_cron: DEFAULT_POLL_CRON,
+  fast_poll_cron: DEFAULT_FAST_POLL_CRON,
   mqtt_topic_prefix: 'dataannotation',
   log_level: 'info',
 };
@@ -19,7 +26,12 @@ async function readConfig() {
     config.profile = stringOrDefault(options.profile ?? options.profile_name, config.profile);
     config.email = stringOrDefault(options.email ?? options.dataannotation_email, config.email);
     config.password = stringOrDefault(options.password ?? options.dataannotation_password, config.password);
-    config.poll_interval_minutes = numberOrDefault(options.poll_interval_minutes, config.poll_interval_minutes, 1, 1440);
+    if (options.poll_cron !== undefined) {
+      config.poll_cron = stringOrDefault(options.poll_cron, config.poll_cron);
+    } else if (options.poll_interval_minutes !== undefined) {
+      config.poll_cron = minutesToCron(options.poll_interval_minutes, config.poll_cron);
+    }
+    config.fast_poll_cron = stringOrDefault(options.fast_poll_cron, config.fast_poll_cron);
     config.mqtt_topic_prefix = stringOrDefault(options.mqtt_topic_prefix, config.mqtt_topic_prefix);
     config.log_level = stringOrDefault(options.log_level, config.log_level);
   }
@@ -36,12 +48,20 @@ async function readConfig() {
   if (process.env.MQTT_TOPIC_PREFIX) {
     config.mqtt_topic_prefix = process.env.MQTT_TOPIC_PREFIX;
   }
+  if (process.env.POLL_CRON) {
+    config.poll_cron = process.env.POLL_CRON;
+  }
+  if (process.env.FAST_POLL_CRON) {
+    config.fast_poll_cron = process.env.FAST_POLL_CRON;
+  }
 
   config.profile = stringOrDefault(config.profile, DEFAULT_CONFIG.profile);
   config.email = stringOrDefault(config.email, '');
   config.password = stringOrDefault(config.password, '');
   config.mqtt_topic_prefix = normalizeSlug(config.mqtt_topic_prefix || DEFAULT_CONFIG.mqtt_topic_prefix);
   config.log_level = normalizeLogLevel(config.log_level);
+  config.poll_cron = normalizePollingCron(config.poll_cron, DEFAULT_POLL_CRON);
+  config.fast_poll_cron = normalizePollingCron(config.fast_poll_cron, DEFAULT_FAST_POLL_CRON);
   config.browser_profile_dir = '/data/chrome-profile';
   Object.assign(config, await getMqttFromSupervisor());
 
@@ -86,6 +106,15 @@ function numberOrDefault(value, fallback, min, max) {
   }
   const rounded = Math.trunc(parsed);
   return Math.min(max, Math.max(min, rounded));
+}
+
+function minutesToCron(value, fallback) {
+  const minutes = numberOrDefault(value, null, 1, 1440);
+  if (!minutes) {
+    return fallback;
+  }
+
+  return `*/${minutes} * * * *`;
 }
 
 function normalizeSlug(value) {

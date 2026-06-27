@@ -1,0 +1,29 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const {
+  computeNextRunAt,
+  getPollingCronIntervalSeconds,
+  normalizePollingCron,
+  validatePollingCron,
+} = require('./polling_schedule');
+
+test('normalizePollingCron keeps the supported simple schedules', () => {
+  assert.equal(normalizePollingCron('*/5 * * * *'), '*/5 * * * *');
+  assert.equal(normalizePollingCron('*/30 * * * * *'), '*/30 * * * * *');
+});
+
+test('computeNextRunAt advances to the next cron boundary', () => {
+  assert.equal(computeNextRunAt('*/5 * * * *', '2026-06-27T19:44:30.000Z'), '2026-06-27T19:45:00.000Z');
+  assert.equal(computeNextRunAt('*/30 * * * * *', '2026-06-27T19:44:31.500Z'), '2026-06-27T19:45:00.000Z');
+});
+
+test('validatePollingCron rejects sub-15-second schedules', () => {
+  assert.throws(() => validatePollingCron('*/5 * * * * *'));
+  assert.throws(() => validatePollingCron('* * * * * *'));
+});
+
+test('getPollingCronIntervalSeconds reports the simple schedule interval', () => {
+  assert.equal(getPollingCronIntervalSeconds('*/5 * * * *'), 300);
+  assert.equal(getPollingCronIntervalSeconds('*/30 * * * * *'), 30);
+});

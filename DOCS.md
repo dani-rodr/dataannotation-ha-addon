@@ -5,7 +5,9 @@
 | `profile` | required | Friendly name shown in MQTT device metadata |
 | `email` | required | DataAnnotation login email |
 | `password` | required | DataAnnotation login password |
-| `poll_interval_minutes` | `5` | Minutes between automatic scrapes |
+| `poll_cron` | `*/5 * * * *` | Cron schedule for normal polling |
+| `fast_poll_cron` | `*/30 * * * * *` | Cron schedule when Fast Polling is enabled |
+| `poll_interval_minutes` | `5` | Legacy minute-based normal polling option |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
 | `log_level` | `info` | Logging level |
 
@@ -16,6 +18,8 @@
 - Clicks only the login submit button when a session refresh is required
 - Keeps withdraw state in `/data/withdraw-lock-state.json` so it survives restarts and syncs
 - Publishes `Withdraw Locked` as ON when withdrawals are locked
+- Keeps fast polling state in `/data/fast-polling-state.json` so it survives restarts and syncs
+- Publishes `Fast Polling` as ON when the fast schedule is active
 - Emits a Home Assistant persistent notification if a withdrawal is requested while locked or unavailable
 - Uses Home Assistant Core API access for persistent notifications
 - Publishes retained MQTT entities and discovery payloads
@@ -28,6 +32,8 @@
 - Hourly pending entries use a 7 day wait; task submissions use a 3 day wait.
 - The `Next Payout` sensor reports the next local midnight after pending funds should become available.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
+- Fast polling only scrapes projects and skips payments until a full sync runs again.
+- Polling cron schedules are restricted to simple step expressions with a minimum interval of 15 seconds.
 
 ## Payments Entities
 

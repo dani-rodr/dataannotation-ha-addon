@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.9
+
+- Switch normal polling to cron schedules and add a persisted Fast Polling switch.
+- Make fast polling project-only and keep a 15-second minimum interval.
+
 ## 0.2.8
 
 - Make `Withdraw Locked` publish immediately and add debug logs for withdrawal flow timing.

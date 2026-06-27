@@ -4,11 +4,14 @@ const { createPersistentNotification } = require('./ha_notifications');
 const { DataAnnotationMqttBridge } = require('./mqtt_bridge');
 const { createLogger } = require('./logger');
 const { summarizeProjects } = require('./scrapers/projects');
+const { computeNextRunAt } = require('./polling_schedule');
+const { loadFastPollingState, saveFastPollingState } = require('./fast_polling_state');
 const { loadWithdrawLockState, saveWithdrawLockState } = require('./withdraw_lock_state');
 
 const { version } = require('../package.json');
 
 const WITHDRAW_LOCK_STATE_PATH = '/data/withdraw-lock-state.json';
+const FAST_POLLING_STATE_PATH = '/data/fast-polling-state.json';
 
 let running = true;
 
@@ -27,7 +30,7 @@ async function main() {
 
   logger.info(`Starting Data Annotation add-on v${version}`);
   logger.debug(
-    `Config loaded: profile="${config.profile || 'Data Annotation'}", topic="${config.mqtt_topic_prefix}", poll=${config.poll_interval_minutes}m, mqtt_host="${config.mqtt_host}"`
+    `Config loaded: profile="${config.profile || 'Data Annotation'}", topic="${config.mqtt_topic_prefix}", poll="${config.poll_cron}", fast_poll="${config.fast_poll_cron}", mqtt_host="${config.mqtt_host}"`
   );
 
   const bridge = new DataAnnotationMqttBridge({
@@ -50,6 +53,7 @@ async function main() {
   });
 
   let withdrawLocked = loadWithdrawLockState(WITHDRAW_LOCK_STATE_PATH);
+  let fastPollingEnabled = loadFastPollingState(FAST_POLLING_STATE_PATH);
 
   try {
     await bridge.waitForConnection();
@@ -57,6 +61,7 @@ async function main() {
     bridge.publishDiscovery();
     bridge.publishProfile(config.profile || 'Data Annotation');
     bridge.publishWithdrawLockState(withdrawLocked);
+    bridge.publishFastPollingState(fastPollingEnabled);
 
     let lastSuccessfulSyncAt = null;
     let lastSuccessfulProjectCount = 0;
@@ -72,6 +77,15 @@ async function main() {
         logger.info(`Withdraw lock state updated: ${withdrawLocked ? 'locked' : 'unlocked'}`);
       }
 
+      if (bridge.fastPollingChange.value !== null) {
+        fastPollingEnabled = bridge.fastPollingChange.value;
+        bridge.fastPollingChange.value = null;
+        saveFastPollingState(FAST_POLLING_STATE_PATH, fastPollingEnabled);
+        bridge.publishFastPollingState(fastPollingEnabled);
+        nextRunAt = Date.now();
+        logger.info(`Fast polling state updated: ${fastPollingEnabled ? 'enabled' : 'disabled'}`);
+      }
+
       if (bridge.withdrawRequested.value) {
         bridge.withdrawRequested.value = false;
         await handleWithdrawRequest(client, bridge, withdrawLocked, logger);
@@ -80,6 +94,7 @@ async function main() {
 
       const now = Date.now();
       if (bridge.scanRequested.value || now >= nextRunAt) {
+        const includePayments = bridge.scanRequested.value || !fastPollingEnabled;
         bridge.scanRequested.value = false;
         const syncResult = await doSync(
           client,
@@ -89,12 +104,13 @@ async function main() {
           lastSuccessfulProjectCount,
           lastSuccessfulTotalTaskCount,
           withdrawLocked,
+          includePayments,
           logger
         );
         lastSuccessfulSyncAt = syncResult.lastSuccessfulSyncAt;
         lastSuccessfulProjectCount = syncResult.lastSuccessfulProjectCount;
         lastSuccessfulTotalTaskCount = syncResult.lastSuccessfulTotalTaskCount;
-        nextRunAt = Date.now() + config.poll_interval_minutes * 60 * 1000;
+        nextRunAt = Date.parse(computeNextRunAt(getActivePollCron(config, fastPollingEnabled), new Date()));
       }
 
       await sleep(1000);
@@ -113,6 +129,7 @@ async function doSync(
   lastSuccessfulProjectCount,
   lastSuccessfulTotalTaskCount,
   withdrawLocked,
+  includePayments,
   logger
 ) {
   const startedAt = new Date().toISOString();
@@ -123,7 +140,9 @@ async function doSync(
     const completedAt = new Date().toISOString();
     const projectSummary = summarizeProjects(result.projects);
 
-    logger.info(`Sync complete: ${projectSummary.count} projects, ${projectSummary.total_tasks} total tasks`);
+    logger.info(
+      `${includePayments ? 'Sync' : 'Fast sync'} complete: ${projectSummary.count} projects, ${projectSummary.total_tasks} total tasks`
+    );
     logger.debug(`Projects page URL: ${result.pageUrl}`);
 
     bridge.publishOnline();
@@ -147,10 +166,14 @@ async function doSync(
     });
     bridge.publishProjects(result.projects, completedAt);
 
-    const payments = await client.collectPayments();
-    logger.info(`Payments snapshot complete: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
-    logger.debug(`Payments page URL: ${payments.pageUrl}`);
-    bridge.publishPayments(payments, payments.scraped_at || completedAt);
+    if (includePayments) {
+      const payments = await client.collectPayments();
+      logger.info(`Payments snapshot complete: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
+      logger.debug(`Payments page URL: ${payments.pageUrl}`);
+      bridge.publishPayments(payments, payments.scraped_at || completedAt);
+    } else {
+      logger.debug('Skipping payments scrape during fast sync');
+    }
 
     return {
       lastSuccessfulSyncAt: completedAt,
@@ -177,6 +200,10 @@ async function doSync(
   }
 }
 
+function getActivePollCron(config, fastPollingEnabled) {
+  return fastPollingEnabled ? config.fast_poll_cron : config.poll_cron;
+}
+
 async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
   logger.info('Processing withdraw request');
 
@@ -197,10 +224,16 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
 
   logger.debug('Submitting withdrawal request through fresh eligibility check');
   const result = await client.withdrawAvailableFunds();
-  const payments = result.payments;
+  const payments = result.payments || {};
 
   if (result.status !== 'submitted') {
-    const message = buildWithdrawalNotReadyMessage(payments, payments?.withdraw_button_present ? 'funds' : 'button');
+    const nextWithdrawalAt = parseDate(payments?.next_withdrawal_at);
+    const reason = !payments?.can_withdraw && nextWithdrawalAt && nextWithdrawalAt.getTime() > Date.now()
+      ? 'time'
+      : payments?.withdraw_button_present
+        ? 'funds'
+        : 'button';
+    const message = buildWithdrawalNotReadyMessage(payments, reason);
 
     try {
       await createPersistentNotification({

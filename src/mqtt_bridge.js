@@ -23,6 +23,7 @@ class DataAnnotationMqttBridge {
     this.scanRequested = { value: false };
     this.withdrawRequested = { value: false };
     this.withdrawLockChange = { value: null };
+    this.fastPollingChange = { value: null };
     this.publishedProjectSlugs = new Set();
     this.connected = false;
     this._availabilityState = 'offline';
@@ -48,12 +49,13 @@ class DataAnnotationMqttBridge {
       this.connected = true;
       this.logger.info('Connected to MQTT broker');
       this.client.subscribe(
-        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set')],
+        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set')],
         { qos: 1 }
       );
       this.logger.debug(`Subscribed to ${this._topic('command/sync')}`);
       this.logger.debug(`Subscribed to ${this._topic('command/withdraw')}`);
       this.logger.debug(`Subscribed to ${this._topic('withdraw/lock/set')}`);
+      this.logger.debug(`Subscribed to ${this._topic('fast/poll/set')}`);
     });
     this.client.on('close', () => {
       this.connected = false;
@@ -77,6 +79,16 @@ class DataAnnotationMqttBridge {
         this.withdrawLockChange.value = false;
         this.logger.debug('Publishing optimistic withdraw lock state: OFF');
         this.publishWithdrawLockState(false);
+      } else if (topic === this._topic('fast/poll/set') && message === 'on') {
+        this.logger.info('Received fast polling request: ON');
+        this.fastPollingChange.value = true;
+        this.logger.debug('Publishing optimistic fast polling state: ON');
+        this.publishFastPollingState(true);
+      } else if (topic === this._topic('fast/poll/set') && message === 'off') {
+        this.logger.info('Received fast polling request: OFF');
+        this.fastPollingChange.value = false;
+        this.logger.debug('Publishing optimistic fast polling state: OFF');
+        this.publishFastPollingState(false);
       }
     });
   }
@@ -129,6 +141,22 @@ class DataAnnotationMqttBridge {
       payload_available: 'online',
       payload_not_available: 'offline',
       icon: 'mdi:lock',
+      device: this.device,
+    });
+
+    this._publishDiscovery('switch', 'fast_polling', {
+      name: names.fast_polling,
+      unique_id: `${this.topicPrefix}_fast_polling`,
+      state_topic: this._topic('fast/poll/state'),
+      command_topic: this._topic('fast/poll/set'),
+      payload_on: 'ON',
+      payload_off: 'OFF',
+      state_on: 'ON',
+      state_off: 'OFF',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:flash',
       device: this.device,
     });
 
@@ -382,6 +410,12 @@ class DataAnnotationMqttBridge {
     this._publish(this._topic('withdraw/lock/state'), state, true);
   }
 
+  publishFastPollingState(enabled) {
+    const state = enabled ? 'ON' : 'OFF';
+    this.logger.debug(`Publishing fast polling state: ${state}`);
+    this._publish(this._topic('fast/poll/state'), state, true);
+  }
+
   publishSummary(summary) {
     this.logger.debug(`Publishing project summary: ${summary.count} projects, ${summary.total_tasks || 0} total tasks`);
     this._publishJson(this._topic('projects/summary'), summary, true);
@@ -516,6 +550,7 @@ function buildDiscoveryNames() {
     status: 'Status',
     last_sync: 'Last Sync',
     withdraw_locked: 'Withdraw Locked',
+    fast_polling: 'Fast Polling',
     withdraw_funds: 'Withdraw Funds',
     next_payout: 'Next Payout',
   };
