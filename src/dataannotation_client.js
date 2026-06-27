@@ -91,7 +91,7 @@ class DataAnnotationClient {
         };
       }
 
-      const button = await this._findWithdrawalButton(page);
+      const button = await this._findWithdrawalButton(page, payments.available_amount_cents);
       if (!button) {
         return {
           status: 'not_available',
@@ -193,7 +193,7 @@ class DataAnnotationClient {
     return extractProjects(props);
   }
 
-  async _findWithdrawalButton(page) {
+  async _findWithdrawalButton(page, availableAmountCents = null) {
     const buttons = await page.evaluate(() => {
       const normalizeText = (value) => String(value || '').trim().replace(/\s+/g, ' ');
       return Array.from(document.querySelectorAll('button')).map((node) => ({
@@ -201,10 +201,13 @@ class DataAnnotationClient {
         disabled: Boolean(node.disabled),
         ariaLabel: normalizeText(node.getAttribute('aria-label') || ''),
         title: normalizeText(node.getAttribute('title') || ''),
+        ariaDisabled: normalizeText(node.getAttribute('aria-disabled') || ''),
+        formAction: normalizeText(node.form?.getAttribute('action') || ''),
+        formMethod: normalizeText(node.form?.getAttribute('method') || ''),
       }));
     });
 
-    const withdrawButton = chooseWithdrawalButton(buttons);
+    const withdrawButton = chooseWithdrawalButton(buttons, availableAmountCents);
     if (!withdrawButton.present || withdrawButton.count !== 1 || !withdrawButton.enabled || !withdrawButton.text) {
       return null;
     }

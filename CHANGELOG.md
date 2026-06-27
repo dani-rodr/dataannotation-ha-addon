@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5
+
+- Hide zero-task project entities and delete stale MQTT project discoveries.
+- Prefix and shorten project entity names for readability.
+- Stop using report-time rows as the source of project entities.
+
 ## 0.2.4
 
 - Anchor `Next Payout` to the Funds History row date so it no longer drifts forward each day.

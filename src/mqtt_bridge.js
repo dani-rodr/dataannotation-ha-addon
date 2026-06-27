@@ -397,16 +397,20 @@ class DataAnnotationMqttBridge {
     const currentSlugs = new Set();
 
     for (const project of projects) {
-      currentSlugs.add(project.slug);
-      this._publishProjectDiscovery(project);
-      this._publishProjectState(project, scrapedAt);
-      this._publish(this._projectAvailabilityTopic(project.slug), 'online', true);
-      this.publishedProjectSlugs.add(project.slug);
+      if (numberOrZero(project.tasks) > 0) {
+        currentSlugs.add(project.slug);
+        this._publishProjectDiscovery(project);
+        this._publishProjectState(project, scrapedAt);
+        this._publish(this._projectAvailabilityTopic(project.slug), 'online', true);
+        this.publishedProjectSlugs.add(project.slug);
+      } else {
+        this._deleteProjectEntity(project.slug);
+      }
     }
 
     for (const publishedSlug of this.publishedProjectSlugs) {
       if (!currentSlugs.has(publishedSlug)) {
-        this._publish(this._projectAvailabilityTopic(publishedSlug), 'offline', true);
+        this._deleteProjectEntity(publishedSlug);
       }
     }
 
@@ -426,7 +430,7 @@ class DataAnnotationMqttBridge {
 
   _publishProjectDiscovery(project) {
     this._publishDiscovery('sensor', project.slug, {
-      name: project.name,
+      name: formatProjectEntityName(project.name),
       unique_id: `${this.topicPrefix}_${project.slug}`,
       state_topic: this._projectStateTopic(project.slug),
       value_template: '{{ value_json.tasks if value_json.tasks is not none else 0 }}',
@@ -448,6 +452,11 @@ class DataAnnotationMqttBridge {
 
   _publishDiscovery(component, objectId, payload) {
     this._publishJson(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, payload, true);
+  }
+
+  _deleteProjectEntity(slug) {
+    this._publish(`homeassistant/sensor/${this.topicPrefix}_${slug}/config`, '', true);
+    this._publish(this._projectAvailabilityTopic(slug), 'offline', true);
   }
 
   _publishJson(topic, payload, retain) {
@@ -503,8 +512,31 @@ function buildDiscoveryNames() {
   };
 }
 
+function formatProjectEntityName(name) {
+  return `Project - ${shortenProjectName(name, 40)}`;
+}
+
+function shortenProjectName(name, maxLength = 40) {
+  const cleaned = normalizeProjectName(name);
+  if (cleaned.length <= maxLength) {
+    return cleaned;
+  }
+
+  return `${cleaned.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function normalizeProjectName(name) {
+  return String(name || 'Unknown project')
+    .replace(/^(?:\[[^\]]+\]\s*)+/, '')
+    .replace(/\s+-\s+\d{2}\/\d{2}\/\d{2}\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 module.exports = {
   DataAnnotationMqttBridge,
   buildDeviceInfo,
   buildDiscoveryNames,
+  formatProjectEntityName,
+  shortenProjectName,
 };

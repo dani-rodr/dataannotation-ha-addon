@@ -218,7 +218,7 @@ test('extractPaymentsSnapshot falls back to three days from now when no future p
   assert.equal(snapshot.next_withdrawal_at, localMidnightIsoFrom(now, 3));
 });
 
-test('chooseWithdrawalButton accepts only the exact money available button', () => {
+test('chooseWithdrawalButton accepts the exact legacy money available button', () => {
   const choice = chooseWithdrawalButton([
     { text: 'Share', disabled: false },
     { text: '$12.34 available', disabled: false },
@@ -230,17 +230,28 @@ test('chooseWithdrawalButton accepts only the exact money available button', () 
   assert.equal(choice.count, 1);
 });
 
-test('chooseWithdrawalButton ignores nearby share buttons and requires a unique match', () => {
+test('chooseWithdrawalButton accepts the live get paid submit button', () => {
   const choice = chooseWithdrawalButton([
-    { text: '$12.34 available', disabled: false },
-    { text: '$12.34 available', disabled: false },
-    { text: 'Share', disabled: false },
-  ]);
+    { text: 'Get paid $12.34', disabled: false, formAction: '/workers/payments/get_paid', formMethod: 'post' },
+    { text: 'Share', disabled: false, formAction: '', formMethod: '' },
+  ], 1234);
 
   assert.equal(choice.present, true);
+  assert.equal(choice.enabled, true);
+  assert.equal(choice.text, 'Get paid $12.34');
+  assert.equal(choice.count, 1);
+});
+
+test('chooseWithdrawalButton rejects wrong amount and share buttons', () => {
+  const choice = chooseWithdrawalButton([
+    { text: 'Get paid $12.35', disabled: false, formAction: '/workers/payments/get_paid', formMethod: 'post' },
+    { text: 'Share', disabled: false, formAction: '', formMethod: '' },
+  ], 1234);
+
+  assert.equal(choice.present, false);
   assert.equal(choice.enabled, false);
   assert.equal(choice.text, null);
-  assert.equal(choice.count, 2);
+  assert.equal(choice.count, 0);
 });
 
 test('extractPaymentsSnapshot reports no withdraw button when the exact button is missing', () => {

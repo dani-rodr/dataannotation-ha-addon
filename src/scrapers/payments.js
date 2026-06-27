@@ -338,13 +338,30 @@ async function scrapePayments(page, { includeFundsHistory = true } = {}) {
     return await response.json();
   });
 
+  await page.waitForFunction(() => {
+    const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+    return Array.from(document.querySelectorAll('button')).some((node) => {
+      const text = normalize(node.innerText || node.textContent || '');
+      const action = normalize(node.form?.getAttribute('action') || '');
+      const method = normalize(node.form?.getAttribute('method') || '');
+      return (
+        /^Get paid \$[\d,]+(?:\.\d{2})?$/i.test(text) &&
+        /\/workers\/payments\/get_paid(?:\?|$)/.test(action) &&
+        method.toLowerCase() === 'post'
+      ) || /^\$[\d,]+(?:\.\d{2})?\s+available$/i.test(text);
+    });
+  }, { timeout: 10000 }).catch(() => {});
+
   const buttonInfo = await page.evaluate(() => {
     const buttons = Array.from(document.querySelectorAll('button'));
     const mapButton = (node) => ({
       text: (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' '),
       disabled: Boolean(node.disabled),
+      ariaDisabled: (node.getAttribute('aria-disabled') || '').trim().replace(/\s+/g, ' '),
       ariaLabel: (node.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' '),
       title: (node.getAttribute('title') || '').trim().replace(/\s+/g, ' '),
+      formAction: (node.form?.getAttribute('action') || '').trim().replace(/\s+/g, ' '),
+      formMethod: (node.form?.getAttribute('method') || '').trim().replace(/\s+/g, ' '),
     });
     const bodyText = (document.body?.innerText || document.body?.textContent || '').replace(/\s+/g, ' ').trim();
     const nextWithdrawalMatch = bodyText.match(/Next withdrawal:\s+[^$]+?(?:GMT[+-]\d{1,2}(?::\d{2})?)?/i);
@@ -354,7 +371,52 @@ async function scrapePayments(page, { includeFundsHistory = true } = {}) {
     };
   });
 
-  const withdrawButton = chooseWithdrawalButton(buttonInfo.buttons);
+  const availableAmountCents = numberOrZero(pageProps?.paymentStatus?.amountInCents);
+  let withdrawButton = chooseWithdrawalButton(buttonInfo.buttons, availableAmountCents);
+  if (!withdrawButton.present && availableAmountCents > 0) {
+    withdrawButton = await page.evaluate((amountInCents) => {
+      const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+      const exactAmount = `$${(Number(amountInCents) / 100).toFixed(2)}`;
+      const candidates = Array.from(document.querySelectorAll('button')).map((node) => ({
+        text: normalize(node.innerText || node.textContent || ''),
+        disabled: Boolean(node.disabled),
+        ariaDisabled: normalize(node.getAttribute('aria-disabled') || ''),
+        formAction: normalize(node.form?.getAttribute('action') || ''),
+        formMethod: normalize(node.form?.getAttribute('method') || ''),
+      })).filter((button) => {
+        if (!button.text || button.disabled || button.ariaDisabled === 'true') {
+          return false;
+        }
+
+        if (button.text === `${exactAmount} available`) {
+          return true;
+        }
+
+        return button.text === `Get paid ${exactAmount}`
+          && button.formMethod.toLowerCase() === 'post'
+          && /\/workers\/payments\/get_paid(?:\?|$)/.test(button.formAction);
+      });
+
+      if (candidates.length !== 1) {
+        return {
+          present: candidates.length > 0,
+          enabled: false,
+          disabled: null,
+          text: null,
+          count: candidates.length,
+        };
+      }
+
+      const button = candidates[0];
+      return {
+        present: true,
+        enabled: !button.disabled,
+        disabled: button.disabled,
+        text: button.text,
+        count: 1,
+      };
+    }, availableAmountCents);
+  }
   const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page) : {
     next_payout_days: 0,
     next_payout_entries_count: 0,
@@ -373,11 +435,11 @@ async function scrapePayments(page, { includeFundsHistory = true } = {}) {
   });
 }
 
-function chooseWithdrawalButton(buttons) {
+function chooseWithdrawalButton(buttons, availableAmountCents = null) {
   const candidates = Array.isArray(buttons)
     ? buttons
         .map(normalizeButtonCandidate)
-        .filter((button) => button && WITHDRAW_BUTTON_TEXT_PATTERN.test(button.text))
+        .filter((button) => isWithdrawalCandidate(button, availableAmountCents))
     : [];
 
   if (candidates.length !== 1) {
@@ -409,8 +471,34 @@ function normalizeButtonCandidate(button) {
   return {
     text,
     disabled: Boolean(button.disabled),
+    ariaDisabled: normalizeText(button.ariaDisabled || ''),
+    formAction: normalizeText(button.formAction || ''),
+    formMethod: normalizeText(button.formMethod || ''),
   };
 }
+
+function isWithdrawalCandidate(button, availableAmountCents = null) {
+  if (!button || !button.text) {
+    return false;
+  }
+
+  if (button.disabled || button.ariaDisabled === 'true') {
+    return false;
+  }
+
+  const exactAmount = availableAmountCents === null ? null : formatCents(availableAmountCents);
+  const matchesLegacyText = WITHDRAW_BUTTON_TEXT_PATTERN.test(button.text) && (exactAmount === null || button.text === `${exactAmount} available`);
+  if (matchesLegacyText) {
+    return true;
+  }
+
+  const matchesCurrentText = WITHDRAW_BUTTON_SUBMIT_PATTERN.test(button.text) && (exactAmount === null || button.text === `Get paid ${exactAmount}`);
+  const matchesForm = button.formMethod.toLowerCase() === 'post' && /\/workers\/payments\/get_paid(?:\?|$)/.test(button.formAction);
+
+  return matchesForm && matchesCurrentText;
+}
+
+const WITHDRAW_BUTTON_SUBMIT_PATTERN = /^Get paid \$[\d,]+(?:\.\d{2})?$/i;
 
 function normalizeText(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');

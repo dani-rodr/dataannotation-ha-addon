@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildDeviceInfo, buildDiscoveryNames } = require('./mqtt_bridge');
+const { buildDeviceInfo, buildDiscoveryNames, formatProjectEntityName, shortenProjectName } = require('./mqtt_bridge');
 
 test('device metadata uses a clean Data Annotation name', () => {
   const device = buildDeviceInfo('Daniel Rodriguez', '0.1.1');
@@ -24,4 +24,11 @@ test('discovery names stay short', () => {
     withdraw_funds: 'Withdraw Funds',
     next_payout: 'Next Payout',
   });
+});
+
+test('project entity names are prefixed and shortened', () => {
+  const short = shortenProjectName('Boxing 🥊 - Create Complex Coding Task Prompts for your Assigned Interaction Mode - 06/14/26');
+  assert.equal(short.includes('06/14/26'), false);
+  assert.ok(short.length <= 40);
+  assert.equal(formatProjectEntityName('Boxing 🥊 - Create Complex Coding Task Prompts for your Assigned Interaction Mode - 06/14/26').startsWith('Project - '), true);
 });

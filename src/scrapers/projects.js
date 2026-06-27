@@ -1,11 +1,22 @@
 const crypto = require('crypto');
 
 function extractProjects(props) {
-  const reportableProjects = Array.isArray(props?.reportableProjectsInfo) ? props.reportableProjectsInfo : [];
   const dashboardProjects = Array.isArray(props?.dashboardMerchTargeting?.projects) ? props.dashboardMerchTargeting.projects : [];
-  const list = reportableProjects.length > 0 ? reportableProjects : dashboardProjects;
+  const easyProjects = Array.isArray(props?.dashboardMerchTargeting?.easyProjects) ? props.dashboardMerchTargeting.easyProjects : [];
+  const list = [...dashboardProjects, ...easyProjects];
+  const seen = new Set();
 
-  return list.map(normalizeProject).filter(Boolean);
+  return list
+    .map(normalizeProject)
+    .filter((project) => project && project.tasks > 0)
+    .filter((project) => {
+      if (seen.has(project.slug)) {
+        return false;
+      }
+
+      seen.add(project.slug);
+      return true;
+    });
 }
 
 function summarizeProjects(projects) {
