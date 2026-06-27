@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.6
+
+- Fix `Can Withdraw` detection for the live `Get paid $x.xx` submit button.
+- Restore project publishing by defining the missing MQTT helper.
+
 ## 0.2.5
 
 - Hide zero-task project entities and delete stale MQTT project discoveries.

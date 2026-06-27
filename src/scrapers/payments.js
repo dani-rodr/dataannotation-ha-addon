@@ -3,6 +3,7 @@ const { scrapeFundsHistory } = require('./funds_history');
 function extractPaymentsSnapshot({
   pageProps,
   earningsSummary,
+  withdrawButton = null,
   buttonText,
   buttonDisabled,
   nextWithdrawalText,
@@ -14,8 +15,8 @@ function extractPaymentsSnapshot({
   now = new Date(),
 }) {
   const availableAmountCents = numberOrZero(pageProps?.paymentStatus?.amountInCents);
-  const withdrawButton = normalizeWithdrawalButton(buttonText, buttonDisabled);
-  const canWithdraw = Boolean(withdrawButton.present && withdrawButton.enabled && availableAmountCents > 0);
+  const normalizedWithdrawButton = withdrawButton || normalizeWithdrawalButton(buttonText, buttonDisabled);
+  const canWithdraw = Boolean(normalizedWithdrawButton.present && normalizedWithdrawButton.enabled && availableAmountCents > 0);
   const totalEarningsCents = numberOrZero(pageProps?.totalLifetimeEarnings);
   const pendingApprovalCents = numberOrZero(pageProps?.unapprovedAmount);
   const totalPaidOutCents = numberOrZero(earningsSummary?.totalPaidOut);
@@ -37,12 +38,12 @@ function extractPaymentsSnapshot({
     available_amount: centsToNumber(availableAmountCents),
     available_amount_formatted: formatCents(availableAmountCents),
     can_withdraw: canWithdraw,
-    button_enabled: withdrawButton.enabled,
-    button_text: withdrawButton.text,
-    withdraw_button_present: withdrawButton.present,
-    withdraw_button_text: withdrawButton.text,
-    withdraw_button_count: withdrawButton.count,
-    withdraw_button_disabled: withdrawButton.present ? withdrawButton.disabled : null,
+    button_enabled: normalizedWithdrawButton.enabled,
+    button_text: normalizedWithdrawButton.text,
+    withdraw_button_present: normalizedWithdrawButton.present,
+    withdraw_button_text: normalizedWithdrawButton.text,
+    withdraw_button_count: normalizedWithdrawButton.count,
+    withdraw_button_disabled: normalizedWithdrawButton.present ? normalizedWithdrawButton.disabled : null,
     next_withdrawal_at: nextWithdrawalAt,
     next_withdrawal_text: nextWithdrawalText || null,
     payment_status: pageProps?.paymentStatus?.type || null,
@@ -427,6 +428,7 @@ async function scrapePayments(page, { includeFundsHistory = true } = {}) {
   return extractPaymentsSnapshot({
     pageProps,
     earningsSummary,
+    withdrawButton,
     buttonText: withdrawButton.text,
     buttonDisabled: withdrawButton.disabled,
     nextWithdrawalText: buttonInfo.nextWithdrawalText,

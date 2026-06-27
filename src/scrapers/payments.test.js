@@ -288,3 +288,47 @@ test('extractPaymentsSnapshot reports no withdraw button when the exact button i
   assert.equal(snapshot.can_withdraw, false);
   assert.equal(snapshot.button_text, null);
 });
+
+test('extractPaymentsSnapshot keeps a validated live withdraw button', () => {
+  const snapshot = extractPaymentsSnapshot({
+    pageProps: {
+      totalLifetimeEarnings: 50000,
+      unapprovedAmount: 0,
+      paymentStatus: {
+        type: 'available',
+        nextEligibleAt: null,
+        amountInCents: 50000,
+      },
+      unpaidPendingAmountInCents: 0,
+      lastPayoutAt: '2026-06-24T14:05:02.298Z',
+      showFundsHistoryTable: true,
+    },
+    earningsSummary: {
+      totalPaidOut: 0,
+      currentMonthEarnings: 50000,
+      bestMonth: {
+        month: '2026-06',
+        withdrawnInCents: 50000,
+        earnedInCents: 0,
+        pendingInCents: 0,
+      },
+    },
+    withdrawButton: {
+      present: true,
+      enabled: true,
+      disabled: false,
+      text: 'Get paid $500.00',
+      count: 1,
+    },
+    buttonText: '',
+    buttonDisabled: true,
+    nextWithdrawalText: '',
+    now: new Date('2026-06-26T14:05:02.298Z'),
+  });
+
+  assert.equal(snapshot.withdraw_button_present, true);
+  assert.equal(snapshot.button_enabled, true);
+  assert.equal(snapshot.can_withdraw, true);
+  assert.equal(snapshot.button_text, 'Get paid $500.00');
+  assert.equal(snapshot.withdraw_button_count, 1);
+});

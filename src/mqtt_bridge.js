@@ -7,6 +7,11 @@ const NULL_LOGGER = {
   error() {},
 };
 
+function numberOrZero(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 class DataAnnotationMqttBridge {
   constructor(options) {
     const mqtt = require('mqtt');
