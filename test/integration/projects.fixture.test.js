@@ -11,6 +11,7 @@ test('fixture project parsing matches the observed DataAnnotation payload', () =
 
   assert.equal(projects.length, 1);
   assert.deepEqual(projects[0], {
+    id: 'project-123',
     slug: projects[0].slug,
     name: 'Boxing 🥊 - Create Complex Coding Task Prompts for your Assigned Interaction Mode - 06/14/26',
     tasks: 5,
@@ -38,6 +39,6 @@ test('fixture projects satisfy the dynamic shape invariants', () => {
     assert.ok(project.tags.every((tag) => typeof tag === 'string'));
     assert.ok(['project', 'coding', 'qualification'].includes(project.category));
     assert.ok(project.created === null || typeof project.created === 'string');
-    assert.equal(Object.hasOwn(project, 'id'), false);
+    assert.equal(typeof project.id, 'string');
   }
 });

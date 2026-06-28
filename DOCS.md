@@ -19,8 +19,11 @@
 - Clicks only the login submit button when a session refresh is required
 - Keeps withdraw state in `/data/withdraw-lock-state.json` so it survives restarts and syncs
 - Publishes `Withdraw Locked` as ON when withdrawals are locked
+- Keeps claim-project state in `/data/claim-projects-lock-state.json` so it survives restarts and syncs
+- Publishes `Claim Projects Locked` as ON when claim actions are locked
 - Keeps fast polling state in `/data/fast-polling-state.json` so it survives restarts and syncs
 - Publishes `Fast Polling` as ON when the fast schedule is active
+- Publishes one claim button per active project
 - Refreshes normal payment telemetry on the regular poll and only expands Funds History on the slower schedule
 - Emits a Home Assistant persistent notification if a withdrawal is requested while locked or unavailable
 - Uses Home Assistant Core API access for persistent notifications
@@ -36,6 +39,7 @@
 - The `Next Payout` sensor reports the earliest pending payout estimate, reuses the first-seen timestamp for new rows, and exposes compact payout-entry attributes plus a human-readable timestamp.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
 - Fast polling only scrapes projects and skips payments until a full sync runs again.
+- Claim buttons use a desktop screen profile and click the exact project link before checking for `Enter Work Mode`.
 - Polling cron schedules are restricted to simple step expressions with a minimum interval of 15 seconds.
 
 ## Payments Entities

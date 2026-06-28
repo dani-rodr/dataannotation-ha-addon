@@ -5,6 +5,7 @@ const { DataAnnotationMqttBridge } = require('./mqtt_bridge');
 const { createLogger } = require('./logger');
 const { summarizeProjects } = require('./scrapers/projects');
 const { computeNextRunAt } = require('./polling_schedule');
+const { loadClaimProjectsLockState, saveClaimProjectsLockState } = require('./claim_projects_state');
 const {
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,
@@ -17,6 +18,7 @@ const { loadWithdrawLockState, saveWithdrawLockState } = require('./withdraw_loc
 const { version } = require('../package.json');
 
 const WITHDRAW_LOCK_STATE_PATH = '/data/withdraw-lock-state.json';
+const CLAIM_PROJECTS_LOCK_STATE_PATH = '/data/claim-projects-lock-state.json';
 const FAST_POLLING_STATE_PATH = '/data/fast-polling-state.json';
 const FUNDS_HISTORY_OBSERVATIONS_PATH = '/data/funds-history-observations.json';
 
@@ -60,6 +62,7 @@ async function main() {
   });
 
   let withdrawLocked = loadWithdrawLockState(WITHDRAW_LOCK_STATE_PATH);
+  let claimProjectsLocked = loadClaimProjectsLockState(CLAIM_PROJECTS_LOCK_STATE_PATH);
   let fastPollingEnabled = loadFastPollingState(FAST_POLLING_STATE_PATH);
 
   try {
@@ -68,6 +71,7 @@ async function main() {
     bridge.publishDiscovery();
     bridge.publishProfile(config.profile || 'Data Annotation');
     bridge.publishWithdrawLockState(withdrawLocked);
+    bridge.publishClaimProjectsLockState(claimProjectsLocked);
     bridge.publishFastPollingState(fastPollingEnabled);
 
     let lastSuccessfulSyncAt = null;
@@ -87,6 +91,14 @@ async function main() {
         logger.info(`Withdraw lock state updated: ${withdrawLocked ? 'locked' : 'unlocked'}`);
       }
 
+      if (bridge.claimProjectsLockChange.value !== null) {
+        claimProjectsLocked = bridge.claimProjectsLockChange.value;
+        bridge.claimProjectsLockChange.value = null;
+        saveClaimProjectsLockState(CLAIM_PROJECTS_LOCK_STATE_PATH, claimProjectsLocked);
+        bridge.publishClaimProjectsLockState(claimProjectsLocked);
+        logger.info(`Claim projects lock state updated: ${claimProjectsLocked ? 'locked' : 'unlocked'}`);
+      }
+
       if (bridge.fastPollingChange.value !== null) {
         fastPollingEnabled = bridge.fastPollingChange.value;
         bridge.fastPollingChange.value = null;
@@ -94,6 +106,13 @@ async function main() {
         bridge.publishFastPollingState(fastPollingEnabled);
         nextRunAt = Date.now();
         logger.info(`Fast polling state updated: ${fastPollingEnabled ? 'enabled' : 'disabled'}`);
+      }
+
+      if (bridge.claimRequested.value) {
+        const claimRequest = bridge.claimRequested.value;
+        bridge.claimRequested.value = null;
+        await handleClaimRequest(client, bridge, claimProjectsLocked, claimRequest, logger);
+        bridge.scanRequested.value = true;
       }
 
       if (bridge.withdrawRequested.value) {
@@ -309,8 +328,73 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
   logger.debug('Scheduling sync after withdrawal request');
 }
 
+async function handleClaimRequest(client, bridge, claimProjectsLocked, claimRequest, logger) {
+  logger.info(`Processing claim project request${claimRequest?.slug ? ` for ${claimRequest.slug}` : ''}`);
+
+  if (claimProjectsLocked) {
+    try {
+      await createPersistentNotification({
+        title: 'Data Annotation Claim Projects Locked',
+        message: buildClaimProjectsLockedMessage(),
+        notificationId: 'dataannotation_claim_projects_locked',
+        logger,
+      });
+    } catch (error) {
+      logger.warning(`Failed to create claim projects locked notification: ${error.message}`);
+    }
+    logger.warning('Claim project request blocked because the lock is on');
+    return;
+  }
+
+  if (!claimRequest?.slug) {
+    logger.warning('Claim project request missing a project slug');
+    return;
+  }
+
+  logger.debug('Submitting claim project request through fresh project page check');
+  const result = await client.claimProject(claimRequest.slug);
+
+  if (result.status === 'claimed' || result.status === 'already_in_work_mode') {
+    logger.info(`Claim project request completed: ${result.status}`);
+  } else {
+    try {
+      await createPersistentNotification({
+        title: 'Data Annotation Claim Project Not Ready',
+        message: buildClaimNotReadyMessage(result),
+        notificationId: 'dataannotation_claim_project_not_ready',
+        logger,
+      });
+    } catch (error) {
+      logger.warning(`Failed to create claim project not-ready notification: ${error.message}`);
+    }
+    logger.warning(`Claim project request was not completed: ${result.status}`);
+  }
+
+  logger.debug(`Claim project result page URL: ${result.pageUrl || ''}`);
+}
+
 function buildWithdrawalLockedMessage() {
   return 'Withdrawals are currently locked.\n\nTurn off Withdraw Locked, then press Withdraw Funds again.';
+}
+
+function buildClaimProjectsLockedMessage() {
+  return 'Claim projects are currently locked.\n\nTurn off Claim Projects Locked, then press Claim Project again.';
+}
+
+function buildClaimNotReadyMessage(result) {
+  if (result?.status === 'screen_too_small') {
+    return 'Claim Project is not available right now.\n\nThe task page is still blocked by the screen size requirement.';
+  }
+
+  if (result?.status === 'not_found') {
+    return 'Claim Project is not available right now.\n\nThe project was not found on the current projects page.';
+  }
+
+  if (result?.status === 'wrong_route') {
+    return 'Claim Project navigated to an unexpected page.\n\nThe project row did not open a task page.';
+  }
+
+  return 'Claim Project is not available right now.\n\nThe project did not open a claimable task page.';
 }
 
 function buildWithdrawalNotReadyMessage(payments, reason) {

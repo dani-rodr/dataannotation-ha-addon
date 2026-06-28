@@ -7,6 +7,8 @@ const NULL_LOGGER = {
   error() {},
 };
 
+const { formatClaimProjectEntityName } = require('./project_claim');
+
 function numberOrZero(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -23,8 +25,11 @@ class DataAnnotationMqttBridge {
     this.scanRequested = { value: false };
     this.withdrawRequested = { value: false };
     this.withdrawLockChange = { value: null };
+    this.claimProjectsLockChange = { value: null };
     this.fastPollingChange = { value: null };
+    this.claimRequested = { value: null };
     this.publishedProjectSlugs = new Set();
+    this.publishedClaimProjectSlugs = new Set();
     this.connected = false;
     this._availabilityState = 'offline';
     this.client = mqtt.connect({
@@ -49,13 +54,15 @@ class DataAnnotationMqttBridge {
       this.connected = true;
       this.logger.info('Connected to MQTT broker');
       this.client.subscribe(
-        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set')],
+        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('claim/+')],
         { qos: 1 }
       );
       this.logger.debug(`Subscribed to ${this._topic('command/sync')}`);
       this.logger.debug(`Subscribed to ${this._topic('command/withdraw')}`);
       this.logger.debug(`Subscribed to ${this._topic('withdraw/lock/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('fast/poll/set')}`);
+      this.logger.debug(`Subscribed to ${this._topic('claim/lock/set')}`);
+      this.logger.debug(`Subscribed to ${this._topic('claim/+')}`);
     });
     this.client.on('close', () => {
       this.connected = false;
@@ -89,6 +96,22 @@ class DataAnnotationMqttBridge {
         this.fastPollingChange.value = false;
         this.logger.debug('Publishing optimistic fast polling state: OFF');
         this.publishFastPollingState(false);
+      } else if (topic === this._topic('claim/lock/set') && message === 'on') {
+        this.logger.info('Received claim projects lock request: ON');
+        this.claimProjectsLockChange.value = true;
+        this.logger.debug('Publishing optimistic claim projects lock state: ON');
+        this.publishClaimProjectsLockState(true);
+      } else if (topic === this._topic('claim/lock/set') && message === 'off') {
+        this.logger.info('Received claim projects lock request: OFF');
+        this.claimProjectsLockChange.value = false;
+        this.logger.debug('Publishing optimistic claim projects lock state: OFF');
+        this.publishClaimProjectsLockState(false);
+      } else if (topic.startsWith(this._topic('claim/')) && topic !== this._topic('claim/lock/set') && message === 'claim') {
+        const slug = topic.slice(this._topic('claim/').length);
+        if (slug) {
+          this.logger.info(`Received claim project request via MQTT for ${slug}`);
+          this.claimRequested.value = { slug };
+        }
       }
     });
   }
@@ -141,6 +164,22 @@ class DataAnnotationMqttBridge {
       payload_available: 'online',
       payload_not_available: 'offline',
       icon: 'mdi:lock',
+      device: this.device,
+    });
+
+    this._publishDiscovery('switch', 'claim_projects_locked', {
+      name: names.claim_projects_locked,
+      unique_id: `${this.topicPrefix}_claim_projects_locked`,
+      state_topic: this._topic('claim/lock/state'),
+      command_topic: this._topic('claim/lock/set'),
+      payload_on: 'ON',
+      payload_off: 'OFF',
+      state_on: 'ON',
+      state_off: 'OFF',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:briefcase-lock',
       device: this.device,
     });
 
@@ -413,6 +452,12 @@ class DataAnnotationMqttBridge {
     this._publish(this._topic('withdraw/lock/state'), state, true);
   }
 
+  publishClaimProjectsLockState(locked) {
+    const state = locked ? 'ON' : 'OFF';
+    this.logger.debug(`Publishing claim projects lock state: ${state}`);
+    this._publish(this._topic('claim/lock/state'), state, true);
+  }
+
   publishFastPollingState(enabled) {
     const state = enabled ? 'ON' : 'OFF';
     this.logger.debug(`Publishing fast polling state: ${state}`);
@@ -441,6 +486,7 @@ class DataAnnotationMqttBridge {
   publishProjects(projects, scrapedAt = new Date().toISOString()) {
     this.logger.debug(`Publishing ${projects.length} project entities`);
     const currentSlugs = new Set();
+    const currentClaimSlugs = new Set();
 
     for (const project of projects) {
       if (numberOrZero(project.tasks) > 0) {
@@ -449,8 +495,13 @@ class DataAnnotationMqttBridge {
         this._publishProjectState(project, scrapedAt);
         this._publish(this._projectAvailabilityTopic(project.slug), 'online', true);
         this.publishedProjectSlugs.add(project.slug);
+
+        currentClaimSlugs.add(project.slug);
+        this._publishProjectClaimDiscovery(project);
+        this.publishedClaimProjectSlugs.add(project.slug);
       } else {
         this._deleteProjectEntity(project.slug);
+        this._deleteProjectClaimEntity(project.slug);
       }
     }
 
@@ -460,7 +511,14 @@ class DataAnnotationMqttBridge {
       }
     }
 
+    for (const publishedSlug of this.publishedClaimProjectSlugs) {
+      if (!currentClaimSlugs.has(publishedSlug)) {
+        this._deleteProjectClaimEntity(publishedSlug);
+      }
+    }
+
     this.publishedProjectSlugs = currentSlugs;
+    this.publishedClaimProjectSlugs = currentClaimSlugs;
   }
 
   publishPayments(payments, scrapedAt = new Date().toISOString()) {
@@ -496,6 +554,20 @@ class DataAnnotationMqttBridge {
     this._publishJson(this._projectStateTopic(project.slug), payload, true);
   }
 
+  _publishProjectClaimDiscovery(project) {
+    this._publishDiscovery('button', `claim_project_${project.slug}`, {
+      name: formatClaimProjectEntityName(project.name),
+      unique_id: `${this.topicPrefix}_claim_project_${project.slug}`,
+      command_topic: this._topic(`claim/${project.slug}`),
+      payload_press: 'claim',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:briefcase-check',
+      device: this.device,
+    });
+  }
+
   _publishDiscovery(component, objectId, payload) {
     this._publishJson(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, payload, true);
   }
@@ -503,6 +575,10 @@ class DataAnnotationMqttBridge {
   _deleteProjectEntity(slug) {
     this._publish(`homeassistant/sensor/${this.topicPrefix}_${slug}/config`, '', true);
     this._publish(this._projectAvailabilityTopic(slug), 'offline', true);
+  }
+
+  _deleteProjectClaimEntity(slug) {
+    this._publish(`homeassistant/button/${this.topicPrefix}_claim_project_${slug}/config`, '', true);
   }
 
   _publishJson(topic, payload, retain) {
@@ -545,19 +621,20 @@ function buildDeviceInfo(profileName, version) {
 }
 
 function buildDiscoveryNames() {
-  return {
-    button: 'Sync Now',
-    profile: 'Profile',
-    project_count: 'Project Count',
-    total_tasks: 'Total Tasks',
-    status: 'Status',
-    last_sync: 'Last Sync',
-    withdraw_locked: 'Withdraw Locked',
-    fast_polling: 'Fast Polling',
-    withdraw_funds: 'Withdraw Funds',
-    next_payout: 'Next Payout',
-  };
-}
+    return {
+      button: 'Sync Now',
+      profile: 'Profile',
+      project_count: 'Project Count',
+      total_tasks: 'Total Tasks',
+      status: 'Status',
+      last_sync: 'Last Sync',
+      withdraw_locked: 'Withdraw Locked',
+      claim_projects_locked: 'Claim Projects Locked',
+      fast_polling: 'Fast Polling',
+      withdraw_funds: 'Withdraw Funds',
+      next_payout: 'Next Payout',
+    };
+  }
 
 function formatProjectEntityName(name) {
   return `Project - ${shortenProjectName(name, 40)}`;

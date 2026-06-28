@@ -1,6 +1,7 @@
 const fs = require('fs');
 const puppeteer = require('puppeteer-core');
 
+const { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require('./project_claim');
 const { extractProjects } = require('./scrapers/projects');
 const { chooseWithdrawalButton, scrapePayments } = require('./scrapers/payments');
 
@@ -14,6 +15,7 @@ const NULL_LOGGER = {
 const PROJECTS_URL = 'https://app.dataannotation.tech/workers/projects';
 const PAYMENTS_URL = 'https://app.dataannotation.tech/workers/payments';
 const SIGN_IN_URL = 'https://app.dataannotation.tech/users/sign_in';
+const CLAIM_WORK_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 class DataAnnotationClient {
   constructor(options) {
@@ -132,6 +134,119 @@ class DataAnnotationClient {
     }
   }
 
+  async claimProject(projectSlug) {
+    const page = await this._newPage();
+
+    try {
+      this.logger.debug(`Opening DataAnnotation projects page for claim: ${projectSlug}`);
+      await this._applyClaimViewport(page);
+      await this._loadAuthenticatedPage(page, PROJECTS_URL, 'div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]');
+      this.logger.debug('Reading fresh project list for claim request');
+      const projects = await this._scrapeProjects(page);
+      const project = projects.find((item) => item.slug === projectSlug);
+
+      if (!project) {
+        this.logger.debug('Claim request target project was not found in the active project list');
+        return {
+          status: 'not_found',
+          pageUrl: page.url(),
+          projectSlug,
+        };
+      }
+
+      await this._openProjectsTab(page, project.name);
+
+      const clickResult = await this._clickProjectClaimTarget(page, project);
+      this.logger.debug(`Project row click result: ${clickResult.kind || 'none'}${clickResult.href ? ` (${clickResult.href})` : ''}`);
+
+      if (!clickResult.clicked) {
+        return {
+          status: 'not_found',
+          pageUrl: page.url(),
+          project,
+        };
+      }
+
+      await Promise.race([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 7000 }).catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 2500)),
+      ]);
+
+      const pageState = await this._readClaimPageState(page);
+      this.logger.debug(`Claim target landed on ${pageState.url}`);
+
+      if (pageState.hasScreenWarning) {
+        return {
+          status: 'screen_too_small',
+          pageUrl: pageState.url,
+          project,
+          pageState,
+        };
+      }
+
+      if (/\/workers\/projects\/[^/]+\/report_time(?:\?|$)/.test(pageState.url)) {
+        return {
+          status: 'wrong_route',
+          pageUrl: pageState.url,
+          project,
+          pageState,
+        };
+      }
+
+      if (pageState.exitVisible) {
+        return {
+          status: 'already_in_work_mode',
+          pageUrl: pageState.url,
+          project,
+          pageState,
+        };
+      }
+
+      if (pageState.enterVisible) {
+        const clickedEnter = await this._clickExactVisibleButton(page, 'Enter Work Mode');
+        if (!clickedEnter) {
+          return {
+            status: 'not_available',
+            pageUrl: pageState.url,
+            project,
+            pageState,
+          };
+        }
+
+        await Promise.race([
+          page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 7000 }).catch(() => {}),
+          new Promise((resolve) => setTimeout(resolve, 2500)),
+        ]);
+
+        const afterEnter = await this._readClaimPageState(page);
+        if (afterEnter.exitVisible) {
+          return {
+            status: 'claimed',
+            pageUrl: afterEnter.url,
+            project,
+            pageState: afterEnter,
+          };
+        }
+
+        return {
+          status: 'not_available',
+          pageUrl: afterEnter.url,
+          project,
+          pageState: afterEnter,
+        };
+      }
+
+      return {
+        status: 'not_available',
+        pageUrl: pageState.url,
+        project,
+        pageState,
+      };
+    } finally {
+      await page.close().catch(() => {});
+    }
+  }
+
   async _ensureAuthenticated(page) {
     await page.goto(PROJECTS_URL, { waitUntil: 'domcontentloaded' });
     await page
@@ -215,6 +330,179 @@ class DataAnnotationClient {
 
     const props = JSON.parse(rawProps);
     return extractProjects(props);
+  }
+
+  async _applyClaimViewport(page) {
+    await page.setViewport({
+      width: CLAIM_WORK_SCREEN_METRICS.width,
+      height: CLAIM_WORK_SCREEN_METRICS.height,
+      deviceScaleFactor: CLAIM_WORK_SCREEN_METRICS.deviceScaleFactor,
+      isMobile: CLAIM_WORK_SCREEN_METRICS.mobile,
+      hasTouch: CLAIM_WORK_SCREEN_METRICS.hasTouch,
+    });
+
+    const client = await page.target().createCDPSession();
+    await client.send('Emulation.setDeviceMetricsOverride', {
+      width: CLAIM_WORK_SCREEN_METRICS.width,
+      height: CLAIM_WORK_SCREEN_METRICS.height,
+      deviceScaleFactor: CLAIM_WORK_SCREEN_METRICS.deviceScaleFactor,
+      mobile: CLAIM_WORK_SCREEN_METRICS.mobile,
+      screenWidth: CLAIM_WORK_SCREEN_METRICS.screenWidth,
+      screenHeight: CLAIM_WORK_SCREEN_METRICS.screenHeight,
+      positionX: CLAIM_WORK_SCREEN_METRICS.positionX,
+      positionY: CLAIM_WORK_SCREEN_METRICS.positionY,
+      dontSetVisibleSize: CLAIM_WORK_SCREEN_METRICS.dontSetVisibleSize,
+    });
+
+    await page.setUserAgent(CLAIM_WORK_USER_AGENT);
+  }
+
+  async _clickProjectClaimTarget(page, project) {
+    const target = buildClaimProjectTarget(project);
+
+    return page.evaluate(({ projectSlug, projectName, projectId }) => {
+      const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+      const exactName = normalize(projectName);
+      const exactSlug = normalize(projectSlug);
+      const exactId = normalize(projectId);
+
+      const rows = Array.from(document.querySelectorAll('tr'));
+      for (const row of rows) {
+        const rowText = normalize(row.innerText || row.textContent || '');
+        if (!rowText) {
+          continue;
+        }
+
+        const rowMatches = [exactName, exactSlug, exactId].filter(Boolean).some((needle) => rowText.includes(needle));
+        if (!rowMatches) {
+          continue;
+        }
+
+        const anchors = Array.from(row.querySelectorAll('a[href]'));
+        const preferredAnchor = anchors.find((anchor) => normalize(anchor.innerText || anchor.textContent || '') === exactName)
+          || anchors.find((anchor) => normalize(anchor.innerText || anchor.textContent || '').includes(exactName))
+          || anchors.find((anchor) => {
+            const href = normalize(anchor.getAttribute('href') || '');
+            return href && !/\/report_time(?:\?|$)/.test(href);
+          });
+
+        if (preferredAnchor) {
+          preferredAnchor.click();
+          return {
+            clicked: true,
+            kind: 'anchor',
+            href: preferredAnchor.getAttribute('href') || '',
+          };
+        }
+
+        row.click();
+        return {
+          clicked: true,
+          kind: 'row',
+          href: '',
+        };
+      }
+
+      return {
+        clicked: false,
+        kind: 'none',
+        href: '',
+      };
+    }, target);
+  }
+
+  async _openProjectsTab(page, projectName) {
+    const clicked = await page.evaluate(() => {
+      const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+      const candidates = Array.from(document.querySelectorAll('a,button,[role="tab"]')).filter((node) => {
+        const text = normalize(node.innerText || node.textContent || node.getAttribute('aria-label') || '');
+        return /^Projects(?:\s+\d+)?$/i.test(text) || /^Projects\b/i.test(text);
+      });
+
+      const visibleCandidates = candidates.filter((node) => {
+        const style = window.getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+      });
+
+      if (visibleCandidates.length === 0) {
+        return false;
+      }
+
+      visibleCandidates[0].click();
+      return true;
+    });
+
+    if (clicked) {
+      await page.waitForFunction(
+        () => {
+          const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+          return Array.from(document.querySelectorAll('[role="tab"][aria-selected="true"],button[aria-selected="true"]')).some((node) => /^Projects(?:\s+\d+)?$/i.test(normalize(node.innerText || node.textContent || node.getAttribute('aria-label') || '')));
+        },
+        { timeout: 10000 }
+      ).catch(() => {});
+    }
+
+    return clicked;
+  }
+
+  async _readClaimPageState(page) {
+    return page.evaluate(() => {
+      const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+      const isVisible = (node) => {
+        const style = window.getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+      };
+
+      const buttons = Array.from(document.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]'))
+        .map((node) => {
+          const text = normalize(node.innerText || node.textContent || node.getAttribute('aria-label') || '');
+          return {
+            text,
+            disabled: Boolean(node.disabled),
+            visible: isVisible(node),
+          };
+        })
+        .filter((button) => button.visible && button.text);
+
+      const enterButtons = buttons.filter((button) => button.text === 'Enter Work Mode' && !button.disabled);
+      const exitButtons = buttons.filter((button) => button.text === 'Exit Work Mode' && !button.disabled);
+
+      return {
+        url: location.href,
+        title: document.title,
+        bodyText: normalize(document.body?.innerText || ''),
+        hasScreenWarning:
+          document.body?.innerText?.includes('This project requires a minimum screen size of 1024px.') ||
+          document.body?.innerText?.includes('The task content has been hidden until you meet the screen size requirement.'),
+        enterVisible: enterButtons.length > 0,
+        exitVisible: exitButtons.length > 0,
+        enterCount: enterButtons.length,
+        exitCount: exitButtons.length,
+      };
+    });
+  }
+
+  async _clickExactVisibleButton(page, label) {
+    return page.evaluate((targetLabel) => {
+      const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+      const isVisible = (node) => {
+        const style = window.getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+      };
+
+      const buttons = Array.from(document.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]'));
+      const matches = buttons.filter((node) => normalize(node.innerText || node.textContent || node.getAttribute('aria-label') || '') === targetLabel && !node.disabled && isVisible(node));
+
+      if (matches.length !== 1) {
+        return false;
+      }
+
+      matches[0].click();
+      return true;
+    }, label);
   }
 
   async _findWithdrawalButton(page, availableAmountCents = null) {

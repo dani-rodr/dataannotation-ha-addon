@@ -38,6 +38,7 @@ function normalizeProject(project) {
   const tags = buildTags(project);
 
   return {
+    id: stringOrEmpty(project?.id) || null,
     slug: stableSlug(name, project?.id, created),
     name,
     tasks,

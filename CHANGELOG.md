@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Add per-project claim buttons for active projects and a persisted `Claim Projects Locked` switch.
+- Use desktop screen metrics for claim navigation and exact `Enter Work Mode` detection.
+
 ## 0.3.3
 
 - Add compact `Next Payout` attributes with a human-readable timestamp and trimmed payout-entry array.

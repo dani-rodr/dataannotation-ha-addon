@@ -37,9 +37,11 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - `Last Sync`
 - `Sync Now`
 - `Withdraw Locked`
+- `Claim Projects Locked`
 - `Fast Polling`
 - `Withdraw Funds`
 - One sensor per active project
+- One claim button per active project
 - `Available Funds`
 - `Can Withdraw`
 - `Next Withdrawal`
