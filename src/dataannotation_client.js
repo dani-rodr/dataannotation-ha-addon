@@ -59,7 +59,10 @@ class DataAnnotationClient {
     try {
       this.logger.debug('Opening DataAnnotation payments page');
       await this._loadAuthenticatedPage(page, PAYMENTS_URL, 'div[id="workers/TransferFundsPage-hybrid-root"][data-props]');
-      const payments = await scrapePayments(page, { includeFundsHistory: options.includeFundsHistory !== false });
+      const payments = await scrapePayments(page, {
+        includeFundsHistory: options.includeFundsHistory !== false,
+        fundsHistoryObservationsPath: options.fundsHistoryObservationsPath || null,
+      });
       this.logger.debug(
         `Scraped payments snapshot: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`
       );

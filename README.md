@@ -70,6 +70,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - Withdraw lock state is stored under `/data/withdraw-lock-state.json` and restored on restart.
 - Fast polling state is stored under `/data/fast-polling-state.json` and restored on restart.
 - The slow Funds History schedule controls how often `Next Payout` is refreshed; normal payments telemetry still refreshes on the regular poll.
+- New pending Funds History rows cache their first-seen estimate so `Next Payout` stays stable between refreshes.
 - If DataAnnotation logs the session out, the add-on will detect the login page, sign back in, and continue scraping.
 - Withdrawal attempts that are blocked create a Home Assistant persistent notification.
 - Home Assistant Core API access is enabled so the add-on can create persistent notifications.

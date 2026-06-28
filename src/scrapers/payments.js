@@ -321,7 +321,7 @@ const MONTH_NAMES = [
 
 const WITHDRAW_BUTTON_TEXT_PATTERN = /^\$[\d,]+(?:\.\d{2})?\s+available$/i;
 
-async function scrapePayments(page, { includeFundsHistory = true } = {}) {
+async function scrapePayments(page, { includeFundsHistory = true, fundsHistoryObservationsPath = null, now = new Date() } = {}) {
   const rawProps = await page.$eval(
     'div[id="workers/TransferFundsPage-hybrid-root"]',
     (element) => element.getAttribute('data-props') || '{}'
@@ -418,7 +418,7 @@ async function scrapePayments(page, { includeFundsHistory = true } = {}) {
       };
     }, availableAmountCents);
   }
-  const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page) : {
+  const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page, { observationsPath: fundsHistoryObservationsPath, now }) : {
     next_payout_days: 0,
     next_payout_entries_count: 0,
     pending_payout_entries: [],

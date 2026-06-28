@@ -1,5 +1,11 @@
 const MONTH_SUMMARY_PATTERN = /^[A-Z][a-z]{2}\s+\d{1,2}(?:\s+\$[\d,]+(?:\.\d{2})?)?$/;
-const DETAIL_STATUS_PATTERN = /\b(Pending Approval|Paid)\s*·\s*(\d+)\s+day(?:s)?\s+ago\b/i;
+const {
+  applyFundsHistoryObservations,
+  loadFundsHistoryObservations,
+  saveFundsHistoryObservations,
+} = require('../funds_history_observations');
+
+const DETAIL_ROW_PATTERN = /^(Time Entry|Task Submission)\s+(?:·{1,3}\s+)?(\$[\d,]+(?:\.\d{2})?)(?:\s+(.*?))?\s+(Pending Approval|Paid)\s+·\s+(\d+)\s+(hour|day|week)s?\s+ago$/i;
 const DETAIL_KIND_PATTERN = /\b(Time Entry|Task Submission)\b/i;
 const MONTH_NAMES = [
   'jan',
@@ -16,7 +22,7 @@ const MONTH_NAMES = [
   'dec',
 ];
 
-async function scrapeFundsHistory(page) {
+async function scrapeFundsHistory(page, { observationsPath = null, now = new Date() } = {}) {
   await openFundsHistoryTab(page);
   await expandFundsHistoryRows(page);
 
@@ -27,7 +33,19 @@ async function scrapeFundsHistory(page) {
       .filter(Boolean);
   });
 
-  return summarizeFundsHistoryEntries(parseFundsHistoryEntries(rows));
+  const parsedEntries = parseFundsHistoryEntries(rows, now);
+  const observations = loadFundsHistoryObservations(observationsPath);
+  const merged = applyFundsHistoryObservations(parsedEntries, observations, now);
+
+  if (observationsPath) {
+    try {
+      saveFundsHistoryObservations(observationsPath, merged.observations);
+    } catch {
+      // Keep the live scrape working even if the persistence layer is unavailable.
+    }
+  }
+
+  return summarizeFundsHistoryEntries(merged.entries, now);
 }
 
 function parseFundsHistoryEntries(rows, now = new Date()) {
@@ -52,7 +70,7 @@ function parseFundsHistoryEntries(rows, now = new Date()) {
       continue;
     }
 
-    const entry = parseFundsHistoryDetailRow(text, currentProject, currentMonthDate);
+    const entry = parseFundsHistoryDetailRow(text, currentProject, currentMonthDate, now);
     if (entry) {
       entries.push(entry);
     }
@@ -71,7 +89,7 @@ function summarizeFundsHistoryEntries(entries, now = new Date()) {
     : 0;
   const nextPayoutAt = pendingEntries.length > 0
     ? pendingEntries
-        .map((entry) => computeNextPayoutAt(entry, now))
+        .map((entry) => normalizeIsoDate(entry.estimated_payout_at) || computeNextPayoutAt(entry, now))
         .filter(Boolean)
         .sort()[0] || null
     : null;
@@ -84,31 +102,46 @@ function summarizeFundsHistoryEntries(entries, now = new Date()) {
   };
 }
 
-function parseFundsHistoryDetailRow(text, project, entryDate = null) {
-  const kindMatch = text.match(DETAIL_KIND_PATTERN);
-  const statusMatch = text.match(DETAIL_STATUS_PATTERN);
+function parseFundsHistoryDetailRow(text, project, entryDate = null, now = new Date()) {
+  const match = text.match(DETAIL_ROW_PATTERN);
 
-  if (!kindMatch || !statusMatch) {
+  if (!match) {
     return null;
   }
 
-  const kind = kindMatch[1].toLowerCase() === 'time entry' ? 'hourly' : 'task';
-  const status = statusMatch[1].toLowerCase() === 'pending approval' ? 'pending' : 'paid';
-  if (status !== 'pending') {
-    return null;
-  }
-
-  const daysAgo = Number(statusMatch[2]);
+  const [, kindLabel, amount, durationText, statusLabel, relativeAgeValue, relativeAgeUnit] = match;
+  const kind = kindLabel.toLowerCase() === 'time entry' ? 'hourly' : 'task';
+  const status = statusLabel.toLowerCase() === 'pending approval' ? 'pending' : 'paid';
+  const normalizedAgeValue = Number(relativeAgeValue);
+  const normalizedAgeUnit = relativeAgeUnit.toLowerCase();
   const dueDays = kind === 'hourly' ? 7 : 3;
+  const ageDays = normalizedAgeUnit === 'hour'
+    ? normalizedAgeValue / 24
+    : normalizedAgeUnit === 'week'
+      ? normalizedAgeValue * 7
+      : normalizedAgeValue;
+  const entryDateValue = normalizeDate(entryDate) ? normalizeDate(entryDate).toISOString() : null;
+  const estimatedWorkAt = estimateWorkAt(now, normalizedAgeValue, normalizedAgeUnit, entryDateValue);
+  const estimatedPayoutAt = estimatePayoutAt(estimatedWorkAt, dueDays, now);
 
   return {
     project: project || null,
     kind,
     status,
-    days_ago: Number.isFinite(daysAgo) ? daysAgo : 0,
-    days_until_available: Math.max(0, dueDays - (Number.isFinite(daysAgo) ? daysAgo : 0)),
-    entry_date: normalizeDate(entryDate) ? normalizeDate(entryDate).toISOString() : null,
+    amount,
+    amount_cents: amountToCents(amount),
+    duration: durationText ? durationText.trim() : null,
+    relative_age_value: Number.isFinite(normalizedAgeValue) ? normalizedAgeValue : 0,
+    relative_age_unit: normalizedAgeUnit,
+    relative_age_text: `${Number.isFinite(normalizedAgeValue) ? normalizedAgeValue : 0} ${normalizedAgeUnit}${Number.isFinite(normalizedAgeValue) && normalizedAgeValue === 1 ? '' : 's'} ago`,
+    days_ago: Math.ceil(ageDays),
+    days_until_available: Math.max(0, Math.ceil(dueDays - ageDays)),
+    entry_date: entryDateValue,
     due_days: dueDays,
+    estimated_work_at: estimatedWorkAt,
+    estimated_payout_at: estimatedPayoutAt,
+    estimate_source: normalizedAgeUnit === 'hour' ? 'observed_hours' : normalizedAgeUnit === 'day' ? 'observed_days' : 'observed_weeks',
+    estimate_confidence: normalizedAgeUnit === 'hour' ? 'high' : 'medium',
   };
 }
 
@@ -178,6 +211,53 @@ function computeNextPayoutAt(entry, now = new Date()) {
   }
 
   return null;
+}
+
+function estimateWorkAt(now, ageValue, ageUnit, fallbackEntryDate) {
+  const current = normalizeDate(now) || new Date();
+  if (Number.isFinite(ageValue) && ageValue > 0) {
+    const ms = ageValue * relativeAgeUnitToMs(ageUnit);
+    return new Date(current.getTime() - ms).toISOString();
+  }
+
+  return fallbackEntryDate || current.toISOString();
+}
+
+function estimatePayoutAt(estimatedWorkAt, dueDays, now = new Date()) {
+  const workAt = normalizeDate(estimatedWorkAt);
+  if (!workAt) {
+    return null;
+  }
+
+  const payoutAt = new Date(workAt.getTime() + numberOrZero(dueDays) * 24 * 60 * 60 * 1000);
+  const current = normalizeDate(now) || new Date();
+  if (payoutAt <= current) {
+    return toLocalMidnightAtOffset(current, 1);
+  }
+
+  return payoutAt.toISOString();
+}
+
+function relativeAgeUnitToMs(unit) {
+  switch (String(unit || '').toLowerCase()) {
+    case 'hour':
+      return 60 * 60 * 1000;
+    case 'week':
+      return 7 * 24 * 60 * 60 * 1000;
+    case 'day':
+    default:
+      return 24 * 60 * 60 * 1000;
+  }
+}
+
+function amountToCents(value) {
+  const match = String(value || '').match(/^\$([\d,]+)(?:\.(\d{2}))?$/);
+  if (!match) {
+    return 0;
+  }
+
+  const [, dollarsRaw, centsRaw = '00'] = match;
+  return Number(dollarsRaw.replace(/,/g, '')) * 100 + Number(centsRaw);
 }
 
 function toLocalMidnightAtOffset(now, daysOffset) {
@@ -281,6 +361,11 @@ function normalizeDate(value) {
 
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizeIsoDate(value) {
+  const date = normalizeDate(value);
+  return date ? date.toISOString() : null;
 }
 
 function numberOrZero(value) {

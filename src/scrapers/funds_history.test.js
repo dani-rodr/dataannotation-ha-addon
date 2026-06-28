@@ -42,7 +42,10 @@ test('parseFundsHistoryDetailRow ignores paid entries', () => {
     'Example Project'
   );
 
-  assert.equal(paid, null);
+  assert.equal(paid.status, 'paid');
+  assert.equal(paid.kind, 'task');
+  assert.equal(paid.amount, '$50.00');
+  assert.equal(paid.relative_age_unit, 'day');
 });
 
 test('parseFundsHistoryDetailRow parses task pending entries', () => {
@@ -55,6 +58,22 @@ test('parseFundsHistoryDetailRow parses task pending entries', () => {
   assert.equal(parsed.days_ago, 1);
   assert.equal(parsed.days_until_available, 2);
   assert.equal(parsed.project, 'Example Project');
+});
+
+test('parseFundsHistoryDetailRow uses observed hours for a precise payout estimate', () => {
+  const now = new Date('2026-06-28T19:45:00.000Z');
+  const parsed = parseFundsHistoryDetailRow(
+    'Time Entry ··· $390.50 7h 6 min Pending Approval · 11 hours ago',
+    'Example Project',
+    new Date('2026-06-28T00:00:00.000Z'),
+    now
+  );
+
+  assert.equal(parsed.status, 'pending');
+  assert.equal(parsed.relative_age_unit, 'hour');
+  assert.equal(parsed.estimate_source, 'observed_hours');
+  assert.equal(parsed.estimate_confidence, 'high');
+  assert.equal(parsed.estimated_payout_at, '2026-07-05T08:45:00.000Z');
 });
 
 test('summarizeFundsHistoryEntries returns the earliest next payout day', () => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Persist first-seen Funds History observations so `Next Payout` can reuse stable per-entry timestamps and clean up paid entries.
+
 ## 0.3.0
 
 - Keep normal payment telemetry on the regular poll and move Funds History expansion to a slower schedule.

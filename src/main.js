@@ -18,6 +18,7 @@ const { version } = require('../package.json');
 
 const WITHDRAW_LOCK_STATE_PATH = '/data/withdraw-lock-state.json';
 const FAST_POLLING_STATE_PATH = '/data/fast-polling-state.json';
+const FUNDS_HISTORY_OBSERVATIONS_PATH = '/data/funds-history-observations.json';
 
 let running = true;
 
@@ -201,7 +202,10 @@ async function doSync(
     bridge.publishProjects(result.projects, completedAt);
 
     if (includePayments) {
-      const payments = await client.collectPayments({ includeFundsHistory });
+      const payments = await client.collectPayments({
+        includeFundsHistory,
+        fundsHistoryObservationsPath: FUNDS_HISTORY_OBSERVATIONS_PATH,
+      });
       const mergedPayments = includeFundsHistory
         ? payments
         : mergePaymentsWithFundsHistory(payments, lastFundsHistorySnapshot);
