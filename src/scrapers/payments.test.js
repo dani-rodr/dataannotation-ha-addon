@@ -101,6 +101,14 @@ test('extractPaymentsSnapshot marks withdrawable funds as available', () => {
 
 test('extractPaymentsSnapshot uses the next payout timestamp when funds are zero', () => {
   const now = new Date('2026-06-26T14:05:02.298Z');
+  const nextPayoutAt = localMidnightIsoFrom(now, 1);
+  const nextPayoutAtHuman = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(nextPayoutAt));
   const snapshot = extractPaymentsSnapshot({
     pageProps: {
       totalLifetimeEarnings: 50000,
@@ -127,15 +135,36 @@ test('extractPaymentsSnapshot uses the next payout timestamp when funds are zero
     buttonText: '$0.00 available',
     buttonDisabled: true,
     next_payout_days: 1,
-    next_payout_at: localMidnightIsoFrom(now, 1),
+    next_payout_at: nextPayoutAt,
     next_payout_entries_count: 1,
-    pending_payout_entries: [{ project: 'Example Project', status: 'pending' }],
+    pending_payout_entries: [{
+      project: 'Example Project',
+      kind: 'hourly',
+      status: 'pending',
+      amount: '$0.00',
+      estimated_payout_at: nextPayoutAt,
+      estimate_source: 'row_date_fallback',
+      estimate_confidence: 'low',
+    }],
     nextWithdrawalText: '',
     now,
   });
 
-  assert.equal(snapshot.next_payout_at, localMidnightIsoFrom(now, 1));
-  assert.equal(snapshot.next_withdrawal_at, localMidnightIsoFrom(now, 1));
+  assert.equal(snapshot.next_payout_at, nextPayoutAt);
+  assert.equal(snapshot.next_payout_at_human, nextPayoutAtHuman);
+  assert.equal(snapshot.next_withdrawal_at, nextPayoutAt);
+  assert.equal(snapshot.next_payout_entries_count, 1);
+  assert.deepEqual(snapshot.next_payout_entries, [
+    {
+      amount: '$0.00',
+      kind: 'hourly',
+      relative_age: null,
+      estimated_payout_at: nextPayoutAt,
+      estimated_payout_at_human: nextPayoutAtHuman,
+      source: 'row_date_fallback',
+      confidence: 'low',
+    },
+  ]);
 });
 
 test('estimateNextWithdrawalAt uses last payout plus three days while still in the future', () => {

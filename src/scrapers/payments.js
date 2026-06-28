@@ -22,6 +22,8 @@ function extractPaymentsSnapshot({
   const totalPaidOutCents = numberOrZero(earningsSummary?.totalPaidOut);
   const thisMonthCents = numberOrZero(earningsSummary?.currentMonthEarnings);
   const bestMonthSource = normalizeBestMonth(earningsSummary?.bestMonth);
+  const nextPayoutEntries = buildNextPayoutEntries(pending_payout_entries);
+  const nextPayoutEntry = nextPayoutEntries[0] || null;
   const nextWithdrawalAt = normalizeNextWithdrawalAt({
     nextEligibleAt: pageProps?.paymentStatus?.nextEligibleAt,
     nextWithdrawalText,
@@ -66,10 +68,30 @@ function extractPaymentsSnapshot({
     last_payout_at: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
     next_payout_days: numberOrZero(next_payout_days),
     next_payout_at: normalizeIsoDate(next_payout_at),
+    next_payout_at_human: formatHumanTimestamp(next_payout_at),
     next_payout_entries_count: numberOrZero(next_payout_entries_count),
     pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
+    next_payout_entries: nextPayoutEntries,
+    next_payout_amount: nextPayoutEntry?.amount || null,
+    next_payout_source: nextPayoutEntry?.source || null,
+    next_payout_confidence: nextPayoutEntry?.confidence || null,
     scraped_at: normalizeIsoDate(scrapedAt) || null,
   };
+}
+
+function buildNextPayoutEntries(pendingEntries) {
+  return (Array.isArray(pendingEntries) ? pendingEntries : [])
+    .filter((entry) => entry && entry.status === 'pending')
+    .map((entry) => ({
+      amount: entry.amount || formatCents(entry.amount_cents),
+      kind: entry.kind || null,
+      relative_age: entry.relative_age_text || null,
+      estimated_payout_at: normalizeIsoDate(entry.estimated_payout_at) || null,
+      estimated_payout_at_human: formatHumanTimestamp(entry.estimated_payout_at),
+      source: entry.estimate_source || null,
+      confidence: entry.estimate_confidence || null,
+    }))
+    .sort((left, right) => String(left.estimated_payout_at || '').localeCompare(String(right.estimated_payout_at || '')));
 }
 
 function normalizeBestMonth(bestMonth) {
@@ -136,6 +158,21 @@ function formatMonthLabel(isoMonth) {
     month: 'long',
     year: 'numeric',
     timeZone: 'UTC',
+  }).format(date);
+}
+
+function formatHumanTimestamp(value) {
+  const date = normalizeDate(value);
+  if (!date) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
   }).format(date);
 }
 

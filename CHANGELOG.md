@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- Add compact `Next Payout` attributes with a human-readable timestamp and trimmed payout-entry array.
+
 ## 0.3.2
 
 - Keep day-based Funds History entries on midnight-style estimates while preserving exact hour-based observations.

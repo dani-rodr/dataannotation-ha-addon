@@ -289,6 +289,9 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_next_payout`,
       state_topic: this._topic('payments/summary'),
       value_template: "{{ value_json.next_payout_at if value_json.next_payout_at else 'unknown' }}",
+      json_attributes_topic: this._topic('payments/summary'),
+      json_attributes_template:
+        "{{ {'next_payout_at_human': value_json.next_payout_at_human, 'next_payout_entries': value_json.next_payout_entries, 'next_payout_entries_count': value_json.next_payout_entries_count, 'next_payout_amount': value_json.next_payout_amount, 'next_payout_source': value_json.next_payout_source, 'next_payout_confidence': value_json.next_payout_confidence} | tojson }}",
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',

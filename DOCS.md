@@ -33,7 +33,7 @@
 - It expands the visible monthly and project rows to inspect pending entries.
 - Normal payment values still refresh on the regular poll; `Next Payout` is refreshed on the slower Funds History schedule.
 - Hourly pending entries use a 7 day wait; task submissions use a 3 day wait.
-- The `Next Payout` sensor reports the earliest pending payout estimate, reusing the first-seen timestamp for new rows and falling back to the row date when needed.
+- The `Next Payout` sensor reports the earliest pending payout estimate, reuses the first-seen timestamp for new rows, and exposes compact payout-entry attributes plus a human-readable timestamp.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
 - Fast polling only scrapes projects and skips payments until a full sync runs again.
 - Polling cron schedules are restricted to simple step expressions with a minimum interval of 15 seconds.
