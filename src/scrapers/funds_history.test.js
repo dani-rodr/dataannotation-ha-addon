@@ -16,6 +16,19 @@ function localMidnightIsoFrom(now, daysOffset) {
   ).toISOString();
 }
 
+function localMidnightIsoFromDate(dateValue, daysOffset) {
+  const date = new Date(dateValue);
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() + daysOffset,
+    0,
+    0,
+    0,
+    0
+  ).toISOString();
+}
+
 test('parseFundsHistoryEntries computes hourly payout delay from pending approval rows', () => {
   const entries = parseFundsHistoryEntries([
     'Jun 25 $371.25',
@@ -74,6 +87,22 @@ test('parseFundsHistoryDetailRow uses observed hours for a precise payout estima
   assert.equal(parsed.estimate_source, 'observed_hours');
   assert.equal(parsed.estimate_confidence, 'high');
   assert.equal(parsed.estimated_payout_at, '2026-07-05T08:45:00.000Z');
+});
+
+test('parseFundsHistoryDetailRow falls back to midnight for day-based entries', () => {
+  const now = new Date('2026-06-28T19:45:00.000Z');
+  const parsed = parseFundsHistoryDetailRow(
+    'Time Entry ··· $390.50 7h 6 min Pending Approval · 3 days ago',
+    'Example Project',
+    new Date('2026-06-25T00:00:00.000Z'),
+    now
+  );
+
+  assert.equal(parsed.status, 'pending');
+  assert.equal(parsed.relative_age_unit, 'day');
+  assert.equal(parsed.estimate_source, 'row_date_fallback');
+  assert.equal(parsed.estimate_confidence, 'low');
+  assert.equal(parsed.estimated_payout_at, localMidnightIsoFromDate('2026-06-25T00:00:00.000Z', 8));
 });
 
 test('summarizeFundsHistoryEntries returns the earliest next payout day', () => {

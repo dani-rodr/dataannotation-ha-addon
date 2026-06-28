@@ -113,16 +113,15 @@ function estimateFundsHistoryEntry(entry, now = new Date()) {
   const ageUnit = String(entry?.relative_age_unit || '').toLowerCase();
   const ageValue = numberOrZero(entry?.relative_age_value);
   const dueDays = numberOrZero(entry?.due_days) || (entry?.kind === 'task' ? 3 : 7);
-  const ageMs = ageValue > 0 ? ageValue * relativeAgeUnitToMs(ageUnit) : null;
   const entryDate = normalizeDate(entry?.entry_date);
   let estimatedWorkAt = null;
   let estimateSource = null;
   let estimateConfidence = null;
 
-  if (ageMs !== null) {
-    estimatedWorkAt = new Date(current.getTime() - ageMs);
-    estimateSource = ageUnit === 'hour' ? 'observed_hours' : ageUnit === 'day' ? 'observed_days' : ageUnit === 'week' ? 'observed_weeks' : 'observed_relative_age';
-    estimateConfidence = ageUnit === 'hour' ? 'high' : 'medium';
+  if (ageUnit === 'hour' && ageValue > 0) {
+    estimatedWorkAt = new Date(current.getTime() - ageValue * relativeAgeUnitToMs(ageUnit));
+    estimateSource = 'observed_hours';
+    estimateConfidence = 'high';
   } else if (entryDate) {
     estimatedWorkAt = entryDate;
     estimateSource = 'row_date_fallback';
@@ -133,13 +132,13 @@ function estimateFundsHistoryEntry(entry, now = new Date()) {
     estimateConfidence = 'low';
   }
 
-  let estimatedPayoutAt = new Date(estimatedWorkAt.getTime() + dueDays * DAY_MS);
-  if (estimatedPayoutAt.getTime() <= current.getTime()) {
-    estimatedPayoutAt = nextLocalMidnight(current, 1) || new Date(current.getTime() + DAY_MS);
-    estimateConfidence = 'low';
-    if (estimateSource === 'observed_hours') {
-      estimateSource = 'observed_hours_clamped';
-    }
+  let estimatedPayoutAt = null;
+  if (ageUnit === 'hour' && ageValue > 0) {
+    estimatedPayoutAt = new Date(estimatedWorkAt.getTime() + dueDays * DAY_MS);
+  } else if (entryDate) {
+    estimatedPayoutAt = estimatePayoutAtFromEntryDate(entryDate, dueDays, current);
+  } else {
+    estimatedPayoutAt = toLocalMidnightAtOffset(current, dueDays) || new Date(current.getTime() + dueDays * DAY_MS);
   }
 
   return {
@@ -290,6 +289,30 @@ function relativeAgeUnitToMs(unit) {
     default:
       return DAY_MS;
   }
+}
+
+function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = new Date()) {
+  const baseDate = normalizeDate(entryDate);
+  if (!baseDate) {
+    return null;
+  }
+
+  const payoutDate = new Date(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+    baseDate.getDate() + numberOrZero(dueDays) + 1,
+    0,
+    0,
+    0,
+    0
+  );
+
+  const current = normalizeDate(now) || new Date();
+  if (payoutDate <= current) {
+    payoutDate.setDate(payoutDate.getDate() + 1);
+  }
+
+  return payoutDate;
 }
 
 function normalizeText(value) {

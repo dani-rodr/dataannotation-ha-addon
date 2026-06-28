@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Keep day-based Funds History entries on midnight-style estimates while preserving exact hour-based observations.
+
 ## 0.3.1
 
 - Persist first-seen Funds History observations so `Next Payout` can reuse stable per-entry timestamps and clean up paid entries.

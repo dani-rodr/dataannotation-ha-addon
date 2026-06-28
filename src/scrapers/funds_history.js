@@ -121,8 +121,13 @@ function parseFundsHistoryDetailRow(text, project, entryDate = null, now = new D
       ? normalizedAgeValue * 7
       : normalizedAgeValue;
   const entryDateValue = normalizeDate(entryDate) ? normalizeDate(entryDate).toISOString() : null;
-  const estimatedWorkAt = estimateWorkAt(now, normalizedAgeValue, normalizedAgeUnit, entryDateValue);
-  const estimatedPayoutAt = estimatePayoutAt(estimatedWorkAt, dueDays, now);
+  const isHourlyEstimate = normalizedAgeUnit === 'hour' && Number.isFinite(normalizedAgeValue) && normalizedAgeValue > 0;
+  const estimatedWorkAt = isHourlyEstimate
+    ? estimateWorkAt(now, normalizedAgeValue, normalizedAgeUnit, entryDateValue)
+    : entryDateValue || normalizeDate(now)?.toISOString() || new Date().toISOString();
+  const estimatedPayoutAt = isHourlyEstimate
+    ? estimatePayoutAt(estimatedWorkAt, dueDays, now)
+    : estimatePayoutAtFromEntryDate(entryDateValue, dueDays, now) || toLocalMidnightAtOffset(now, dueDays);
 
   return {
     project: project || null,
@@ -140,8 +145,8 @@ function parseFundsHistoryDetailRow(text, project, entryDate = null, now = new D
     due_days: dueDays,
     estimated_work_at: estimatedWorkAt,
     estimated_payout_at: estimatedPayoutAt,
-    estimate_source: normalizedAgeUnit === 'hour' ? 'observed_hours' : normalizedAgeUnit === 'day' ? 'observed_days' : 'observed_weeks',
-    estimate_confidence: normalizedAgeUnit === 'hour' ? 'high' : 'medium',
+    estimate_source: isHourlyEstimate ? 'observed_hours' : 'row_date_fallback',
+    estimate_confidence: isHourlyEstimate ? 'high' : 'low',
   };
 }
 
@@ -221,6 +226,30 @@ function estimateWorkAt(now, ageValue, ageUnit, fallbackEntryDate) {
   }
 
   return fallbackEntryDate || current.toISOString();
+}
+
+function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = new Date()) {
+  const baseDate = normalizeDate(entryDate);
+  if (!baseDate) {
+    return null;
+  }
+
+  const payoutDate = new Date(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+    baseDate.getDate() + numberOrZero(dueDays) + 1,
+    0,
+    0,
+    0,
+    0
+  );
+
+  const current = normalizeDate(now) || new Date();
+  if (payoutDate <= current) {
+    payoutDate.setDate(payoutDate.getDate() + 1);
+  }
+
+  return payoutDate.toISOString();
 }
 
 function estimatePayoutAt(estimatedWorkAt, dueDays, now = new Date()) {
