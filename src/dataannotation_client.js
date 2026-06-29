@@ -154,6 +154,7 @@ class DataAnnotationClient {
         };
       }
 
+      this.logger.debug(`Claim target fields: slug=${project.slug}, id=${project.id || ''}, name=${project.name}`);
       await this._openProjectsTab(page, project.name);
 
       const clickResult = await this._clickProjectClaimTarget(page, project);
@@ -360,11 +361,11 @@ class DataAnnotationClient {
   async _clickProjectClaimTarget(page, project) {
     const target = buildClaimProjectTarget(project);
 
-    return page.evaluate(({ projectSlug, projectName, projectId }) => {
+    return page.evaluate(({ slug, name, id }) => {
       const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
-      const exactName = normalize(projectName);
-      const exactSlug = normalize(projectSlug);
-      const exactId = normalize(projectId);
+      const exactName = normalize(name);
+      const exactSlug = normalize(slug);
+      const exactId = normalize(id);
 
       const rows = Array.from(document.querySelectorAll('tr'));
       for (const row of rows) {

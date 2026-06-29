@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+
+- Fix claim project row matching to use the real project slug/name/id fields.
+- Add a pure row-matcher helper and better claim target debug logging.
+
 ## 0.4.0
 
 - Add per-project claim buttons for active projects and a persisted `Claim Projects Locked` switch.

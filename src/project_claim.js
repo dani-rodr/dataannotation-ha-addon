@@ -23,6 +23,15 @@ function buildClaimProjectTarget(project) {
   };
 }
 
+function claimProjectTargetMatchesRowText(rowText, target) {
+  const normalizedRowText = normalizeClaimText(rowText);
+  const normalizedTarget = buildClaimProjectTarget(target);
+
+  return [normalizedTarget.name, normalizedTarget.slug, normalizedTarget.id]
+    .filter(Boolean)
+    .some((needle) => normalizedRowText.includes(normalizeClaimText(needle)));
+}
+
 function shortenProjectName(name, maxLength = 40) {
   const cleaned = normalizeProjectName(name);
   if (cleaned.length <= maxLength) {
@@ -40,9 +49,14 @@ function normalizeProjectName(name) {
     .trim();
 }
 
+function normalizeClaimText(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
 module.exports = {
   CLAIM_WORK_SCREEN_METRICS,
   buildClaimProjectTarget,
+  claimProjectTargetMatchesRowText,
   formatClaimProjectEntityName,
   normalizeProjectName,
   shortenProjectName,
