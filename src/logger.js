@@ -8,27 +8,17 @@ const LEVELS = {
 function createLogger(level) {
   const threshold = LEVELS[String(level || 'info').toLowerCase()] ?? LEVELS.info;
 
+  const withTimestamp = (levelLabel, method, minLevel) => (...args) => {
+    if (threshold <= minLevel) {
+      method(`[${new Date().toISOString()}] ${levelLabel}`, ...args);
+    }
+  };
+
   return {
-    debug: (...args) => {
-      if (threshold <= LEVELS.debug) {
-        console.log('[DEBUG]', ...args);
-      }
-    },
-    info: (...args) => {
-      if (threshold <= LEVELS.info) {
-        console.log('[INFO]', ...args);
-      }
-    },
-    warning: (...args) => {
-      if (threshold <= LEVELS.warning) {
-        console.warn('[WARN]', ...args);
-      }
-    },
-    error: (...args) => {
-      if (threshold <= LEVELS.error) {
-        console.error('[ERROR]', ...args);
-      }
-    },
+    debug: withTimestamp('[DEBUG]', console.log, LEVELS.debug),
+    info: withTimestamp('[INFO]', console.log, LEVELS.info),
+    warning: withTimestamp('[WARN]', console.warn, LEVELS.warning),
+    error: withTimestamp('[ERROR]', console.error, LEVELS.error),
   };
 }
 

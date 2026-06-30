@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- Show notification dates in local time instead of UTC.
+- Prefix log lines with ISO timestamps.
+
 ## 0.4.1
 
 - Fix claim project row matching to use the real project slug/name/id fields.

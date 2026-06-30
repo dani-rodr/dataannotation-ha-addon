@@ -1,5 +1,5 @@
 name: Data Annotation
-version: "0.4.1"
+version: "0.4.2"
 slug: dataannotation-projects
 description: Scrapes DataAnnotation worker projects and publishes count and per-project entities to Home Assistant via MQTT auto-discovery.
 url: "https://github.com/dani-rodr/dataannotation-ha-addon"

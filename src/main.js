@@ -422,8 +422,8 @@ function formatFriendlyDate(value) {
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'UTC',
-  }).format(date) + ' UTC';
+    timeZoneName: 'short',
+  }).format(date);
 }
 
 function parseDate(value) {
