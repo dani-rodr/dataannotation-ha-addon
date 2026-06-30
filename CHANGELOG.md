@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3
+
+- Keep the lightweight payments scrape enabled during fast polling so `Can Withdraw` updates without the Funds History cost.
+
 ## 0.4.2
 
 - Show notification dates in local time instead of UTC.

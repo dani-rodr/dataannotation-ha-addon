@@ -10,7 +10,6 @@ const {
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,
   shouldIncludeFundsHistory,
-  shouldIncludePayments,
 } = require('./sync_policy');
 const { loadFastPollingState, saveFastPollingState } = require('./fast_polling_state');
 const { loadWithdrawLockState, saveWithdrawLockState } = require('./withdraw_lock_state');
@@ -124,13 +123,8 @@ async function main() {
       const now = Date.now();
       if (bridge.scanRequested.value || now >= nextRunAt) {
         const manualSyncRequested = bridge.scanRequested.value;
-        const includePayments = shouldIncludePayments({
-          initialSyncCompleted: hasCompletedInitialSync,
-          manualSyncRequested,
-          fastPollingEnabled,
-        });
         const includeFundsHistory = shouldIncludeFundsHistory({
-          includePayments,
+          includePayments: true,
           manualSyncRequested,
           initialSyncCompleted: hasCompletedInitialSync,
           fastPollingEnabled,
@@ -138,7 +132,7 @@ async function main() {
           nextFundsHistoryAt,
         });
         bridge.scanRequested.value = false;
-        logger.debug(`Sync mode: manual=${manualSyncRequested}, payments=${includePayments}, fundsHistory=${includeFundsHistory}, fastPolling=${fastPollingEnabled}`);
+        logger.debug(`Sync mode: manual=${manualSyncRequested}, payments=true, fundsHistory=${includeFundsHistory}, fastPolling=${fastPollingEnabled}`);
         const syncResult = await doSync(
           client,
           bridge,
@@ -147,7 +141,6 @@ async function main() {
           lastSuccessfulProjectCount,
           lastSuccessfulTotalTaskCount,
           withdrawLocked,
-          includePayments,
           includeFundsHistory,
           lastFundsHistorySnapshot,
           logger
@@ -181,7 +174,6 @@ async function doSync(
   lastSuccessfulProjectCount,
   lastSuccessfulTotalTaskCount,
   withdrawLocked,
-  includePayments,
   includeFundsHistory,
   lastFundsHistorySnapshot,
   logger
@@ -195,7 +187,7 @@ async function doSync(
     const projectSummary = summarizeProjects(result.projects);
 
     logger.info(
-      `${includePayments ? 'Sync' : 'Fast sync'} complete: ${projectSummary.count} projects, ${projectSummary.total_tasks} total tasks`
+      `${includeFundsHistory ? 'Sync' : 'Fast sync'} complete: ${projectSummary.count} projects, ${projectSummary.total_tasks} total tasks`
     );
     logger.debug(`Projects page URL: ${result.pageUrl}`);
 
@@ -220,38 +212,26 @@ async function doSync(
     });
     bridge.publishProjects(result.projects, completedAt);
 
-    if (includePayments) {
-      const payments = await client.collectPayments({
-        includeFundsHistory,
-        fundsHistoryObservationsPath: FUNDS_HISTORY_OBSERVATIONS_PATH,
-      });
-      const mergedPayments = includeFundsHistory
-        ? payments
-        : mergePaymentsWithFundsHistory(payments, lastFundsHistorySnapshot);
-      logger.info(`Payments snapshot complete: available=${mergedPayments.available_amount_formatted}, canWithdraw=${mergedPayments.can_withdraw}`);
-      logger.debug(`Payments page URL: ${mergedPayments.pageUrl}`);
-      if (!includeFundsHistory) {
-        logger.debug('Payments snapshot reused last known Funds History fields');
-      }
-      bridge.publishPayments(mergedPayments, mergedPayments.scraped_at || completedAt);
-
-      return {
-        lastSuccessfulSyncAt: completedAt,
-        lastSuccessfulProjectCount: result.count,
-        lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
-        fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(mergedPayments) : null,
-        includeFundsHistory,
-      };
-    } else {
-      logger.debug('Skipping payments scrape during fast sync');
+    const payments = await client.collectPayments({
+      includeFundsHistory,
+      fundsHistoryObservationsPath: FUNDS_HISTORY_OBSERVATIONS_PATH,
+    });
+    const mergedPayments = includeFundsHistory
+      ? payments
+      : mergePaymentsWithFundsHistory(payments, lastFundsHistorySnapshot);
+    logger.info(`Payments snapshot complete: available=${mergedPayments.available_amount_formatted}, canWithdraw=${mergedPayments.can_withdraw}`);
+    logger.debug(`Payments page URL: ${mergedPayments.pageUrl}`);
+    if (!includeFundsHistory) {
+      logger.debug('Payments snapshot reused last known Funds History fields');
     }
+    bridge.publishPayments(mergedPayments, mergedPayments.scraped_at || completedAt);
 
     return {
       lastSuccessfulSyncAt: completedAt,
       lastSuccessfulProjectCount: result.count,
       lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
-      fundsHistorySnapshot: null,
-      includeFundsHistory: false,
+      fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(mergedPayments) : null,
+      includeFundsHistory,
     };
   } catch (error) {
     logger.error(`Sync failed: ${error.stack || error.message}`);

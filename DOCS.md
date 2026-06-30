@@ -38,7 +38,7 @@
 - Hourly pending entries use a 7 day wait; task submissions use a 3 day wait.
 - The `Next Payout` sensor reports the earliest pending payout estimate, reuses the first-seen timestamp for new rows, and exposes compact payout-entry attributes plus a human-readable timestamp.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
-- Fast polling only scrapes projects and skips payments until a full sync runs again.
+- Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
 - Claim buttons use a desktop screen profile and click the exact project link before checking for `Enter Work Mode`.
 - Polling cron schedules are restricted to simple step expressions with a minimum interval of 15 seconds.
 

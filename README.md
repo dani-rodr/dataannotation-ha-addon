@@ -78,7 +78,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - Home Assistant Core API access is enabled so the add-on can create persistent notifications.
 - Funds History is opened read-only and expanded only to calculate the next payout timestamp.
 - Funds History is expanded read-only to calculate the `Next Payout` sensor and publish compact payout-entry attributes with a human-readable timestamp.
-- Fast polling skips payments scraping and only refreshes project availability.
+- Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
 - Polling cron schedules are intentionally restricted to simple step expressions with a minimum interval of 15 seconds.
 
 ## Install

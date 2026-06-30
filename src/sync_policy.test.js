@@ -8,9 +8,9 @@ const {
   shouldIncludePayments,
 } = require('./sync_policy');
 
-test('shouldIncludePayments keeps startup sync full and fast polling projects-only', () => {
+test('shouldIncludePayments always keeps the lightweight payments scrape enabled', () => {
   assert.equal(shouldIncludePayments({ initialSyncCompleted: false, manualSyncRequested: false, fastPollingEnabled: true }), true);
-  assert.equal(shouldIncludePayments({ initialSyncCompleted: true, manualSyncRequested: false, fastPollingEnabled: true }), false);
+  assert.equal(shouldIncludePayments({ initialSyncCompleted: true, manualSyncRequested: false, fastPollingEnabled: true }), true);
   assert.equal(shouldIncludePayments({ initialSyncCompleted: true, manualSyncRequested: true, fastPollingEnabled: true }), true);
 });
 

@@ -1,5 +1,5 @@
 function shouldIncludePayments({ initialSyncCompleted, manualSyncRequested, fastPollingEnabled }) {
-  return Boolean(manualSyncRequested || !fastPollingEnabled || !initialSyncCompleted);
+  return true;
 }
 
 function shouldIncludeFundsHistory({ includePayments, manualSyncRequested, initialSyncCompleted, fastPollingEnabled, now, nextFundsHistoryAt }) {
