@@ -27,6 +27,7 @@ class DataAnnotationMqttBridge {
     this.withdrawLockChange = { value: null };
     this.claimProjectsLockChange = { value: null };
     this.fastPollingChange = { value: null };
+    this.autoAcceptChange = { value: null };
     this.claimRequested = { value: null };
     this.publishedProjectSlugs = new Set();
     this.publishedClaimProjectSlugs = new Set();
@@ -54,7 +55,7 @@ class DataAnnotationMqttBridge {
       this.connected = true;
       this.logger.info('Connected to MQTT broker');
       this.client.subscribe(
-        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('claim/+')],
+        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('auto_accept/set'), this._topic('claim/+')],
         { qos: 1 }
       );
       this.logger.debug(`Subscribed to ${this._topic('command/sync')}`);
@@ -62,6 +63,7 @@ class DataAnnotationMqttBridge {
       this.logger.debug(`Subscribed to ${this._topic('withdraw/lock/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('fast/poll/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('claim/lock/set')}`);
+      this.logger.debug(`Subscribed to ${this._topic('auto_accept/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('claim/+')}`);
     });
     this.client.on('close', () => {
@@ -106,6 +108,16 @@ class DataAnnotationMqttBridge {
         this.claimProjectsLockChange.value = false;
         this.logger.debug('Publishing optimistic claim projects lock state: OFF');
         this.publishClaimProjectsLockState(false);
+      } else if (topic === this._topic('auto_accept/set') && message === 'on') {
+        this.logger.info('Received auto accept request: ON');
+        this.autoAcceptChange.value = true;
+        this.logger.debug('Publishing optimistic auto accept state: ON');
+        this.publishAutoAcceptState(true);
+      } else if (topic === this._topic('auto_accept/set') && message === 'off') {
+        this.logger.info('Received auto accept request: OFF');
+        this.autoAcceptChange.value = false;
+        this.logger.debug('Publishing optimistic auto accept state: OFF');
+        this.publishAutoAcceptState(false);
       } else if (topic.startsWith(this._topic('claim/')) && topic !== this._topic('claim/lock/set') && message === 'claim') {
         const slug = topic.slice(this._topic('claim/').length);
         if (slug) {
@@ -199,6 +211,22 @@ class DataAnnotationMqttBridge {
       device: this.device,
     });
 
+    this._publishDiscovery('switch', 'auto_accept', {
+      name: names.auto_accept,
+      unique_id: `${this.topicPrefix}_auto_accept`,
+      state_topic: this._topic('auto_accept/state'),
+      command_topic: this._topic('auto_accept/set'),
+      payload_on: 'ON',
+      payload_off: 'OFF',
+      state_on: 'ON',
+      state_off: 'OFF',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:robot',
+      device: this.device,
+    });
+
     this._publishDiscovery('button', 'withdraw_funds', {
       name: names.withdraw_funds,
       unique_id: `${this.topicPrefix}_withdraw_funds`,
@@ -241,6 +269,9 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_total_tasks`,
       state_topic: this._topic('projects/summary'),
       value_template: '{{ value_json.total_tasks }}',
+      json_attributes_topic: this._topic('projects/summary'),
+      json_attributes_template:
+        "{{ {'new_task_detected': value_json.new_task_detected, 'new_task_count': value_json.new_task_count, 'new_task_project_name': value_json.new_task_project_name, 'new_task_project_url': value_json.new_task_project_url, 'new_task_detected_at': value_json.new_task_detected_at, 'new_tasks': value_json.new_tasks} | tojson }}",
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
@@ -478,6 +509,12 @@ class DataAnnotationMqttBridge {
     this._publish(this._topic('fast/poll/state'), state, true);
   }
 
+  publishAutoAcceptState(enabled) {
+    const state = enabled ? 'ON' : 'OFF';
+    this.logger.debug(`Publishing auto accept state: ${state}`);
+    this._publish(this._topic('auto_accept/state'), state, true);
+  }
+
   publishSummary(summary) {
     this.logger.debug(`Publishing project summary: ${summary.count} projects, ${summary.total_tasks || 0} total tasks`);
     this._publishJson(this._topic('projects/summary'), summary, true);
@@ -652,6 +689,7 @@ function buildDiscoveryNames() {
       withdraw_locked: 'Withdraw Locked',
       claim_projects_locked: 'Claim Projects Locked',
       fast_polling: 'Fast Polling',
+      auto_accept: 'Auto Accept',
       withdraw_funds: 'Withdraw Funds',
       next_payout: 'Next Payout',
     };

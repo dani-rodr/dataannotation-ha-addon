@@ -1,11 +1,13 @@
 const { readConfig, configureLogging } = require('./config');
 const { DataAnnotationClient } = require('./dataannotation_client');
+const { detectNewTaskProjects } = require('./project_delta');
 const { createPersistentNotification } = require('./ha_notifications');
 const { DataAnnotationMqttBridge } = require('./mqtt_bridge');
 const { createLogger } = require('./logger');
 const { summarizeProjects } = require('./scrapers/projects');
 const { computeNextRunAt } = require('./polling_schedule');
 const { loadClaimProjectsLockState, saveClaimProjectsLockState } = require('./claim_projects_state');
+const { loadAutoAcceptState, saveAutoAcceptState } = require('./auto_accept_state');
 const {
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,
@@ -19,6 +21,7 @@ const { version } = require('../package.json');
 const WITHDRAW_LOCK_STATE_PATH = '/data/withdraw-lock-state.json';
 const CLAIM_PROJECTS_LOCK_STATE_PATH = '/data/claim-projects-lock-state.json';
 const FAST_POLLING_STATE_PATH = '/data/fast-polling-state.json';
+const AUTO_ACCEPT_STATE_PATH = '/data/auto-accept-state.json';
 const FUNDS_HISTORY_OBSERVATIONS_PATH = '/data/funds-history-observations.json';
 const DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES = 2;
 
@@ -64,6 +67,7 @@ async function main() {
   let withdrawLocked = loadWithdrawLockState(WITHDRAW_LOCK_STATE_PATH);
   let claimProjectsLocked = loadClaimProjectsLockState(CLAIM_PROJECTS_LOCK_STATE_PATH);
   let fastPollingEnabled = loadFastPollingState(FAST_POLLING_STATE_PATH);
+  let autoAcceptEnabled = loadAutoAcceptState(AUTO_ACCEPT_STATE_PATH);
 
   try {
     await bridge.waitForConnection();
@@ -73,16 +77,19 @@ async function main() {
     bridge.publishWithdrawLockState(withdrawLocked);
     bridge.publishClaimProjectsLockState(claimProjectsLocked);
     bridge.publishFastPollingState(fastPollingEnabled);
+    bridge.publishAutoAcceptState(autoAcceptEnabled);
 
     let lastSuccessfulSyncAt = null;
     let lastSuccessfulProjectCount = 0;
     let lastSuccessfulTotalTaskCount = 0;
+    let lastSuccessfulProjects = null;
     let nextRunAt = Date.now();
     let nextFundsHistoryAt = Date.now();
     let nextExpeditedFundsHistoryAt = null;
     let hasCompletedInitialSync = false;
     let lastFundsHistorySnapshot = null;
     let lastInProgressTask = null;
+    let lastAutoAcceptAttemptSignature = null;
 
     while (running) {
       if (bridge.withdrawLockChange.value !== null) {
@@ -108,6 +115,17 @@ async function main() {
         bridge.publishFastPollingState(fastPollingEnabled);
         nextRunAt = Date.now();
         logger.info(`Fast polling state updated: ${fastPollingEnabled ? 'enabled' : 'disabled'}`);
+      }
+
+      if (bridge.autoAcceptChange.value !== null) {
+        autoAcceptEnabled = bridge.autoAcceptChange.value;
+        bridge.autoAcceptChange.value = null;
+        saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, autoAcceptEnabled);
+        bridge.publishAutoAcceptState(autoAcceptEnabled);
+        if (autoAcceptEnabled) {
+          lastAutoAcceptAttemptSignature = null;
+        }
+        logger.info(`Auto accept state updated: ${autoAcceptEnabled ? 'enabled' : 'disabled'}`);
       }
 
       if (bridge.claimRequested.value) {
@@ -144,12 +162,51 @@ async function main() {
           lastSuccessfulSyncAt,
           lastSuccessfulProjectCount,
           lastSuccessfulTotalTaskCount,
+          hasCompletedInitialSync,
+          lastSuccessfulProjects,
           withdrawLocked,
           includeFundsHistory,
           lastFundsHistorySnapshot,
           logger
         );
         const currentInProgressTask = Boolean(syncResult.taskStatus?.in_progress_task);
+        const autoAcceptSignature = buildAutoAcceptSignature(syncResult.newTaskEvents);
+
+        if (autoAcceptEnabled && currentInProgressTask) {
+          autoAcceptEnabled = false;
+          saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, autoAcceptEnabled);
+          bridge.publishAutoAcceptState(false);
+          lastAutoAcceptAttemptSignature = null;
+          logger.info('Auto accept disabled because In Progress Task is ON');
+        } else if (
+          autoAcceptEnabled &&
+          !currentInProgressTask &&
+          !claimProjectsLocked &&
+          syncResult.newTaskEvents.length > 0 &&
+          autoAcceptSignature !== lastAutoAcceptAttemptSignature
+        ) {
+          const claimTarget = syncResult.newTaskEvents[0];
+          lastAutoAcceptAttemptSignature = autoAcceptSignature;
+          logger.info(`Auto accept detected new task: "${claimTarget.name}"${claimTarget.url ? ` ${claimTarget.url}` : ''}`);
+          const claimResult = await client.claimProject(claimTarget.slug);
+          logger.info(`Auto accept claim result for ${claimTarget.slug}: ${claimResult.status}`);
+
+          if (claimResult.status === 'claimed' || claimResult.status === 'already_in_work_mode') {
+            autoAcceptEnabled = false;
+            saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, autoAcceptEnabled);
+            bridge.publishAutoAcceptState(false);
+            lastAutoAcceptAttemptSignature = null;
+            logger.info('Auto accept turned off after successful claim');
+            bridge.scanRequested.value = true;
+          }
+        } else if (autoAcceptEnabled && claimProjectsLocked) {
+          autoAcceptEnabled = false;
+          saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, autoAcceptEnabled);
+          bridge.publishAutoAcceptState(false);
+          lastAutoAcceptAttemptSignature = null;
+          logger.info('Auto accept disabled because Claim Projects Locked is ON');
+        }
+
         if (lastInProgressTask === true && currentInProgressTask === false) {
           const delayMinutes = Number(config.funds_history_after_task_delay_minutes ?? DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES);
           if (Number.isFinite(delayMinutes) && delayMinutes > 0) {
@@ -165,6 +222,7 @@ async function main() {
         lastSuccessfulSyncAt = syncResult.lastSuccessfulSyncAt;
         lastSuccessfulProjectCount = syncResult.lastSuccessfulProjectCount;
         lastSuccessfulTotalTaskCount = syncResult.lastSuccessfulTotalTaskCount;
+        lastSuccessfulProjects = syncResult.projects || lastSuccessfulProjects;
         if (syncResult.fundsHistorySnapshot) {
           lastFundsHistorySnapshot = syncResult.fundsHistorySnapshot;
         }
@@ -196,6 +254,8 @@ async function doSync(
   lastSuccessfulSyncAt,
   lastSuccessfulProjectCount,
   lastSuccessfulTotalTaskCount,
+  initialSyncCompleted,
+  previousProjects,
   withdrawLocked,
   includeFundsHistory,
   lastFundsHistorySnapshot,
@@ -208,6 +268,7 @@ async function doSync(
     const result = await client.collectProjects();
     const completedAt = new Date().toISOString();
     const projectSummary = summarizeProjects(result.projects);
+    const newTaskEvents = initialSyncCompleted ? detectNewTaskProjects(previousProjects, result.projects) : [];
 
     logger.info(
       `${includeFundsHistory ? 'Sync' : 'Fast sync'} complete: ${projectSummary.count} projects, ${projectSummary.total_tasks} total tasks`
@@ -224,6 +285,12 @@ async function doSync(
       login_state: result.loginState,
       lastAttemptedSyncAt: startedAt,
       lastSuccessfulSyncAt: completedAt,
+      new_task_detected: newTaskEvents.length > 0,
+      new_task_count: newTaskEvents.reduce((sum, event) => sum + event.added_tasks, 0),
+      new_task_project_name: newTaskEvents[0]?.name || null,
+      new_task_project_url: newTaskEvents[0]?.url || null,
+      new_task_detected_at: newTaskEvents.length > 0 ? completedAt : null,
+      new_tasks: newTaskEvents,
     });
     bridge.publishStatusSuccess({
       trigger: 'poll',
@@ -235,6 +302,10 @@ async function doSync(
     });
     bridge.publishProjects(result.projects, completedAt);
     bridge.publishTaskStatus(result.taskStatus, completedAt);
+
+    for (const event of newTaskEvents) {
+      logger.info(`New DataAnnotation task detected: "${event.name}" (+${event.added_tasks}, total ${event.current_tasks})${event.url ? ` ${event.url}` : ''}`);
+    }
 
     const payments = await client.collectPayments({
       includeFundsHistory,
@@ -254,9 +325,11 @@ async function doSync(
       lastSuccessfulSyncAt: completedAt,
       lastSuccessfulProjectCount: result.count,
       lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
+      projects: result.projects,
       fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(mergedPayments) : null,
       includeFundsHistory,
       taskStatus: result.taskStatus,
+      newTaskEvents,
     };
   } catch (error) {
     logger.error(`Sync failed: ${error.stack || error.message}`);
@@ -280,6 +353,16 @@ async function doSync(
 
 function getActivePollCron(config, fastPollingEnabled) {
   return fastPollingEnabled ? config.fast_poll_cron : config.poll_cron;
+}
+
+function buildAutoAcceptSignature(newTaskEvents) {
+  if (!Array.isArray(newTaskEvents) || newTaskEvents.length === 0) {
+    return null;
+  }
+
+  return newTaskEvents
+    .map((event) => [event.slug, event.added_tasks, event.current_tasks, event.name].join('|'))
+    .join(';;');
 }
 
 async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {

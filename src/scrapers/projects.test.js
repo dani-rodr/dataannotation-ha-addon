@@ -26,6 +26,7 @@ test('extractProjects normalizes a DataAnnotation project payload', () => {
 
   assert.equal(projects.length, 1);
   assert.equal(projects[0].id, '123');
+  assert.equal(projects[0].url, 'https://app.dataannotation.tech/workers/projects/123');
   assert.equal(projects[0].tasks, 5);
   assert.equal(projects[0].pay, '$55.00/hr');
   assert.equal(projects[0].base_pay, '$40.00/hr');
@@ -78,6 +79,7 @@ test('extractProjects ignores report-time rows and filters zero-task projects', 
   assert.equal(projects[0].tasks, 5);
   assert.equal(projects[0].name.startsWith('Boxing'), true);
   assert.equal(typeof projects[0].id, 'string');
+  assert.equal(projects[0].url.startsWith('https://app.dataannotation.tech/workers/projects/'), true);
 });
 
 test('summarizeProjects totals task counts', () => {

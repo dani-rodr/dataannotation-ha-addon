@@ -16,13 +16,15 @@
 
 - Opens only `/users/sign_in` and `/workers/projects`
 - Opens `/workers/payments` to scrape withdrawal and earnings data
-- Clicks only the login submit button when a session refresh is required
+- Clicks only the login submit button automatically when a session refresh is required; claim buttons and `Auto Accept` are explicit controls
 - Keeps withdraw state in `/data/withdraw-lock-state.json` so it survives restarts and syncs
 - Publishes `Withdraw Locked` as ON when withdrawals are locked
 - Keeps claim-project state in `/data/claim-projects-lock-state.json` so it survives restarts and syncs
 - Publishes `Claim Projects Locked` as ON when claim actions are locked
 - Keeps fast polling state in `/data/fast-polling-state.json` so it survives restarts and syncs
 - Publishes `Fast Polling` as ON when the fast schedule is active
+- Keeps auto accept state in `/data/auto-accept-state.json` so it survives restarts and syncs
+- Publishes `Auto Accept` as ON when automatic claiming is enabled
 - Publishes one claim button per active project
 - Publishes `In Progress Task` when the live projects payload includes active work
 - Refreshes normal payment telemetry on the regular poll and only expands Funds History on the slower schedule
@@ -43,6 +45,8 @@
 - `In Progress Task` reflects `inProgressTasksInfo` from the live projects payload and exposes the active task details as attributes.
 - When `In Progress Task` flips from ON to OFF, the add-on schedules one expedited Funds History refresh after the configured delay.
 - Claim buttons use a desktop screen profile and click the exact project link before checking for `Enter Work Mode`.
+- `Auto Accept` can claim the first newly detected task, then turns itself OFF after a successful claim or when an in-progress task is active.
+- `Total Tasks` exposes attributes for the latest detected new-task batch, including the project title and project URL.
 - Polling cron schedules are restricted to simple step expressions with a minimum interval of 15 seconds.
 
 ## Payments Entities

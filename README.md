@@ -11,8 +11,9 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - Optional slower Funds History cadence for payout timestamps
 - Persistent browser session handling with automatic relogin when the session expires
 - MQTT auto-discovery for count, status, profile, sync button, fast polling switch, withdraw lock switch, withdraw button, and per-project sensors
-- Read-only scraping only; no project actions are clicked
+- MQTT auto-discovery for count, status, profile, sync button, fast polling switch, auto-accept switch, withdraw lock switch, withdraw button, and per-project sensors
 - Project and payments telemetry are scraped read-only
+- Claim actions are only performed through the explicit claim controls and Auto Accept switch
 
 ## Configuration
 
@@ -39,6 +40,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - `Withdraw Locked`
 - `Claim Projects Locked`
 - `Fast Polling`
+- `Auto Accept`
 - `Withdraw Funds`
 - `In Progress Task`
 - One sensor per active project
@@ -72,6 +74,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - The add-on keeps a persistent Chromium profile under `/data/chrome-profile`.
 - Withdraw lock state is stored under `/data/withdraw-lock-state.json` and restored on restart.
 - Fast polling state is stored under `/data/fast-polling-state.json` and restored on restart.
+- Auto Accept state is stored under `/data/auto-accept-state.json` and restored on restart.
 - The slow Funds History schedule controls how often `Next Payout` is refreshed; normal payments telemetry still refreshes on the regular poll.
 - When `In Progress Task` flips from ON to OFF, the add-on can schedule one expedited Funds History sync after the configured delay.
 - New pending Funds History rows cache their first-seen estimate so `Next Payout` stays stable between refreshes.
@@ -82,6 +85,8 @@ Each project sensor uses the task count as its state and exposes attributes such
 - Funds History is expanded read-only to calculate the `Next Payout` sensor and publish compact payout-entry attributes with a human-readable timestamp.
 - Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
 - `In Progress Task` is ON when the live projects page reports at least one active task in its in-progress task list.
+- `Auto Accept` can claim the first newly detected task and turns itself OFF after a successful claim or when `In Progress Task` is ON.
+- `Total Tasks` includes the latest detected new-task batch details, including the project title and project URL.
 - Polling cron schedules are intentionally restricted to simple step expressions with a minimum interval of 15 seconds.
 
 ## Install

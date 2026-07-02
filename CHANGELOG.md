@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.9
+
+- Add `Total Tasks` attributes for newly detected task batches, including project title and project URL.
+- Add an `Auto Accept` switch that can claim newly detected tasks and turns itself off after a successful claim or when in-progress work is active.
+
 ## 0.4.8
 
 - Repair persisted minute-based Funds History observations so they recompute payout timestamps instead of staying on the old midnight fallback.

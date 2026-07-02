@@ -35,11 +35,13 @@ function normalizeProject(project) {
   const priorityPayPerHourInCents = numberOrZero(project?.priorityPayPerHourInCents);
   const basePayPerHourInCents = Math.max(0, payPerHourInCents - priorityPayPerHourInCents);
   const created = formatCreated(project?.created);
+  const id = stringOrEmpty(project?.id) || null;
   const tags = buildTags(project);
 
   return {
-    id: stringOrEmpty(project?.id) || null,
-    slug: stableSlug(name, project?.id, created),
+    id,
+    url: buildProjectUrl(id),
+    slug: stableSlug(name, id, created),
     name,
     tasks,
     pay: formatCurrencyPerHour(payPerHourInCents),
@@ -119,6 +121,15 @@ function formatCurrencyPerHour(valueInCents) {
   return `$${(Number(valueInCents) / 100).toFixed(2)}/hr`;
 }
 
+function buildProjectUrl(id) {
+  const projectId = stringOrEmpty(id);
+  if (!projectId) {
+    return null;
+  }
+
+  return `https://app.dataannotation.tech/workers/projects/${encodeURIComponent(projectId)}`;
+}
+
 function stableSlug(name, id, created) {
   const hash = crypto
     .createHash('sha1')
@@ -144,6 +155,7 @@ module.exports = {
   extractProjects,
   summarizeProjects,
   normalizeProject,
+  buildProjectUrl,
   formatCreated,
   classifyCategory,
   normalizeBadgeTag,

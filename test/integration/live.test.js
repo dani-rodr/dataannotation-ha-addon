@@ -72,6 +72,7 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
         assert.ok(['project', 'coding', 'qualification'].includes(project.category));
         assert.ok(project.created === null || typeof project.created === 'string');
         assert.equal(typeof project.id, 'string');
+        assert.ok(project.url === null || typeof project.url === 'string');
       });
     }
 

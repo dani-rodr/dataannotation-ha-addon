@@ -12,6 +12,7 @@ test('fixture project parsing matches the observed DataAnnotation payload', () =
   assert.equal(projects.length, 1);
   assert.deepEqual(projects[0], {
     id: 'project-123',
+    url: 'https://app.dataannotation.tech/workers/projects/project-123',
     slug: projects[0].slug,
     name: 'Boxing 🥊 - Create Complex Coding Task Prompts for your Assigned Interaction Mode - 06/14/26',
     tasks: 5,
