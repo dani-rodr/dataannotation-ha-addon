@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.6
+
+- Parse minute-based Funds History rows so payout estimates can preserve minute-level precision when available.
+
 ## 0.4.5
 
 - Add an `In Progress Task` binary sensor from the live projects page payload.

@@ -40,6 +40,34 @@ test('funds history observations persist and reuse the original payout estimate'
   assert.equal(secondResult.entries[0].estimate_source, 'observed_hours');
 });
 
+test('funds history observations preserve minute-based estimates', () => {
+  const now = new Date('2026-06-28T19:45:00.000Z');
+  const laterNow = new Date('2026-06-28T19:58:00.000Z');
+  const filePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dataannotation-funds-history-')), 'observations.json');
+
+  const firstEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 13 minutes ago',
+    'Example Project',
+    new Date('2026-06-28T00:00:00.000Z'),
+    now
+  );
+  const firstResult = applyFundsHistoryObservations([firstEntry], null, now);
+  saveFundsHistoryObservations(filePath, firstResult.observations);
+
+  const loaded = loadFundsHistoryObservations(filePath);
+  const secondEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 26 minutes ago',
+    'Example Project',
+    new Date('2026-06-28T00:00:00.000Z'),
+    laterNow
+  );
+  const secondResult = applyFundsHistoryObservations([secondEntry], loaded, laterNow);
+
+  assert.equal(secondResult.entries.length, 1);
+  assert.equal(secondResult.entries[0].estimated_payout_at, firstResult.entries[0].estimated_payout_at);
+  assert.equal(secondResult.entries[0].estimate_source, 'observed_minutes');
+});
+
 test('funds history observations prune stale pending entries after payout passes', () => {
   const now = new Date('2026-06-28T19:45:00.000Z');
   const laterNow = new Date('2026-07-08T19:45:00.000Z');

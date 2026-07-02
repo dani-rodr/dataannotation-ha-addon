@@ -89,6 +89,22 @@ test('parseFundsHistoryDetailRow uses observed hours for a precise payout estima
   assert.equal(parsed.estimated_payout_at, '2026-07-05T08:45:00.000Z');
 });
 
+test('parseFundsHistoryDetailRow uses observed minutes for a precise payout estimate', () => {
+  const now = new Date('2026-06-28T19:45:00.000Z');
+  const parsed = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 13 minutes ago',
+    'Example Project',
+    new Date('2026-06-28T00:00:00.000Z'),
+    now
+  );
+
+  assert.equal(parsed.status, 'pending');
+  assert.equal(parsed.relative_age_unit, 'minute');
+  assert.equal(parsed.estimate_source, 'observed_minutes');
+  assert.equal(parsed.estimate_confidence, 'high');
+  assert.equal(parsed.estimated_payout_at, '2026-07-01T19:32:00.000Z');
+});
+
 test('parseFundsHistoryDetailRow falls back to midnight for day-based entries', () => {
   const now = new Date('2026-06-28T19:45:00.000Z');
   const parsed = parseFundsHistoryDetailRow(

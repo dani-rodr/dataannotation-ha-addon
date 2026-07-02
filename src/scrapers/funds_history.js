@@ -5,7 +5,7 @@ const {
   saveFundsHistoryObservations,
 } = require('../funds_history_observations');
 
-const DETAIL_ROW_PATTERN = /^(Time Entry|Task Submission)\s+(?:·{1,3}\s+)?(\$[\d,]+(?:\.\d{2})?)(?:\s+(.*?))?\s+(Pending Approval|Paid)\s+·\s+(\d+)\s+(hour|day|week)s?\s+ago$/i;
+const DETAIL_ROW_PATTERN = /^(Time Entry|Task Submission)\s+(?:·{1,3}\s+)?(\$[\d,]+(?:\.\d{2})?)(?:\s+(.*?))?\s+(Pending Approval|Paid)\s+·\s+(\d+)\s+(minute|hour|day|week)s?\s+ago$/i;
 const DETAIL_KIND_PATTERN = /\b(Time Entry|Task Submission)\b/i;
 const MONTH_NAMES = [
   'jan',
@@ -115,17 +115,19 @@ function parseFundsHistoryDetailRow(text, project, entryDate = null, now = new D
   const normalizedAgeValue = Number(relativeAgeValue);
   const normalizedAgeUnit = relativeAgeUnit.toLowerCase();
   const dueDays = kind === 'hourly' ? 7 : 3;
-  const ageDays = normalizedAgeUnit === 'hour'
-    ? normalizedAgeValue / 24
-    : normalizedAgeUnit === 'week'
-      ? normalizedAgeValue * 7
-      : normalizedAgeValue;
+  const ageDays = normalizedAgeUnit === 'minute'
+    ? normalizedAgeValue / (24 * 60)
+    : normalizedAgeUnit === 'hour'
+      ? normalizedAgeValue / 24
+      : normalizedAgeUnit === 'week'
+        ? normalizedAgeValue * 7
+        : normalizedAgeValue;
   const entryDateValue = normalizeDate(entryDate) ? normalizeDate(entryDate).toISOString() : null;
-  const isHourlyEstimate = normalizedAgeUnit === 'hour' && Number.isFinite(normalizedAgeValue) && normalizedAgeValue > 0;
-  const estimatedWorkAt = isHourlyEstimate
+  const isPreciseEstimate = (normalizedAgeUnit === 'minute' || normalizedAgeUnit === 'hour') && Number.isFinite(normalizedAgeValue) && normalizedAgeValue > 0;
+  const estimatedWorkAt = isPreciseEstimate
     ? estimateWorkAt(now, normalizedAgeValue, normalizedAgeUnit, entryDateValue)
     : entryDateValue || normalizeDate(now)?.toISOString() || new Date().toISOString();
-  const estimatedPayoutAt = isHourlyEstimate
+  const estimatedPayoutAt = isPreciseEstimate
     ? estimatePayoutAt(estimatedWorkAt, dueDays, now)
     : estimatePayoutAtFromEntryDate(entryDateValue, dueDays, now) || toLocalMidnightAtOffset(now, dueDays);
 
@@ -145,8 +147,12 @@ function parseFundsHistoryDetailRow(text, project, entryDate = null, now = new D
     due_days: dueDays,
     estimated_work_at: estimatedWorkAt,
     estimated_payout_at: estimatedPayoutAt,
-    estimate_source: isHourlyEstimate ? 'observed_hours' : 'row_date_fallback',
-    estimate_confidence: isHourlyEstimate ? 'high' : 'low',
+    estimate_source: normalizedAgeUnit === 'minute'
+      ? 'observed_minutes'
+      : normalizedAgeUnit === 'hour'
+        ? 'observed_hours'
+        : 'row_date_fallback',
+    estimate_confidence: isPreciseEstimate ? 'high' : 'low',
   };
 }
 
@@ -269,6 +275,8 @@ function estimatePayoutAt(estimatedWorkAt, dueDays, now = new Date()) {
 
 function relativeAgeUnitToMs(unit) {
   switch (String(unit || '').toLowerCase()) {
+    case 'minute':
+      return 60 * 1000;
     case 'hour':
       return 60 * 60 * 1000;
     case 'week':

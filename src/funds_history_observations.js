@@ -122,6 +122,10 @@ function estimateFundsHistoryEntry(entry, now = new Date()) {
     estimatedWorkAt = new Date(current.getTime() - ageValue * relativeAgeUnitToMs(ageUnit));
     estimateSource = 'observed_hours';
     estimateConfidence = 'high';
+  } else if (ageUnit === 'minute' && ageValue > 0) {
+    estimatedWorkAt = new Date(current.getTime() - ageValue * relativeAgeUnitToMs(ageUnit));
+    estimateSource = 'observed_minutes';
+    estimateConfidence = 'high';
   } else if (entryDate) {
     estimatedWorkAt = entryDate;
     estimateSource = 'row_date_fallback';
@@ -280,6 +284,8 @@ function nextLocalMidnight(value, daysOffset) {
 
 function relativeAgeUnitToMs(unit) {
   switch (unit) {
+    case 'minute':
+      return 60 * 1000;
     case 'hour':
       return 60 * 60 * 1000;
     case 'day':
