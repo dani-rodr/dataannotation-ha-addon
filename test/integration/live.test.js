@@ -41,6 +41,7 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
 
     const projectSummary = summarizeProjects(result.projects);
     t.diagnostic(`total tasks: ${projectSummary.total_tasks}`);
+    t.diagnostic(`in progress task count: ${result.taskStatus?.in_progress_task_count ?? 0}`);
 
     await t.test('project task total is valid', () => {
       assert.equal(projectSummary.count, result.projects.length);
@@ -48,6 +49,13 @@ test('live DataAnnotation scrape validates the read-only project shape', { skip:
         projectSummary.total_tasks,
         result.projects.reduce((sum, project) => sum + project.tasks, 0)
       );
+    });
+
+    await t.test('task status shape is valid', () => {
+      assert.equal(typeof result.taskStatus?.in_progress_task, 'boolean');
+      assert.equal(typeof result.taskStatus?.in_progress_task_count, 'number');
+      assert.ok(Array.isArray(result.taskStatus?.in_progress_tasks));
+      assert.equal(result.taskStatus?.in_progress_task_count, result.taskStatus?.in_progress_tasks.length);
     });
 
     for (const [index, project] of result.projects.entries()) {

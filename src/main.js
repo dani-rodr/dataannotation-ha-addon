@@ -211,6 +211,7 @@ async function doSync(
       lastError: null,
     });
     bridge.publishProjects(result.projects, completedAt);
+    bridge.publishTaskStatus(result.taskStatus, completedAt);
 
     const payments = await client.collectPayments({
       includeFundsHistory,

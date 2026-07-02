@@ -3,6 +3,7 @@ const puppeteer = require('puppeteer-core');
 
 const { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require('./project_claim');
 const { extractProjects } = require('./scrapers/projects');
+const { extractTaskStatus } = require('./scrapers/task_status');
 const { chooseWithdrawalButton, scrapePayments } = require('./scrapers/payments');
 
 const NULL_LOGGER = {
@@ -40,13 +41,16 @@ class DataAnnotationClient {
     try {
       this.logger.debug('Opening DataAnnotation projects page');
       const loginState = await this._ensureAuthenticated(page);
-      const projects = await this._scrapeProjects(page);
+      const props = await this._readWorkerProjectsProps(page);
+      const projects = extractProjects(props);
+      const taskStatus = extractTaskStatus(props, page.url());
       this.logger.debug(`Scraped ${projects.length} DataAnnotation projects`);
 
       return {
         authenticated: true,
         loginState,
         projects,
+        taskStatus,
         count: projects.length,
         pageUrl: page.url(),
       };
@@ -323,14 +327,14 @@ class DataAnnotationClient {
   }
 
   async _scrapeProjects(page) {
-    this.logger.debug('Reading DataAnnotation project data-props payload');
-    const rawProps = await page.$eval(
-      'div[id="workers/WorkerProjectsTable-hybrid-root"]',
-      (element) => element.getAttribute('data-props') || '{}'
-    );
-
-    const props = JSON.parse(rawProps);
+    const props = await this._readWorkerProjectsProps(page);
     return extractProjects(props);
+  }
+
+  async _readWorkerProjectsProps(page) {
+    this.logger.debug('Reading DataAnnotation project data-props payload');
+    const rawProps = await page.$eval('[id="workers/WorkerProjectsTable-hybrid-root"]', (element) => element.getAttribute('data-props') || '{}');
+    return JSON.parse(rawProps);
   }
 
   async _applyClaimViewport(page) {

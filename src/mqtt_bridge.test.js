@@ -20,6 +20,7 @@ test('discovery names stay short', () => {
     project_count: 'Project Count',
     total_tasks: 'Total Tasks',
     status: 'Status',
+    in_progress_task: 'In Progress Task',
     last_sync: 'Last Sync',
     withdraw_locked: 'Withdraw Locked',
     claim_projects_locked: 'Claim Projects Locked',

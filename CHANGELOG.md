@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.5
+
+- Add an `In Progress Task` binary sensor from the live projects page payload.
+
+## 0.4.4
+
+- Preserve compact `Next Payout` attributes when fast polling skips Funds History expansion.
+
 ## 0.4.3
 
 - Keep the lightweight payments scrape enabled during fast polling so `Can Withdraw` updates without the Funds History cost.

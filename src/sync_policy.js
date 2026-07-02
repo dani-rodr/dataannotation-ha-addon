@@ -23,6 +23,11 @@ function pickFundsHistoryFields(payments) {
     next_payout_days: payments?.next_payout_days ?? 0,
     next_payout_at: payments?.next_payout_at ?? null,
     next_payout_entries_count: payments?.next_payout_entries_count ?? 0,
+    next_payout_at_human: payments?.next_payout_at_human ?? null,
+    next_payout_entries: Array.isArray(payments?.next_payout_entries) ? payments.next_payout_entries : [],
+    next_payout_amount: payments?.next_payout_amount ?? null,
+    next_payout_source: payments?.next_payout_source ?? null,
+    next_payout_confidence: payments?.next_payout_confidence ?? null,
     pending_payout_entries: Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : [],
   };
 }

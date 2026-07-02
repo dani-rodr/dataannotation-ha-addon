@@ -265,6 +265,20 @@ class DataAnnotationMqttBridge {
       device: this.device,
     });
 
+    this._publishDiscovery('binary_sensor', 'in_progress_task', {
+      name: names.in_progress_task,
+      unique_id: `${this.topicPrefix}_in_progress_task`,
+      state_topic: this._topic('tasks/status'),
+      value_template: "{{ 'ON' if value_json.in_progress_task else 'OFF' }}",
+      json_attributes_topic: this._topic('tasks/status'),
+      force_update: true,
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:briefcase-clock',
+      device: this.device,
+    });
+
     this._publishDiscovery('sensor', 'last_sync', {
       name: names.last_sync,
       unique_id: `${this.topicPrefix}_last_sync`,
@@ -483,6 +497,12 @@ class DataAnnotationMqttBridge {
     this._publishJson(this._topic('last_sync'), attributes, true);
   }
 
+  publishTaskStatus(taskStatus, scrapedAt = new Date().toISOString()) {
+    const payload = { ...(taskStatus || {}), scraped_at: taskStatus?.scraped_at || scrapedAt };
+    this.logger.debug(`Publishing task status: inProgress=${Boolean(payload.in_progress_task)}, count=${payload.in_progress_task_count || 0}`);
+    this._publishJson(this._topic('tasks/status'), payload, true);
+  }
+
   publishProjects(projects, scrapedAt = new Date().toISOString()) {
     this.logger.debug(`Publishing ${projects.length} project entities`);
     const currentSlugs = new Set();
@@ -627,6 +647,7 @@ function buildDiscoveryNames() {
       project_count: 'Project Count',
       total_tasks: 'Total Tasks',
       status: 'Status',
+      in_progress_task: 'In Progress Task',
       last_sync: 'Last Sync',
       withdraw_locked: 'Withdraw Locked',
       claim_projects_locked: 'Claim Projects Locked',

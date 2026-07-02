@@ -40,6 +40,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - `Claim Projects Locked`
 - `Fast Polling`
 - `Withdraw Funds`
+- `In Progress Task`
 - One sensor per active project
 - One claim button per active project
 - `Available Funds`
@@ -79,6 +80,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - Funds History is opened read-only and expanded only to calculate the next payout timestamp.
 - Funds History is expanded read-only to calculate the `Next Payout` sensor and publish compact payout-entry attributes with a human-readable timestamp.
 - Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
+- `In Progress Task` is ON when the live projects page reports at least one active task in its in-progress task list.
 - Polling cron schedules are intentionally restricted to simple step expressions with a minimum interval of 15 seconds.
 
 ## Install

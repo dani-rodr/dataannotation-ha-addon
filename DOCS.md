@@ -24,6 +24,7 @@
 - Keeps fast polling state in `/data/fast-polling-state.json` so it survives restarts and syncs
 - Publishes `Fast Polling` as ON when the fast schedule is active
 - Publishes one claim button per active project
+- Publishes `In Progress Task` when the live projects payload includes active work
 - Refreshes normal payment telemetry on the regular poll and only expands Funds History on the slower schedule
 - Emits a Home Assistant persistent notification if a withdrawal is requested while locked or unavailable
 - Uses Home Assistant Core API access for persistent notifications
@@ -39,6 +40,7 @@
 - The `Next Payout` sensor reports the earliest pending payout estimate, reuses the first-seen timestamp for new rows, and exposes compact payout-entry attributes plus a human-readable timestamp.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
 - Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
+- `In Progress Task` reflects `inProgressTasksInfo` from the live projects payload and exposes the active task details as attributes.
 - Claim buttons use a desktop screen profile and click the exact project link before checking for `Enter Work Mode`.
 - Polling cron schedules are restricted to simple step expressions with a minimum interval of 15 seconds.
 
