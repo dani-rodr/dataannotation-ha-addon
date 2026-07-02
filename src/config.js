@@ -15,6 +15,7 @@ const DEFAULT_CONFIG = {
   poll_cron: DEFAULT_POLL_CRON,
   fast_poll_cron: DEFAULT_FAST_POLL_CRON,
   funds_history_cron: DEFAULT_FUNDS_HISTORY_CRON,
+  funds_history_after_task_delay_minutes: 2,
   mqtt_topic_prefix: 'dataannotation',
   log_level: 'info',
 };
@@ -30,11 +31,12 @@ async function readConfig() {
     config.password = stringOrDefault(options.password ?? options.dataannotation_password, config.password);
     if (options.poll_cron !== undefined) {
       config.poll_cron = stringOrDefault(options.poll_cron, config.poll_cron);
-    } else if (options.poll_interval_minutes !== undefined) {
-      config.poll_cron = minutesToCron(options.poll_interval_minutes, config.poll_cron);
     }
     config.fast_poll_cron = stringOrDefault(options.fast_poll_cron, config.fast_poll_cron);
     config.funds_history_cron = stringOrDefault(options.funds_history_cron, config.funds_history_cron);
+    if (options.funds_history_after_task_delay_minutes !== undefined) {
+      config.funds_history_after_task_delay_minutes = numberOrDefault(options.funds_history_after_task_delay_minutes, config.funds_history_after_task_delay_minutes, 0, 1440);
+    }
     config.mqtt_topic_prefix = stringOrDefault(options.mqtt_topic_prefix, config.mqtt_topic_prefix);
     config.log_level = stringOrDefault(options.log_level, config.log_level);
   }
@@ -113,15 +115,6 @@ function numberOrDefault(value, fallback, min, max) {
   }
   const rounded = Math.trunc(parsed);
   return Math.min(max, Math.max(min, rounded));
-}
-
-function minutesToCron(value, fallback) {
-  const minutes = numberOrDefault(value, null, 1, 1440);
-  if (!minutes) {
-    return fallback;
-  }
-
-  return `*/${minutes} * * * *`;
 }
 
 function normalizeSlug(value) {

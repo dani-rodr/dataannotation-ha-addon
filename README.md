@@ -24,7 +24,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 | `poll_cron` | `*/5 * * * *` | Cron schedule for normal polling |
 | `fast_poll_cron` | `*/30 * * * * *` | Cron schedule when Fast Polling is enabled |
 | `funds_history_cron` | `*/30 * * * *` | Cron schedule for Funds History expansion |
-| `poll_interval_minutes` | `5` | Legacy minute-based normal polling option |
+| `funds_history_after_task_delay_minutes` | `2` | Delay after a task ends before an expedited Funds History sync |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
 | `log_level` | `info` | Logging level |
 
@@ -73,6 +73,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - Withdraw lock state is stored under `/data/withdraw-lock-state.json` and restored on restart.
 - Fast polling state is stored under `/data/fast-polling-state.json` and restored on restart.
 - The slow Funds History schedule controls how often `Next Payout` is refreshed; normal payments telemetry still refreshes on the regular poll.
+- When `In Progress Task` flips from ON to OFF, the add-on can schedule one expedited Funds History sync after the configured delay.
 - New pending Funds History rows cache their first-seen estimate so `Next Payout` stays stable between refreshes.
 - If DataAnnotation logs the session out, the add-on will detect the login page, sign back in, and continue scraping.
 - Withdrawal attempts that are blocked create a Home Assistant persistent notification.

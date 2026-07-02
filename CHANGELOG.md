@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.7
+
+- Add a configurable expedited Funds History sync delay after `In Progress Task` turns off and remove the legacy `poll_interval_minutes` option.
+
 ## 0.4.6
 
 - Parse minute-based Funds History rows so payout estimates can preserve minute-level precision when available.

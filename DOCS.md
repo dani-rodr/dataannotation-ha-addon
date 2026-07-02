@@ -8,7 +8,7 @@
 | `poll_cron` | `*/5 * * * *` | Cron schedule for normal polling |
 | `fast_poll_cron` | `*/30 * * * * *` | Cron schedule when Fast Polling is enabled |
 | `funds_history_cron` | `*/30 * * * *` | Cron schedule for the slower Funds History refresh |
-| `poll_interval_minutes` | `5` | Legacy minute-based normal polling option |
+| `funds_history_after_task_delay_minutes` | `2` | Delay after a task ends before an expedited Funds History refresh |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
 | `log_level` | `info` | Logging level |
 
@@ -41,6 +41,7 @@
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
 - Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
 - `In Progress Task` reflects `inProgressTasksInfo` from the live projects payload and exposes the active task details as attributes.
+- When `In Progress Task` flips from ON to OFF, the add-on schedules one expedited Funds History refresh after the configured delay.
 - Claim buttons use a desktop screen profile and click the exact project link before checking for `Enter Work Mode`.
 - Polling cron schedules are restricted to simple step expressions with a minimum interval of 15 seconds.
 

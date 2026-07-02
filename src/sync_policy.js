@@ -2,12 +2,24 @@ function shouldIncludePayments({ initialSyncCompleted, manualSyncRequested, fast
   return true;
 }
 
-function shouldIncludeFundsHistory({ includePayments, manualSyncRequested, initialSyncCompleted, fastPollingEnabled, now, nextFundsHistoryAt }) {
+function shouldIncludeFundsHistory({
+  includePayments,
+  manualSyncRequested,
+  initialSyncCompleted,
+  fastPollingEnabled,
+  now,
+  nextFundsHistoryAt,
+  nextExpeditedFundsHistoryAt,
+}) {
   if (!includePayments) {
     return false;
   }
 
   if (manualSyncRequested || !initialSyncCompleted) {
+    return true;
+  }
+
+  if (Number.isFinite(nextExpeditedFundsHistoryAt) && now >= nextExpeditedFundsHistoryAt) {
     return true;
   }
 

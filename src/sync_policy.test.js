@@ -50,6 +50,19 @@ test('shouldIncludeFundsHistory only runs when the slow schedule is due', () => 
     }),
     true
   );
+
+  assert.equal(
+    shouldIncludeFundsHistory({
+      includePayments: true,
+      manualSyncRequested: false,
+      initialSyncCompleted: true,
+      fastPollingEnabled: true,
+      now: 20_000,
+      nextFundsHistoryAt: 50_000,
+      nextExpeditedFundsHistoryAt: 15_000,
+    }),
+    true
+  );
 });
 
 test('pickFundsHistoryFields preserves the last history snapshot', () => {

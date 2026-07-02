@@ -20,6 +20,7 @@ const WITHDRAW_LOCK_STATE_PATH = '/data/withdraw-lock-state.json';
 const CLAIM_PROJECTS_LOCK_STATE_PATH = '/data/claim-projects-lock-state.json';
 const FAST_POLLING_STATE_PATH = '/data/fast-polling-state.json';
 const FUNDS_HISTORY_OBSERVATIONS_PATH = '/data/funds-history-observations.json';
+const DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES = 2;
 
 let running = true;
 
@@ -78,8 +79,10 @@ async function main() {
     let lastSuccessfulTotalTaskCount = 0;
     let nextRunAt = Date.now();
     let nextFundsHistoryAt = Date.now();
+    let nextExpeditedFundsHistoryAt = null;
     let hasCompletedInitialSync = false;
     let lastFundsHistorySnapshot = null;
+    let lastInProgressTask = null;
 
     while (running) {
       if (bridge.withdrawLockChange.value !== null) {
@@ -130,6 +133,7 @@ async function main() {
           fastPollingEnabled,
           now,
           nextFundsHistoryAt,
+          nextExpeditedFundsHistoryAt,
         });
         bridge.scanRequested.value = false;
         logger.debug(`Sync mode: manual=${manualSyncRequested}, payments=true, fundsHistory=${includeFundsHistory}, fastPolling=${fastPollingEnabled}`);
@@ -145,6 +149,19 @@ async function main() {
           lastFundsHistorySnapshot,
           logger
         );
+        const currentInProgressTask = Boolean(syncResult.taskStatus?.in_progress_task);
+        if (lastInProgressTask === true && currentInProgressTask === false) {
+          const delayMinutes = Number(config.funds_history_after_task_delay_minutes ?? DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES);
+          if (Number.isFinite(delayMinutes) && delayMinutes > 0) {
+            const expeditedAt = Date.now() + delayMinutes * 60 * 1000;
+            nextExpeditedFundsHistoryAt = Number.isFinite(nextExpeditedFundsHistoryAt)
+              ? Math.min(nextExpeditedFundsHistoryAt, expeditedAt)
+              : expeditedAt;
+            nextRunAt = Math.min(nextRunAt, expeditedAt);
+            logger.info(`Scheduled expedited Funds History sync in ${delayMinutes} minute${delayMinutes === 1 ? '' : 's'} after task completion`);
+          }
+        }
+        lastInProgressTask = currentInProgressTask;
         lastSuccessfulSyncAt = syncResult.lastSuccessfulSyncAt;
         lastSuccessfulProjectCount = syncResult.lastSuccessfulProjectCount;
         lastSuccessfulTotalTaskCount = syncResult.lastSuccessfulTotalTaskCount;
@@ -153,9 +170,15 @@ async function main() {
         }
         if (syncResult.includeFundsHistory) {
           nextFundsHistoryAt = Date.parse(computeNextRunAt(config.funds_history_cron, new Date()));
+          if (Number.isFinite(nextExpeditedFundsHistoryAt) && Date.now() >= nextExpeditedFundsHistoryAt) {
+            nextExpeditedFundsHistoryAt = null;
+          }
         }
         hasCompletedInitialSync = true;
         nextRunAt = Date.parse(computeNextRunAt(getActivePollCron(config, fastPollingEnabled), new Date()));
+        if (Number.isFinite(nextExpeditedFundsHistoryAt)) {
+          nextRunAt = Math.min(nextRunAt, nextExpeditedFundsHistoryAt);
+        }
       }
 
       await sleep(1000);
@@ -233,6 +256,7 @@ async function doSync(
       lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
       fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(mergedPayments) : null,
       includeFundsHistory,
+      taskStatus: result.taskStatus,
     };
   } catch (error) {
     logger.error(`Sync failed: ${error.stack || error.message}`);
