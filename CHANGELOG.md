@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.8
+
+- Repair persisted minute-based Funds History observations so they recompute payout timestamps instead of staying on the old midnight fallback.
+
 ## 0.4.7
 
 - Add a configurable expedited Funds History sync delay after `In Progress Task` turns off and remove the legacy `poll_interval_minutes` option.

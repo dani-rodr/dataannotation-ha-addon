@@ -118,13 +118,9 @@ function estimateFundsHistoryEntry(entry, now = new Date()) {
   let estimateSource = null;
   let estimateConfidence = null;
 
-  if (ageUnit === 'hour' && ageValue > 0) {
+  if ((ageUnit === 'hour' || ageUnit === 'minute') && ageValue > 0) {
     estimatedWorkAt = new Date(current.getTime() - ageValue * relativeAgeUnitToMs(ageUnit));
-    estimateSource = 'observed_hours';
-    estimateConfidence = 'high';
-  } else if (ageUnit === 'minute' && ageValue > 0) {
-    estimatedWorkAt = new Date(current.getTime() - ageValue * relativeAgeUnitToMs(ageUnit));
-    estimateSource = 'observed_minutes';
+    estimateSource = ageUnit === 'minute' ? 'observed_minutes' : 'observed_hours';
     estimateConfidence = 'high';
   } else if (entryDate) {
     estimatedWorkAt = entryDate;
@@ -137,8 +133,8 @@ function estimateFundsHistoryEntry(entry, now = new Date()) {
   }
 
   let estimatedPayoutAt = null;
-  if (ageUnit === 'hour' && ageValue > 0) {
-    estimatedPayoutAt = new Date(estimatedWorkAt.getTime() + dueDays * DAY_MS);
+  if ((ageUnit === 'hour' || ageUnit === 'minute') && ageValue > 0) {
+    estimatedPayoutAt = estimatePayoutAtFromWorkAt(estimatedWorkAt, dueDays, current);
   } else if (entryDate) {
     estimatedPayoutAt = estimatePayoutAtFromEntryDate(entryDate, dueDays, current);
   } else {
@@ -222,7 +218,7 @@ function normalizeObservationEntry(fingerprint, entry) {
     return null;
   }
 
-  return {
+  const normalized = {
     fingerprint: normalizedFingerprint,
     project: entry.project || null,
     kind: entry.kind || null,
@@ -243,6 +239,8 @@ function normalizeObservationEntry(fingerprint, entry) {
     estimate_source: entry.estimate_source || null,
     estimate_confidence: entry.estimate_confidence || null,
   };
+
+  return repairObservationEntry(normalized);
 }
 
 function normalizeIsoDate(value) {
@@ -319,6 +317,40 @@ function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = new Date()) {
   }
 
   return payoutDate;
+}
+
+function estimatePayoutAtFromWorkAt(estimatedWorkAt, dueDays, now = new Date()) {
+  const workAt = normalizeDate(estimatedWorkAt);
+  if (!workAt) {
+    return null;
+  }
+
+  const payoutDate = new Date(workAt.getTime() + numberOrZero(dueDays) * DAY_MS);
+  const current = normalizeDate(now) || new Date();
+  if (payoutDate <= current) {
+    return toLocalMidnightAtOffset(current, 1);
+  }
+
+  return payoutDate;
+}
+
+function repairObservationEntry(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return entry;
+  }
+
+  const source = String(entry.estimate_source || '').toLowerCase();
+  if (source === 'observed_minutes' || source === 'observed_hours') {
+    const repaired = estimatePayoutAtFromWorkAt(entry.estimated_work_at, entry.due_days, entry.last_seen_at || entry.first_seen_at || new Date());
+    if (repaired) {
+      return {
+        ...entry,
+        estimated_payout_at: repaired.toISOString(),
+      };
+    }
+  }
+
+  return entry;
 }
 
 function normalizeText(value) {
