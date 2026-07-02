@@ -164,48 +164,20 @@ async function main() {
           lastSuccessfulTotalTaskCount,
           hasCompletedInitialSync,
           lastSuccessfulProjects,
+          {
+            enabled: autoAcceptEnabled,
+            claimProjectsLocked,
+            lastAttemptSignature: lastAutoAcceptAttemptSignature,
+          },
           withdrawLocked,
           includeFundsHistory,
           lastFundsHistorySnapshot,
           logger
         );
         const currentInProgressTask = Boolean(syncResult.taskStatus?.in_progress_task);
-        const autoAcceptSignature = buildAutoAcceptSignature(syncResult.newTaskEvents);
 
-        if (autoAcceptEnabled && currentInProgressTask) {
-          autoAcceptEnabled = false;
-          saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, autoAcceptEnabled);
-          bridge.publishAutoAcceptState(false);
-          lastAutoAcceptAttemptSignature = null;
-          logger.info('Auto accept disabled because In Progress Task is ON');
-        } else if (
-          autoAcceptEnabled &&
-          !currentInProgressTask &&
-          !claimProjectsLocked &&
-          syncResult.newTaskEvents.length > 0 &&
-          autoAcceptSignature !== lastAutoAcceptAttemptSignature
-        ) {
-          const claimTarget = syncResult.newTaskEvents[0];
-          lastAutoAcceptAttemptSignature = autoAcceptSignature;
-          logger.info(`Auto accept detected new task: "${claimTarget.name}"${claimTarget.url ? ` ${claimTarget.url}` : ''}`);
-          const claimResult = await client.claimProject(claimTarget.slug);
-          logger.info(`Auto accept claim result for ${claimTarget.slug}: ${claimResult.status}`);
-
-          if (claimResult.status === 'claimed' || claimResult.status === 'already_in_work_mode') {
-            autoAcceptEnabled = false;
-            saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, autoAcceptEnabled);
-            bridge.publishAutoAcceptState(false);
-            lastAutoAcceptAttemptSignature = null;
-            logger.info('Auto accept turned off after successful claim');
-            bridge.scanRequested.value = true;
-          }
-        } else if (autoAcceptEnabled && claimProjectsLocked) {
-          autoAcceptEnabled = false;
-          saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, autoAcceptEnabled);
-          bridge.publishAutoAcceptState(false);
-          lastAutoAcceptAttemptSignature = null;
-          logger.info('Auto accept disabled because Claim Projects Locked is ON');
-        }
+        autoAcceptEnabled = syncResult.autoAcceptState.enabled;
+        lastAutoAcceptAttemptSignature = syncResult.autoAcceptState.lastAttemptSignature;
 
         if (lastInProgressTask === true && currentInProgressTask === false) {
           const delayMinutes = Number(config.funds_history_after_task_delay_minutes ?? DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES);
@@ -256,6 +228,7 @@ async function doSync(
   lastSuccessfulTotalTaskCount,
   initialSyncCompleted,
   previousProjects,
+  autoAcceptState,
   withdrawLocked,
   includeFundsHistory,
   lastFundsHistorySnapshot,
@@ -265,10 +238,12 @@ async function doSync(
   logger.info(`Starting sync at ${startedAt}`);
 
   try {
+    const projectStartedAt = Date.now();
     const result = await client.collectProjects();
     const completedAt = new Date().toISOString();
     const projectSummary = summarizeProjects(result.projects);
     const newTaskEvents = initialSyncCompleted ? detectNewTaskProjects(previousProjects, result.projects) : [];
+    logger.debug(`Project scrape completed in ${Date.now() - projectStartedAt}ms`);
 
     logger.info(
       `${includeFundsHistory ? 'Sync' : 'Fast sync'} complete: ${projectSummary.count} projects, ${projectSummary.total_tasks} total tasks`
@@ -307,10 +282,27 @@ async function doSync(
       logger.info(`New DataAnnotation task detected: "${event.name}" (+${event.added_tasks}, total ${event.current_tasks})${event.url ? ` ${event.url}` : ''}`);
     }
 
+    const autoAcceptStartedAt = Date.now();
+    const autoAcceptResult = await maybeAutoAcceptNewTasks({
+      bridge,
+      client,
+      logger,
+      autoAcceptEnabled: autoAcceptState.enabled,
+      claimProjectsLocked: autoAcceptState.claimProjectsLocked,
+      newTaskEvents,
+      lastAttemptSignature: autoAcceptState.lastAttemptSignature,
+      taskStatus: result.taskStatus,
+    });
+    autoAcceptState.enabled = autoAcceptResult.enabled;
+    autoAcceptState.lastAttemptSignature = autoAcceptResult.lastAttemptSignature;
+    logger.debug(`Auto accept decision completed in ${Date.now() - autoAcceptStartedAt}ms`);
+
+    const paymentsStartedAt = Date.now();
     const payments = await client.collectPayments({
       includeFundsHistory,
       fundsHistoryObservationsPath: FUNDS_HISTORY_OBSERVATIONS_PATH,
     });
+    logger.debug(`Payments scrape completed in ${Date.now() - paymentsStartedAt}ms`);
     const mergedPayments = includeFundsHistory
       ? payments
       : mergePaymentsWithFundsHistory(payments, lastFundsHistorySnapshot);
@@ -326,6 +318,7 @@ async function doSync(
       lastSuccessfulProjectCount: result.count,
       lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
       projects: result.projects,
+      autoAcceptState: autoAcceptResult,
       fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(mergedPayments) : null,
       includeFundsHistory,
       taskStatus: result.taskStatus,
@@ -363,6 +356,65 @@ function buildAutoAcceptSignature(newTaskEvents) {
   return newTaskEvents
     .map((event) => [event.slug, event.added_tasks, event.current_tasks, event.name].join('|'))
     .join(';;');
+}
+
+async function maybeAutoAcceptNewTasks({
+  bridge,
+  client,
+  logger,
+  autoAcceptEnabled,
+  claimProjectsLocked,
+  newTaskEvents,
+  lastAttemptSignature,
+  taskStatus,
+}) {
+  let enabled = Boolean(autoAcceptEnabled);
+  let nextAttemptSignature = lastAttemptSignature || null;
+
+  if (!enabled) {
+    return { enabled, lastAttemptSignature: nextAttemptSignature };
+  }
+
+  if (taskStatus?.in_progress_task) {
+    logger.info('Auto accept disabled because In Progress Task is ON');
+    saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, false);
+    bridge.publishAutoAcceptState(false);
+    return { enabled: false, lastAttemptSignature: null };
+  }
+
+  if (claimProjectsLocked) {
+    logger.info('Auto accept disabled because Claim Projects Locked is ON');
+    saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, false);
+    bridge.publishAutoAcceptState(false);
+    return { enabled: false, lastAttemptSignature: null };
+  }
+
+  if (!Array.isArray(newTaskEvents) || newTaskEvents.length === 0) {
+    return { enabled, lastAttemptSignature: nextAttemptSignature };
+  }
+
+  const signature = buildAutoAcceptSignature(newTaskEvents);
+  if (signature && signature === nextAttemptSignature) {
+    return { enabled, lastAttemptSignature: nextAttemptSignature };
+  }
+
+  const claimTarget = newTaskEvents[0];
+  nextAttemptSignature = signature;
+  logger.info(`Auto accept detected new task: "${claimTarget.name}"${claimTarget.url ? ` ${claimTarget.url}` : ''}`);
+  const claimStartedAt = Date.now();
+  const claimResult = await client.claimProject(claimTarget.slug);
+  logger.info(`Auto accept claim result for ${claimTarget.slug}: ${claimResult.status}`);
+  logger.debug(`Auto accept claim completed in ${Date.now() - claimStartedAt}ms`);
+
+  if (claimResult.status === 'claimed' || claimResult.status === 'already_in_work_mode') {
+    logger.info('Auto accept turned off after successful claim');
+    saveAutoAcceptState(AUTO_ACCEPT_STATE_PATH, false);
+    bridge.publishAutoAcceptState(false);
+    bridge.scanRequested.value = true;
+    return { enabled: false, lastAttemptSignature: null };
+  }
+
+  return { enabled, lastAttemptSignature: nextAttemptSignature };
 }
 
 async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {

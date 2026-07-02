@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.10
+
+- Lower the fast polling floor to 5 seconds and run Auto Accept before the payment scrape so task claiming starts sooner.
+
 ## 0.4.9
 
 - Add `Total Tasks` attributes for newly detected task batches, including project title and project URL.

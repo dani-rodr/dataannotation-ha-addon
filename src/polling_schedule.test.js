@@ -10,6 +10,7 @@ const {
 
 test('normalizePollingCron keeps the supported simple schedules', () => {
   assert.equal(normalizePollingCron('*/5 * * * *'), '*/5 * * * *');
+  assert.equal(normalizePollingCron('*/5 * * * * *'), '*/5 * * * * *');
   assert.equal(normalizePollingCron('*/30 * * * * *'), '*/30 * * * * *');
 });
 
@@ -18,8 +19,9 @@ test('computeNextRunAt advances to the next cron boundary', () => {
   assert.equal(computeNextRunAt('*/30 * * * * *', '2026-06-27T19:44:31.500Z'), '2026-06-27T19:45:00.000Z');
 });
 
-test('validatePollingCron rejects sub-15-second schedules', () => {
-  assert.throws(() => validatePollingCron('*/5 * * * * *'));
+test('validatePollingCron rejects sub-5-second schedules', () => {
+  assert.doesNotThrow(() => validatePollingCron('*/5 * * * * *'));
+  assert.throws(() => validatePollingCron('*/4 * * * * *'));
   assert.throws(() => validatePollingCron('* * * * * *'));
 });
 

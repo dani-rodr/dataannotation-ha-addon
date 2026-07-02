@@ -47,7 +47,7 @@
 - Claim buttons use a desktop screen profile and click the exact project link before checking for `Enter Work Mode`.
 - `Auto Accept` can claim the first newly detected task, then turns itself OFF after a successful claim or when an in-progress task is active.
 - `Total Tasks` exposes attributes for the latest detected new-task batch, including the project title and project URL.
-- Polling cron schedules are restricted to simple step expressions with a minimum interval of 15 seconds.
+- Polling cron schedules are restricted to simple step expressions with a minimum interval of 5 seconds.
 
 ## Payments Entities
 

@@ -87,7 +87,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - `In Progress Task` is ON when the live projects page reports at least one active task in its in-progress task list.
 - `Auto Accept` can claim the first newly detected task and turns itself OFF after a successful claim or when `In Progress Task` is ON.
 - `Total Tasks` includes the latest detected new-task batch details, including the project title and project URL.
-- Polling cron schedules are intentionally restricted to simple step expressions with a minimum interval of 15 seconds.
+- Polling cron schedules are intentionally restricted to simple step expressions with a minimum interval of 5 seconds.
 
 ## Install
 

@@ -1,7 +1,7 @@
 const DEFAULT_POLL_CRON = '*/5 * * * *';
 const DEFAULT_FAST_POLL_CRON = '*/30 * * * * *';
 const DEFAULT_FUNDS_HISTORY_CRON = '*/30 * * * *';
-const MINIMUM_INTERVAL_SECONDS = 15;
+const MINIMUM_INTERVAL_SECONDS = 5;
 
 function normalizePollingCron(value, fallback = DEFAULT_POLL_CRON) {
   const schedule = String(value || fallback).trim();
