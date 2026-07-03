@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.11
+
+- Add a daily Frankfurter USD/PHP rate poll, a `USD to PHP Rate` sensor, and a `Currency to PHP` switch that republishes monetary values in PHP.
+
 ## 0.4.10
 
 - Lower the fast polling floor to 5 seconds and run Auto Accept before the payment scrape so task claiming starts sooner.

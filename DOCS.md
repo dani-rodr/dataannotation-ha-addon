@@ -25,6 +25,9 @@
 - Publishes `Fast Polling` as ON when the fast schedule is active
 - Keeps auto accept state in `/data/auto-accept-state.json` so it survives restarts and syncs
 - Publishes `Auto Accept` as ON when automatic claiming is enabled
+- Keeps currency state in `/data/currency-state.json` so it survives restarts and syncs
+- Publishes `Currency to PHP` as ON when the display currency should be PHP
+- Publishes `USD to PHP Rate` from a daily Frankfurter refresh
 - Publishes one claim button per active project
 - Publishes `In Progress Task` when the live projects payload includes active work
 - Refreshes normal payment telemetry on the regular poll and only expands Funds History on the slower schedule
@@ -42,6 +45,8 @@
 - The `Next Payout` sensor reports the earliest pending payout estimate, reuses the first-seen timestamp for new rows, and exposes compact payout-entry attributes plus a human-readable timestamp.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
 - Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
+- Frankfurter exchange rates are refreshed daily after the UTC afternoon update window.
+- `Currency to PHP` republishes money sensors in PHP while keeping the raw scrape as the source of truth.
 - `In Progress Task` reflects `inProgressTasksInfo` from the live projects payload and exposes the active task details as attributes.
 - When `In Progress Task` flips from ON to OFF, the add-on schedules one expedited Funds History refresh after the configured delay.
 - Claim buttons use a desktop screen profile and click the exact project link before checking for `Enter Work Mode`.

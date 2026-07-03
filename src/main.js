@@ -9,6 +9,16 @@ const { computeNextRunAt } = require('./polling_schedule');
 const { loadClaimProjectsLockState, saveClaimProjectsLockState } = require('./claim_projects_state');
 const { loadAutoAcceptState, saveAutoAcceptState } = require('./auto_accept_state');
 const {
+  computeNextFxRateRefreshAt,
+  convertPaymentsForCurrency,
+  convertProjectsForCurrency,
+  fetchUsdToPhpRate,
+  getDisplayCurrency,
+  loadCurrencyState,
+  saveCurrencyState,
+  shouldRefreshCurrencyRate,
+} = require('./currency_conversion');
+const {
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,
   shouldIncludeFundsHistory,
@@ -22,6 +32,7 @@ const WITHDRAW_LOCK_STATE_PATH = '/data/withdraw-lock-state.json';
 const CLAIM_PROJECTS_LOCK_STATE_PATH = '/data/claim-projects-lock-state.json';
 const FAST_POLLING_STATE_PATH = '/data/fast-polling-state.json';
 const AUTO_ACCEPT_STATE_PATH = '/data/auto-accept-state.json';
+const CURRENCY_STATE_PATH = '/data/currency-state.json';
 const FUNDS_HISTORY_OBSERVATIONS_PATH = '/data/funds-history-observations.json';
 const DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES = 2;
 
@@ -68,22 +79,36 @@ async function main() {
   let claimProjectsLocked = loadClaimProjectsLockState(CLAIM_PROJECTS_LOCK_STATE_PATH);
   let fastPollingEnabled = loadFastPollingState(FAST_POLLING_STATE_PATH);
   let autoAcceptEnabled = loadAutoAcceptState(AUTO_ACCEPT_STATE_PATH);
+  let currencyState = loadCurrencyState(CURRENCY_STATE_PATH);
 
   try {
     await bridge.waitForConnection();
     bridge.publishOnline();
-    bridge.publishDiscovery();
+    bridge.publishDiscovery({ currencyUnit: getDisplayCurrency(currencyState) });
     bridge.publishProfile(config.profile || 'Data Annotation');
     bridge.publishWithdrawLockState(withdrawLocked);
     bridge.publishClaimProjectsLockState(claimProjectsLocked);
     bridge.publishFastPollingState(fastPollingEnabled);
     bridge.publishAutoAcceptState(autoAcceptEnabled);
+    bridge.publishCurrencyModeState(currencyState.convert_to_php);
+    if (Number.isFinite(currencyState.usd_php_rate)) {
+      bridge.publishCurrencyRate({
+        base: 'USD',
+        quote: 'PHP',
+        rate: currencyState.usd_php_rate,
+        date: currencyState.usd_php_rate_date,
+        source: currencyState.usd_php_rate_source || 'frankfurter',
+        fetched_at: currencyState.usd_php_rate_fetched_at,
+      });
+    }
 
     let lastSuccessfulSyncAt = null;
     let lastSuccessfulProjectCount = 0;
     let lastSuccessfulTotalTaskCount = 0;
     let lastSuccessfulProjects = null;
+    let lastSuccessfulPayments = null;
     let nextRunAt = Date.now();
+    let nextCurrencyRateRefreshAt = Date.now();
     let nextFundsHistoryAt = Date.now();
     let nextExpeditedFundsHistoryAt = null;
     let hasCompletedInitialSync = false;
@@ -128,6 +153,16 @@ async function main() {
         logger.info(`Auto accept state updated: ${autoAcceptEnabled ? 'enabled' : 'disabled'}`);
       }
 
+      if (bridge.currencyModeChange.value !== null) {
+        currencyState.convert_to_php = bridge.currencyModeChange.value;
+        bridge.currencyModeChange.value = null;
+        saveCurrencyState(CURRENCY_STATE_PATH, currencyState);
+        bridge.publishCurrencyModeState(currencyState.convert_to_php);
+        bridge.publishDiscovery({ currencyUnit: getDisplayCurrency(currencyState) });
+        republishCurrencyViews(bridge, lastSuccessfulProjects, lastSuccessfulPayments, currencyState, lastSuccessfulSyncAt);
+        logger.info(`Currency mode updated: ${currencyState.convert_to_php ? 'PHP' : 'USD'}`);
+      }
+
       if (bridge.claimRequested.value) {
         const claimRequest = bridge.claimRequested.value;
         bridge.claimRequested.value = null;
@@ -142,6 +177,30 @@ async function main() {
       }
 
       const now = Date.now();
+      if (shouldRefreshCurrencyRate(currencyState, new Date(now)) && now >= nextCurrencyRateRefreshAt) {
+        const rateRefreshStartedAt = Date.now();
+        try {
+          const fxRate = await fetchUsdToPhpRate();
+          currencyState.usd_php_rate = fxRate.rate;
+          currencyState.usd_php_rate_date = fxRate.date;
+          currencyState.usd_php_rate_fetched_at = fxRate.fetched_at;
+          currencyState.usd_php_rate_source = fxRate.source;
+          saveCurrencyState(CURRENCY_STATE_PATH, currencyState);
+          bridge.publishCurrencyRate(fxRate);
+          logger.info(`Refreshed USD/PHP rate: ${fxRate.rate} (${fxRate.date || 'unknown date'})`);
+          if (currencyState.convert_to_php) {
+            bridge.publishDiscovery({ currencyUnit: getDisplayCurrency(currencyState) });
+            republishCurrencyViews(bridge, lastSuccessfulProjects, lastSuccessfulPayments, currencyState, lastSuccessfulSyncAt);
+          }
+          nextCurrencyRateRefreshAt = Date.parse(computeNextFxRateRefreshAt(new Date(now)));
+        } catch (error) {
+          logger.warning(`Failed to refresh USD/PHP rate: ${error.message}`);
+          nextCurrencyRateRefreshAt = now + 60 * 60 * 1000;
+        } finally {
+          logger.debug(`Currency rate refresh took ${Date.now() - rateRefreshStartedAt}ms`);
+        }
+      }
+
       if (bridge.scanRequested.value || now >= nextRunAt) {
         const manualSyncRequested = bridge.scanRequested.value;
         const includeFundsHistory = shouldIncludeFundsHistory({
@@ -169,6 +228,7 @@ async function main() {
             claimProjectsLocked,
             lastAttemptSignature: lastAutoAcceptAttemptSignature,
           },
+          currencyState,
           withdrawLocked,
           includeFundsHistory,
           lastFundsHistorySnapshot,
@@ -195,6 +255,7 @@ async function main() {
         lastSuccessfulProjectCount = syncResult.lastSuccessfulProjectCount;
         lastSuccessfulTotalTaskCount = syncResult.lastSuccessfulTotalTaskCount;
         lastSuccessfulProjects = syncResult.projects || lastSuccessfulProjects;
+        lastSuccessfulPayments = syncResult.payments || lastSuccessfulPayments;
         if (syncResult.fundsHistorySnapshot) {
           lastFundsHistorySnapshot = syncResult.fundsHistorySnapshot;
         }
@@ -229,6 +290,7 @@ async function doSync(
   initialSyncCompleted,
   previousProjects,
   autoAcceptState,
+  currencyState,
   withdrawLocked,
   includeFundsHistory,
   lastFundsHistorySnapshot,
@@ -275,7 +337,9 @@ async function doSync(
       lastSuccessfulSyncAt: completedAt,
       lastError: null,
     });
-    bridge.publishProjects(result.projects, completedAt);
+    const displayCurrency = getDisplayCurrency(currencyState);
+    const publishedProjects = convertProjectsForCurrency(result.projects, currencyState);
+    bridge.publishProjects(publishedProjects, completedAt);
     bridge.publishTaskStatus(result.taskStatus, completedAt);
 
     for (const event of newTaskEvents) {
@@ -311,13 +375,16 @@ async function doSync(
     if (!includeFundsHistory) {
       logger.debug('Payments snapshot reused last known Funds History fields');
     }
-    bridge.publishPayments(mergedPayments, mergedPayments.scraped_at || completedAt);
+    const publishedPayments = convertPaymentsForCurrency(mergedPayments, currencyState);
+    bridge.publishPayments(publishedPayments, mergedPayments.scraped_at || completedAt);
 
     return {
       lastSuccessfulSyncAt: completedAt,
       lastSuccessfulProjectCount: result.count,
       lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
       projects: result.projects,
+      payments: mergedPayments,
+      currencyUnit: displayCurrency,
       autoAcceptState: autoAcceptResult,
       fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(mergedPayments) : null,
       includeFundsHistory,
@@ -340,6 +407,14 @@ async function doSync(
       lastSuccessfulSyncAt,
       lastSuccessfulProjectCount,
       lastSuccessfulTotalTaskCount,
+      projects: previousProjects,
+      payments: null,
+      currencyUnit: getDisplayCurrency(currencyState),
+      autoAcceptState,
+      fundsHistorySnapshot: null,
+      includeFundsHistory: false,
+      taskStatus: null,
+      newTaskEvents: [],
     };
   }
 }
@@ -356,6 +431,16 @@ function buildAutoAcceptSignature(newTaskEvents) {
   return newTaskEvents
     .map((event) => [event.slug, event.added_tasks, event.current_tasks, event.name].join('|'))
     .join(';;');
+}
+
+function republishCurrencyViews(bridge, projects, payments, currencyState, scrapedAt = new Date().toISOString()) {
+  if (Array.isArray(projects)) {
+    bridge.publishProjects(convertProjectsForCurrency(projects, currencyState), scrapedAt);
+  }
+
+  if (payments) {
+    bridge.publishPayments(convertPaymentsForCurrency(payments, currencyState), payments.scraped_at || scrapedAt);
+  }
 }
 
 async function maybeAutoAcceptNewTasks({

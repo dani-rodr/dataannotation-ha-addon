@@ -10,8 +10,8 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - Optional fast polling mode with a separate cron schedule
 - Optional slower Funds History cadence for payout timestamps
 - Persistent browser session handling with automatic relogin when the session expires
-- MQTT auto-discovery for count, status, profile, sync button, fast polling switch, withdraw lock switch, withdraw button, and per-project sensors
 - MQTT auto-discovery for count, status, profile, sync button, fast polling switch, auto-accept switch, withdraw lock switch, withdraw button, and per-project sensors
+- MQTT auto-discovery for count, status, profile, sync button, fast polling switch, auto-accept switch, currency switch, FX rate sensor, withdraw lock switch, withdraw button, and per-project sensors
 - Project and payments telemetry are scraped read-only
 - Claim actions are only performed through the explicit claim controls and Auto Accept switch
 
@@ -41,6 +41,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - `Claim Projects Locked`
 - `Fast Polling`
 - `Auto Accept`
+- `Currency to PHP`
 - `Withdraw Funds`
 - `In Progress Task`
 - One sensor per active project
@@ -48,6 +49,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - `Available Funds`
 - `Can Withdraw`
 - `Next Withdrawal`
+- `USD to PHP Rate`
 - `Total Earnings`
 - `Total Paid Out`
 - `This Month`
@@ -85,6 +87,8 @@ Each project sensor uses the task count as its state and exposes attributes such
 - Funds History is expanded read-only to calculate the `Next Payout` sensor and publish compact payout-entry attributes with a human-readable timestamp.
 - Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
 - `In Progress Task` is ON when the live projects page reports at least one active task in its in-progress task list.
+- Frankfurter exchange rates are refreshed daily after the UTC afternoon update window.
+- `Currency to PHP` switches all published money values between USD and PHP using the latest USD/PHP rate.
 - `Auto Accept` can claim the first newly detected task and turns itself OFF after a successful claim or when `In Progress Task` is ON.
 - `Total Tasks` includes the latest detected new-task batch details, including the project title and project URL.
 - Polling cron schedules are intentionally restricted to simple step expressions with a minimum interval of 5 seconds.

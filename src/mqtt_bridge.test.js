@@ -26,6 +26,8 @@ test('discovery names stay short', () => {
     claim_projects_locked: 'Claim Projects Locked',
     fast_polling: 'Fast Polling',
     auto_accept: 'Auto Accept',
+    currency_mode: 'Currency to PHP',
+    usd_php_rate: 'USD to PHP Rate',
     withdraw_funds: 'Withdraw Funds',
     next_payout: 'Next Payout',
   });

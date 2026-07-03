@@ -28,6 +28,7 @@ class DataAnnotationMqttBridge {
     this.claimProjectsLockChange = { value: null };
     this.fastPollingChange = { value: null };
     this.autoAcceptChange = { value: null };
+    this.currencyModeChange = { value: null };
     this.claimRequested = { value: null };
     this.publishedProjectSlugs = new Set();
     this.publishedClaimProjectSlugs = new Set();
@@ -55,7 +56,7 @@ class DataAnnotationMqttBridge {
       this.connected = true;
       this.logger.info('Connected to MQTT broker');
       this.client.subscribe(
-        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('auto_accept/set'), this._topic('claim/+')],
+        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('auto_accept/set'), this._topic('currency/mode/set'), this._topic('claim/+')],
         { qos: 1 }
       );
       this.logger.debug(`Subscribed to ${this._topic('command/sync')}`);
@@ -64,6 +65,7 @@ class DataAnnotationMqttBridge {
       this.logger.debug(`Subscribed to ${this._topic('fast/poll/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('claim/lock/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('auto_accept/set')}`);
+      this.logger.debug(`Subscribed to ${this._topic('currency/mode/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('claim/+')}`);
     });
     this.client.on('close', () => {
@@ -118,6 +120,16 @@ class DataAnnotationMqttBridge {
         this.autoAcceptChange.value = false;
         this.logger.debug('Publishing optimistic auto accept state: OFF');
         this.publishAutoAcceptState(false);
+      } else if (topic === this._topic('currency/mode/set') && message === 'on') {
+        this.logger.info('Received currency mode request: PHP');
+        this.currencyModeChange.value = true;
+        this.logger.debug('Publishing optimistic currency mode state: PHP');
+        this.publishCurrencyModeState(true);
+      } else if (topic === this._topic('currency/mode/set') && message === 'off') {
+        this.logger.info('Received currency mode request: USD');
+        this.currencyModeChange.value = false;
+        this.logger.debug('Publishing optimistic currency mode state: USD');
+        this.publishCurrencyModeState(false);
       } else if (topic.startsWith(this._topic('claim/')) && topic !== this._topic('claim/lock/set') && message === 'claim') {
         const slug = topic.slice(this._topic('claim/').length);
         if (slug) {
@@ -148,7 +160,7 @@ class DataAnnotationMqttBridge {
     return true;
   }
 
-  publishDiscovery() {
+  publishDiscovery({ currencyUnit = 'USD' } = {}) {
     const names = buildDiscoveryNames();
     this.logger.debug('Publishing MQTT discovery payloads');
     this._publishDiscovery('button', 'sync_now', {
@@ -208,6 +220,22 @@ class DataAnnotationMqttBridge {
       payload_available: 'online',
       payload_not_available: 'offline',
       icon: 'mdi:flash',
+      device: this.device,
+    });
+
+    this._publishDiscovery('switch', 'currency_mode', {
+      name: names.currency_mode,
+      unique_id: `${this.topicPrefix}_currency_mode`,
+      state_topic: this._topic('currency/mode/state'),
+      command_topic: this._topic('currency/mode/set'),
+      payload_on: 'ON',
+      payload_off: 'OFF',
+      state_on: 'ON',
+      state_off: 'OFF',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:currency-php',
       device: this.device,
     });
 
@@ -329,11 +357,11 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_available_funds`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.available_amount }}',
+      unit_of_measurement: currencyUnit,
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      unit_of_measurement: 'USD',
       state_class: 'measurement',
       icon: 'mdi:cash',
       device: this.device,
@@ -390,11 +418,11 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_total_earnings`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.total_earnings }}',
+      unit_of_measurement: currencyUnit,
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      unit_of_measurement: 'USD',
       state_class: 'measurement',
       icon: 'mdi:wallet',
       device: this.device,
@@ -405,11 +433,11 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_total_paid_out`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.total_paid_out }}',
+      unit_of_measurement: currencyUnit,
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      unit_of_measurement: 'USD',
       state_class: 'measurement',
       icon: 'mdi:cash-multiple',
       device: this.device,
@@ -420,11 +448,11 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_this_month`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.this_month }}',
+      unit_of_measurement: currencyUnit,
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      unit_of_measurement: 'USD',
       state_class: 'measurement',
       icon: 'mdi:calendar-month',
       device: this.device,
@@ -435,11 +463,11 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_best_month`,
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.best_month }}',
+      unit_of_measurement: currencyUnit,
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      unit_of_measurement: 'USD',
       state_class: 'measurement',
       icon: 'mdi:trophy',
       device: this.device,
@@ -451,11 +479,11 @@ class DataAnnotationMqttBridge {
       state_topic: this._topic('payments/summary'),
       value_template: '{{ value_json.pending_approval }}',
       json_attributes_topic: this._topic('payments/summary'),
+      unit_of_measurement: currencyUnit,
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      unit_of_measurement: 'USD',
       state_class: 'measurement',
       icon: 'mdi:progress-clock',
       device: this.device,
@@ -472,6 +500,22 @@ class DataAnnotationMqttBridge {
       payload_not_available: 'offline',
       device_class: 'timestamp',
       icon: 'mdi:cash-check',
+      device: this.device,
+    });
+
+    this._publishDiscovery('sensor', 'usd_php_rate', {
+      name: names.usd_php_rate,
+      unique_id: `${this.topicPrefix}_usd_php_rate`,
+      state_topic: this._topic('currency/rate'),
+      value_template: '{{ value_json.rate }}',
+      json_attributes_topic: this._topic('currency/rate'),
+      force_update: true,
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      unit_of_measurement: 'PHP/USD',
+      state_class: 'measurement',
+      icon: 'mdi:cash-sync',
       device: this.device,
     });
   }
@@ -513,6 +557,18 @@ class DataAnnotationMqttBridge {
     const state = enabled ? 'ON' : 'OFF';
     this.logger.debug(`Publishing auto accept state: ${state}`);
     this._publish(this._topic('auto_accept/state'), state, true);
+  }
+
+  publishCurrencyModeState(enabled) {
+    const state = enabled ? 'ON' : 'OFF';
+    this.logger.debug(`Publishing currency mode state: ${state}`);
+    this._publish(this._topic('currency/mode/state'), state, true);
+  }
+
+  publishCurrencyRate(rateState, scrapedAt = new Date().toISOString()) {
+    const payload = { ...(rateState || {}), scraped_at: rateState?.scraped_at || scrapedAt };
+    this.logger.debug(`Publishing currency rate: ${payload.rate || 'unknown'}`);
+    this._publishJson(this._topic('currency/rate'), payload, true);
   }
 
   publishSummary(summary) {
@@ -690,6 +746,8 @@ function buildDiscoveryNames() {
       claim_projects_locked: 'Claim Projects Locked',
       fast_polling: 'Fast Polling',
       auto_accept: 'Auto Accept',
+      currency_mode: 'Currency to PHP',
+      usd_php_rate: 'USD to PHP Rate',
       withdraw_funds: 'Withdraw Funds',
       next_payout: 'Next Payout',
     };
