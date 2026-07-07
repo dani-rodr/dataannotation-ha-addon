@@ -25,6 +25,7 @@ const {
 } = require('./sync_policy');
 const { loadFastPollingState, saveFastPollingState } = require('./fast_polling_state');
 const { loadWithdrawLockState, saveWithdrawLockState } = require('./withdraw_lock_state');
+const { filterExcludedProjects } = require('./project_filters');
 
 const { version } = require('../package.json');
 
@@ -303,9 +304,16 @@ async function doSync(
     const projectStartedAt = Date.now();
     const result = await client.collectProjects();
     const completedAt = new Date().toISOString();
-    const projectSummary = summarizeProjects(result.projects);
-    const newTaskEvents = initialSyncCompleted ? detectNewTaskProjects(previousProjects, result.projects) : [];
+    const filteredProjectsResult = filterExcludedProjects(result.projects, config.excluded_project_patterns);
+    const projects = filteredProjectsResult.projects;
+    const excludedProjects = filteredProjectsResult.excludedProjects;
+    const projectSummary = summarizeProjects(projects);
+    const newTaskEvents = initialSyncCompleted ? detectNewTaskProjects(previousProjects, projects) : [];
     logger.debug(`Project scrape completed in ${Date.now() - projectStartedAt}ms`);
+    if (excludedProjects.length > 0) {
+      logger.info(`Filtered ${excludedProjects.length} excluded project${excludedProjects.length === 1 ? '' : 's'} from project totals`);
+      logger.debug(`Excluded projects: ${excludedProjects.map((project) => project.name).join(' | ')}`);
+    }
 
     logger.info(
       `${includeFundsHistory ? 'Sync' : 'Fast sync'} complete: ${projectSummary.count} projects, ${projectSummary.total_tasks} total tasks`
@@ -322,6 +330,8 @@ async function doSync(
       login_state: result.loginState,
       lastAttemptedSyncAt: startedAt,
       lastSuccessfulSyncAt: completedAt,
+      excluded_project_count: excludedProjects.length,
+      excluded_project_names: excludedProjects.map((project) => project.name),
       new_task_detected: newTaskEvents.length > 0,
       new_task_count: newTaskEvents.reduce((sum, event) => sum + event.added_tasks, 0),
       new_task_project_name: newTaskEvents[0]?.name || null,
@@ -338,7 +348,7 @@ async function doSync(
       lastError: null,
     });
     const displayCurrency = getDisplayCurrency(currencyState);
-    const publishedProjects = convertProjectsForCurrency(result.projects, currencyState);
+    const publishedProjects = convertProjectsForCurrency(projects, currencyState);
     bridge.publishProjects(publishedProjects, completedAt);
     bridge.publishTaskStatus(result.taskStatus, completedAt);
 
@@ -380,9 +390,9 @@ async function doSync(
 
     return {
       lastSuccessfulSyncAt: completedAt,
-      lastSuccessfulProjectCount: result.count,
+      lastSuccessfulProjectCount: projectSummary.count,
       lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
-      projects: result.projects,
+      projects,
       payments: mergedPayments,
       currencyUnit: displayCurrency,
       autoAcceptState: autoAcceptResult,
@@ -402,7 +412,7 @@ async function doSync(
       lastError: error.message,
     });
     bridge.publishWithdrawLockState(withdrawLocked);
-    logger.warning('Retaining last known project summary because sync did not complete');
+      logger.warning('Retaining last known project summary because sync did not complete');
     return {
       lastSuccessfulSyncAt,
       lastSuccessfulProjectCount,

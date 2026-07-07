@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.12
+
+- Add `excluded_project_patterns` to hide matching projects before totals, entities, and automation are published.
+
 ## 0.4.11
 
 - Add a daily Frankfurter USD/PHP rate poll, a `USD to PHP Rate` sensor, and a `Currency to PHP` switch that republishes monetary values in PHP.

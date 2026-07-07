@@ -9,6 +9,7 @@
 | `fast_poll_cron` | `*/30 * * * * *` | Cron schedule when Fast Polling is enabled |
 | `funds_history_cron` | `*/30 * * * *` | Cron schedule for the slower Funds History refresh |
 | `funds_history_after_task_delay_minutes` | `2` | Delay after a task ends before an expedited Funds History refresh |
+| `excluded_project_patterns` | `""` | Newline-separated substrings used to hide projects |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
 | `log_level` | `info` | Logging level |
 
@@ -52,6 +53,7 @@
 - Claim buttons use a desktop screen profile and click the exact project link before checking for `Enter Work Mode`.
 - `Auto Accept` can claim the first newly detected task, then turns itself OFF after a successful claim or when an in-progress task is active.
 - `Total Tasks` exposes attributes for the latest detected new-task batch, including the project title and project URL.
+- `excluded_project_patterns` removes matching projects before counts, entities, and automation are published.
 - Polling cron schedules are restricted to simple step expressions with a minimum interval of 5 seconds.
 
 ## Payments Entities

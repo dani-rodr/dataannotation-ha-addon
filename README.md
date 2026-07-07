@@ -26,6 +26,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 | `fast_poll_cron` | `*/30 * * * * *` | Cron schedule when Fast Polling is enabled |
 | `funds_history_cron` | `*/30 * * * *` | Cron schedule for Funds History expansion |
 | `funds_history_after_task_delay_minutes` | `2` | Delay after a task ends before an expedited Funds History sync |
+| `excluded_project_patterns` | `""` | Newline-separated substrings for projects to ignore |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
 | `log_level` | `info` | Logging level |
 
@@ -91,6 +92,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - `Currency to PHP` switches all published money values between USD and PHP using the latest USD/PHP rate.
 - `Auto Accept` can claim the first newly detected task and turns itself OFF after a successful claim or when `In Progress Task` is ON.
 - `Total Tasks` includes the latest detected new-task batch details, including the project title and project URL.
+- `excluded_project_patterns` accepts newline-separated substrings and removes matching projects from totals, entities, and automation.
 - Polling cron schedules are intentionally restricted to simple step expressions with a minimum interval of 5 seconds.
 
 ## Install

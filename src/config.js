@@ -7,6 +7,7 @@ const {
   DEFAULT_POLL_CRON,
   normalizePollingCron,
 } = require('./polling_schedule');
+const { parseExcludedProjectPatterns } = require('./project_filters');
 
 const DEFAULT_CONFIG = {
   profile: '',
@@ -16,6 +17,7 @@ const DEFAULT_CONFIG = {
   fast_poll_cron: DEFAULT_FAST_POLL_CRON,
   funds_history_cron: DEFAULT_FUNDS_HISTORY_CRON,
   funds_history_after_task_delay_minutes: 2,
+  excluded_project_patterns: [],
   mqtt_topic_prefix: 'dataannotation',
   log_level: 'info',
 };
@@ -37,6 +39,7 @@ async function readConfig() {
     if (options.funds_history_after_task_delay_minutes !== undefined) {
       config.funds_history_after_task_delay_minutes = numberOrDefault(options.funds_history_after_task_delay_minutes, config.funds_history_after_task_delay_minutes, 0, 1440);
     }
+    config.excluded_project_patterns = stringOrDefault(options.excluded_project_patterns ?? options.excluded_projects, '');
     config.mqtt_topic_prefix = stringOrDefault(options.mqtt_topic_prefix, config.mqtt_topic_prefix);
     config.log_level = stringOrDefault(options.log_level, config.log_level);
   }
@@ -62,6 +65,9 @@ async function readConfig() {
   if (process.env.FUNDS_HISTORY_CRON) {
     config.funds_history_cron = process.env.FUNDS_HISTORY_CRON;
   }
+  if (process.env.EXCLUDED_PROJECT_PATTERNS) {
+    config.excluded_project_patterns = process.env.EXCLUDED_PROJECT_PATTERNS;
+  }
 
   config.profile = stringOrDefault(config.profile, DEFAULT_CONFIG.profile);
   config.email = stringOrDefault(config.email, '');
@@ -71,6 +77,7 @@ async function readConfig() {
   config.poll_cron = normalizePollingCron(config.poll_cron, DEFAULT_POLL_CRON);
   config.fast_poll_cron = normalizePollingCron(config.fast_poll_cron, DEFAULT_FAST_POLL_CRON);
   config.funds_history_cron = normalizePollingCron(config.funds_history_cron, DEFAULT_FUNDS_HISTORY_CRON);
+  config.excluded_project_patterns = parseExcludedProjectPatterns(config.excluded_project_patterns);
   config.browser_profile_dir = '/data/chrome-profile';
   Object.assign(config, await getMqttFromSupervisor());
 

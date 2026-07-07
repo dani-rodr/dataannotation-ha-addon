@@ -1,5 +1,5 @@
 name: Data Annotation
-version: "0.4.11"
+version: "0.4.12"
 slug: dataannotation-projects
 description: Scrapes DataAnnotation worker projects and publishes count and per-project entities to Home Assistant via MQTT auto-discovery.
 url: "https://github.com/dani-rodr/dataannotation-ha-addon"
@@ -19,6 +19,7 @@ options:
   fast_poll_cron: "*/30 * * * * *"
   funds_history_cron: "*/30 * * * *"
   funds_history_after_task_delay_minutes: 2
+  excluded_project_patterns: ""
   mqtt_topic_prefix: dataannotation
   log_level: info
 schema:
@@ -29,5 +30,6 @@ schema:
   fast_poll_cron: str
   funds_history_cron: str
   funds_history_after_task_delay_minutes: int(0,1440)
+  excluded_project_patterns: str
   mqtt_topic_prefix: str
   log_level: list(debug|info|warning|error)

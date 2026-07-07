@@ -299,7 +299,7 @@ class DataAnnotationMqttBridge {
       value_template: '{{ value_json.total_tasks }}',
       json_attributes_topic: this._topic('projects/summary'),
       json_attributes_template:
-        "{{ {'new_task_detected': value_json.new_task_detected, 'new_task_count': value_json.new_task_count, 'new_task_project_name': value_json.new_task_project_name, 'new_task_project_url': value_json.new_task_project_url, 'new_task_detected_at': value_json.new_task_detected_at, 'new_tasks': value_json.new_tasks} | tojson }}",
+        "{{ {'excluded_project_count': value_json.excluded_project_count, 'excluded_project_names': value_json.excluded_project_names, 'new_task_detected': value_json.new_task_detected, 'new_task_count': value_json.new_task_count, 'new_task_project_name': value_json.new_task_project_name, 'new_task_project_url': value_json.new_task_project_url, 'new_task_detected_at': value_json.new_task_detected_at, 'new_tasks': value_json.new_tasks} | tojson }}",
       force_update: true,
       availability_topic: this._topic('availability'),
       payload_available: 'online',
