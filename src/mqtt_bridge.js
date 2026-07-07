@@ -362,7 +362,6 @@ class DataAnnotationMqttBridge {
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      state_class: 'measurement',
       icon: 'mdi:cash',
       device: this.device,
     });
@@ -423,7 +422,6 @@ class DataAnnotationMqttBridge {
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      state_class: 'measurement',
       icon: 'mdi:wallet',
       device: this.device,
     });
@@ -438,7 +436,6 @@ class DataAnnotationMqttBridge {
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      state_class: 'measurement',
       icon: 'mdi:cash-multiple',
       device: this.device,
     });
@@ -453,7 +450,6 @@ class DataAnnotationMqttBridge {
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      state_class: 'measurement',
       icon: 'mdi:calendar-month',
       device: this.device,
     });
@@ -468,7 +464,6 @@ class DataAnnotationMqttBridge {
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      state_class: 'measurement',
       icon: 'mdi:trophy',
       device: this.device,
     });
@@ -484,7 +479,6 @@ class DataAnnotationMqttBridge {
       availability_topic: this._topic('availability'),
       payload_available: 'online',
       payload_not_available: 'offline',
-      state_class: 'measurement',
       icon: 'mdi:progress-clock',
       device: this.device,
     });

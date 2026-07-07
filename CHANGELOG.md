@@ -1,9 +1,14 @@
 # Changelog
 
+## 0.4.14
+
+- Bump the add-on version so Home Assistant detects the latest currency and withdrawal fixes.
+
 ## 0.4.13
 
 - Fix withdrawal eligibility detection for the live `Get paid $x.xx` button when amounts include thousands separators.
 - Keep the active currency mode when publishing withdrawal results so a PHP session does not briefly fall back to raw USD telemetry.
+- Remove long-term statistics metadata from currency-switching money sensors to avoid Home Assistant unit conversion warnings.
 
 ## 0.4.12
 
