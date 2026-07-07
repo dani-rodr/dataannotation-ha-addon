@@ -174,6 +174,8 @@ function convertPaymentsInternal(payments, displayCurrency, rate) {
   converted.this_month_formatted = convertMoneyText(converted.this_month_formatted, rate, displayCurrency);
   converted.best_month_formatted = convertMoneyText(converted.best_month_formatted, rate, displayCurrency);
   converted.pending_approval_formatted = convertMoneyText(converted.pending_approval_formatted, rate, displayCurrency);
+  converted.button_text = convertButtonText(converted.button_text, rate, displayCurrency);
+  converted.withdraw_button_text = convertButtonText(converted.withdraw_button_text, rate, displayCurrency);
 
   converted.next_payout_entries = convertPayoutEntries(converted.next_payout_entries, rate, displayCurrency);
   converted.pending_payout_entries = convertPayoutEntries(converted.pending_payout_entries, rate, displayCurrency);
@@ -240,6 +242,21 @@ function convertMoneyValue(value, rate, currencyCode) {
   }
 
   return value ?? null;
+}
+
+function convertButtonText(value, rate, currencyCode) {
+  if (currencyCode === CURRENCY_BASE || typeof value !== 'string') {
+    return value ?? null;
+  }
+
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  const match = normalized.match(/^Get paid\s+\$([\d,]+(?:\.\d{2})?)$/i);
+  if (!match) {
+    return convertMoneyText(value, rate, currencyCode);
+  }
+
+  const converted = roundToCents(Number(match[1].replace(/,/g, '')) * getExchangeRateValue(rate));
+  return `Get paid ${currencyCode} ${formatNumber(converted)}`;
 }
 
 function parseMoneyText(value) {

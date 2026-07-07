@@ -141,7 +141,10 @@ function normalizeWithdrawalButton(buttonText, buttonDisabled) {
 }
 
 function formatCents(value) {
-  return `$${(numberOrZero(value) / 100).toFixed(2)}`;
+  return `$${new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numberOrZero(value) / 100)}`;
 }
 
 function formatMonthLabel(isoMonth) {

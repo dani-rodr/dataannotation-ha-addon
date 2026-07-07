@@ -271,6 +271,18 @@ test('chooseWithdrawalButton accepts the live get paid submit button', () => {
   assert.equal(choice.count, 1);
 });
 
+test('chooseWithdrawalButton accepts the live get paid submit button with thousands separators', () => {
+  const choice = chooseWithdrawalButton([
+    { text: 'Get paid $1,087.17', disabled: false, formAction: '/workers/payments/get_paid', formMethod: 'post' },
+    { text: 'Share', disabled: false, formAction: '', formMethod: '' },
+  ], 108717);
+
+  assert.equal(choice.present, true);
+  assert.equal(choice.enabled, true);
+  assert.equal(choice.text, 'Get paid $1,087.17');
+  assert.equal(choice.count, 1);
+});
+
 test('chooseWithdrawalButton rejects wrong amount and share buttons', () => {
   const choice = chooseWithdrawalButton([
     { text: 'Get paid $12.35', disabled: false, formAction: '/workers/payments/get_paid', formMethod: 'post' },

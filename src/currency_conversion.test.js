@@ -138,3 +138,19 @@ test('convertPaymentsForCurrency converts formatted next payout amounts into PHP
 
   assert.equal(payments.next_payout_amount, 'PHP 758.55');
 });
+
+test('convertPaymentsForCurrency converts withdrawal button labels into PHP', () => {
+  const payments = convertPaymentsForCurrency(
+    {
+      button_text: 'Get paid $1,087.17',
+      withdraw_button_text: 'Get paid $1,087.17',
+    },
+    {
+      convert_to_php: true,
+      usd_php_rate: 60,
+    }
+  );
+
+  assert.equal(payments.button_text, 'Get paid PHP 65,230.20');
+  assert.equal(payments.withdraw_button_text, 'Get paid PHP 65,230.20');
+});

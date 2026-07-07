@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.13
+
+- Fix withdrawal eligibility detection for the live `Get paid $x.xx` button when amounts include thousands separators.
+- Keep the active currency mode when publishing withdrawal results so a PHP session does not briefly fall back to raw USD telemetry.
+
 ## 0.4.12
 
 - Add `excluded_project_patterns` to hide matching projects before totals, entities, and automation are published.

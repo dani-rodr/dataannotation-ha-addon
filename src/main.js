@@ -173,7 +173,7 @@ async function main() {
 
       if (bridge.withdrawRequested.value) {
         bridge.withdrawRequested.value = false;
-        await handleWithdrawRequest(client, bridge, withdrawLocked, logger);
+        await handleWithdrawRequest(client, bridge, withdrawLocked, currencyState, logger);
         bridge.scanRequested.value = true;
       }
 
@@ -512,7 +512,7 @@ async function maybeAutoAcceptNewTasks({
   return { enabled, lastAttemptSignature: nextAttemptSignature };
 }
 
-async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
+async function handleWithdrawRequest(client, bridge, withdrawLocked, currencyState, logger) {
   logger.info('Processing withdraw request');
 
   if (withdrawLocked) {
@@ -533,15 +533,16 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
   logger.debug('Submitting withdrawal request through fresh eligibility check');
   const result = await client.withdrawAvailableFunds();
   const payments = result.payments || {};
+  const publishedPayments = convertPaymentsForCurrency(payments, currencyState);
 
   if (result.status !== 'submitted') {
-    const nextWithdrawalAt = parseDate(payments?.next_withdrawal_at);
-    const reason = !payments?.can_withdraw && nextWithdrawalAt && nextWithdrawalAt.getTime() > Date.now()
+    const nextWithdrawalAt = parseDate(publishedPayments?.next_withdrawal_at);
+    const reason = !publishedPayments?.can_withdraw && nextWithdrawalAt && nextWithdrawalAt.getTime() > Date.now()
       ? 'time'
-      : payments?.withdraw_button_present
+      : publishedPayments?.withdraw_button_present
         ? 'funds'
         : 'button';
-    const message = buildWithdrawalNotReadyMessage(payments, reason);
+    const message = buildWithdrawalNotReadyMessage(publishedPayments, reason);
 
     try {
       await createPersistentNotification({
@@ -558,7 +559,7 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, logger) {
     logger.info('Withdrawal request submitted successfully');
   }
 
-  bridge.publishPayments(payments);
+  bridge.publishPayments(publishedPayments);
   bridge.scanRequested.value = true;
   logger.debug('Scheduling sync after withdrawal request');
 }
