@@ -97,22 +97,7 @@ class DataAnnotationApp {
     await bridge.waitForConnection();
     bridge.publishOnline();
     bridge.publishDiscovery({ currencyUnit: getDisplayCurrency(state.currencyState) });
-    bridge.publishProfile(config.profile || 'Data Annotation');
-    bridge.publishWithdrawLockState(state.withdrawLocked);
-    bridge.publishClaimProjectsLockState(state.claimProjectsLocked);
-    bridge.publishFastPollingState(state.fastPollingEnabled);
-    bridge.publishAutoAcceptState(state.autoAcceptEnabled);
-    bridge.publishCurrencyModeState(state.currencyState.convert_to_php);
-    if (Number.isFinite(state.currencyState.usd_php_rate)) {
-      bridge.publishCurrencyRate({
-        base: 'USD',
-        quote: 'PHP',
-        rate: state.currencyState.usd_php_rate,
-        date: state.currencyState.usd_php_rate_date,
-        source: state.currencyState.usd_php_rate_source || 'frankfurter',
-        fetched_at: state.currencyState.usd_php_rate_fetched_at,
-      });
-    }
+    this._publishStaticState();
   }
 
   async _applyBridgeChanges() {
@@ -162,6 +147,13 @@ class DataAnnotationApp {
       bridge.publishDiscovery({ currencyUnit: getDisplayCurrency(state.currencyState) });
       republishCurrencyViews(bridge, state.lastSuccessfulProjects, state.lastSuccessfulPayments, state.currencyState, state.lastSuccessfulSyncAt);
       logger.info(`Currency mode updated: ${state.currencyState.convert_to_php ? 'PHP' : 'USD'}`);
+    }
+
+    if (bridge.rebuildDiscoveryRequested.value) {
+      bridge.rebuildDiscoveryRequested.value = false;
+      bridge.rebuildDiscovery({ currencyUnit: getDisplayCurrency(state.currencyState) });
+      this._publishStaticState();
+      logger.info('MQTT discovery rebuild completed');
     }
 
     if (bridge.claimRequested.value) {
@@ -285,6 +277,26 @@ class DataAnnotationApp {
     state.nextRunAt = Date.parse(computeNextRunAt(getActivePollCron(config, state.fastPollingEnabled), new Date()));
     if (Number.isFinite(state.nextExpeditedFundsHistoryAt)) {
       state.nextRunAt = Math.min(state.nextRunAt, state.nextExpeditedFundsHistoryAt);
+    }
+  }
+
+  _publishStaticState() {
+    const { config, state, bridge } = this;
+    bridge.publishProfile(config.profile || 'Data Annotation');
+    bridge.publishWithdrawLockState(state.withdrawLocked);
+    bridge.publishClaimProjectsLockState(state.claimProjectsLocked);
+    bridge.publishFastPollingState(state.fastPollingEnabled);
+    bridge.publishAutoAcceptState(state.autoAcceptEnabled);
+    bridge.publishCurrencyModeState(state.currencyState.convert_to_php);
+    if (Number.isFinite(state.currencyState.usd_php_rate)) {
+      bridge.publishCurrencyRate({
+        base: 'USD',
+        quote: 'PHP',
+        rate: state.currencyState.usd_php_rate,
+        date: state.currencyState.usd_php_rate_date,
+        source: state.currencyState.usd_php_rate_source || 'frankfurter',
+        fetched_at: state.currencyState.usd_php_rate_fetched_at,
+      });
     }
   }
 }

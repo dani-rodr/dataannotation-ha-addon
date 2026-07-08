@@ -28,6 +28,7 @@ test('discovery names stay short', () => {
     currency_mode: 'Currency to PHP',
     usd_php_rate: 'USD to PHP Rate',
     withdraw_funds: 'Withdraw Funds',
+    rebuild_discovery: 'Rebuild Discovery',
     next_payout: 'Next Payout',
   });
 });
@@ -77,6 +78,57 @@ test('configuration and diagnostic entities are categorized for the device page'
     assert.equal(parse('homeassistant/switch/dataannotation_auto_accept/config').entity_category, 'config');
     assert.equal(parse('homeassistant/sensor/dataannotation_profile_name/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_usd_php_rate/config').entity_category, 'diagnostic');
+    assert.equal(parse('homeassistant/button/dataannotation_rebuild_discovery/config').entity_category, 'config');
+  } finally {
+    Module._load = originalLoad;
+  }
+});
+
+test('rebuild discovery clears and republishes categorized entities', () => {
+  const publishes = [];
+  const originalLoad = Module._load;
+  Module._load = function(request, parent, isMain) {
+    if (request === 'mqtt') {
+      return {
+        connect() {
+          return {
+            on() {},
+            subscribe() {},
+            publish(topic, payload) {
+              publishes.push({ topic, payload });
+            },
+            end(_force, _options, callback) {
+              callback?.();
+            },
+          };
+        },
+      };
+    }
+
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const { DataAnnotationMqttBridge } = require('../../../src/integrations/mqtt_bridge.ts');
+    const bridge = new DataAnnotationMqttBridge({
+      host: 'localhost',
+      port: 1883,
+      topicPrefix: 'dataannotation',
+      profileName: 'Test Profile',
+      version: '1.0.0',
+    });
+
+    bridge.rebuildDiscovery();
+
+    const fastPollingPublishes = publishes.filter((entry) => entry.topic === 'homeassistant/switch/dataannotation_fast_polling/config');
+    assert.equal(fastPollingPublishes.some((entry) => entry.payload === ''), true);
+
+    const profilePublishes = publishes.filter((entry) => entry.topic === 'homeassistant/sensor/dataannotation_profile_name/config');
+    assert.equal(profilePublishes.some((entry) => entry.payload === ''), true);
+
+    const rebuildButtonPublishes = publishes.filter((entry) => entry.topic === 'homeassistant/button/dataannotation_rebuild_discovery/config');
+    assert.equal(rebuildButtonPublishes.some((entry) => entry.payload === ''), true);
+    assert.equal(JSON.parse(rebuildButtonPublishes.find((entry) => entry.payload !== '').payload).entity_category, 'config');
   } finally {
     Module._load = originalLoad;
   }

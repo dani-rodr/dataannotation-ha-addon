@@ -34,6 +34,7 @@ function buildDiscoveryNames() {
     currency_mode: 'Currency to PHP',
     usd_php_rate: 'USD to PHP Rate',
     withdraw_funds: 'Withdraw Funds',
+    rebuild_discovery: 'Rebuild Discovery',
     next_payout: 'Next Payout',
   };
 }

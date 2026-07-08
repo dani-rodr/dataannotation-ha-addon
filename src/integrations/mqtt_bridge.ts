@@ -31,6 +31,7 @@ class DataAnnotationMqttBridge {
     this.fastPollingChange = { value: null };
     this.autoAcceptChange = { value: null };
     this.currencyModeChange = { value: null };
+    this.rebuildDiscoveryRequested = { value: false };
     this.claimRequested = { value: null };
     this.publishedProjectSlugs = new Set();
     this.publishedClaimProjectSlugs = new Set();
@@ -58,11 +59,12 @@ class DataAnnotationMqttBridge {
       this.connected = true;
       this.logger.info('Connected to MQTT broker');
       this.client.subscribe(
-        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('auto_accept/set'), this._topic('currency/mode/set'), this._topic('claim/+')],
+        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('command/rebuild_discovery'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('auto_accept/set'), this._topic('currency/mode/set'), this._topic('claim/+')],
         { qos: 1 }
       );
       this.logger.debug(`Subscribed to ${this._topic('command/sync')}`);
       this.logger.debug(`Subscribed to ${this._topic('command/withdraw')}`);
+      this.logger.debug(`Subscribed to ${this._topic('command/rebuild_discovery')}`);
       this.logger.debug(`Subscribed to ${this._topic('withdraw/lock/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('fast/poll/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('claim/lock/set')}`);
@@ -85,6 +87,9 @@ class DataAnnotationMqttBridge {
       } else if (topic === this._topic('command/withdraw') && message === 'withdraw') {
         this.logger.info('Received withdraw request via MQTT');
         this.withdrawRequested.value = true;
+      } else if (topic === this._topic('command/rebuild_discovery') && message === 'rebuild') {
+        this.logger.info('Received discovery rebuild request via MQTT');
+        this.rebuildDiscoveryRequested.value = true;
       } else if (topic === this._topic('withdraw/lock/set') && message === 'on') {
         this.logger.info('Received withdraw lock request: ON');
         this.withdrawLockChange.value = true;
@@ -178,6 +183,19 @@ class DataAnnotationMqttBridge {
       payload_available: 'online',
       payload_not_available: 'offline',
       icon: 'mdi:refresh',
+      device: this.device,
+    });
+
+    this._publishDiscovery('button', 'rebuild_discovery', {
+      name: 'Rebuild Discovery',
+      unique_id: `${this.topicPrefix}_rebuild_discovery`,
+      entity_category: 'config',
+      command_topic: this._topic('command/rebuild_discovery'),
+      payload_press: 'rebuild',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:database-refresh',
       device: this.device,
     });
 
@@ -496,6 +514,37 @@ class DataAnnotationMqttBridge {
       icon: 'mdi:cash-sync',
       device: this.device,
     });
+  }
+
+  rebuildDiscovery({ currencyUnit = 'USD' } = {}) {
+    this.logger.info('Rebuilding MQTT discovery payloads');
+    [
+      ['button', 'sync_now'],
+      ['button', 'rebuild_discovery'],
+      ['switch', 'withdraw_locked'],
+      ['switch', 'claim_projects_locked'],
+      ['switch', 'fast_polling'],
+      ['switch', 'currency_mode'],
+      ['switch', 'auto_accept'],
+      ['button', 'withdraw_funds'],
+      ['sensor', 'profile_name'],
+      ['sensor', 'project_count'],
+      ['sensor', 'total_tasks'],
+      ['binary_sensor', 'in_progress_task'],
+      ['sensor', 'available_funds'],
+      ['binary_sensor', 'can_withdraw'],
+      ['sensor', 'next_withdrawal'],
+      ['sensor', 'next_payout'],
+      ['sensor', 'total_earnings'],
+      ['sensor', 'total_paid_out'],
+      ['sensor', 'this_month'],
+      ['sensor', 'best_month'],
+      ['sensor', 'pending_approval'],
+      ['sensor', 'last_payout'],
+      ['sensor', 'usd_php_rate'],
+    ].forEach(([component, objectId]) => this._publish(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, '', true));
+
+    this.publishDiscovery({ currencyUnit });
   }
 
   publishOnline() {

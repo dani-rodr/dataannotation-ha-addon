@@ -496,6 +496,7 @@ var require_mqtt_discovery = __commonJS({
         currency_mode: "Currency to PHP",
         usd_php_rate: "USD to PHP Rate",
         withdraw_funds: "Withdraw Funds",
+        rebuild_discovery: "Rebuild Discovery",
         next_payout: "Next Payout"
       };
     }
@@ -576,6 +577,7 @@ var require_mqtt_bridge = __commonJS({
         this.fastPollingChange = { value: null };
         this.autoAcceptChange = { value: null };
         this.currencyModeChange = { value: null };
+        this.rebuildDiscoveryRequested = { value: false };
         this.claimRequested = { value: null };
         this.publishedProjectSlugs = /* @__PURE__ */ new Set();
         this.publishedClaimProjectSlugs = /* @__PURE__ */ new Set();
@@ -601,11 +603,12 @@ var require_mqtt_bridge = __commonJS({
           this.connected = true;
           this.logger.info("Connected to MQTT broker");
           this.client.subscribe(
-            [this._topic("command/sync"), this._topic("command/withdraw"), this._topic("withdraw/lock/set"), this._topic("fast/poll/set"), this._topic("claim/lock/set"), this._topic("auto_accept/set"), this._topic("currency/mode/set"), this._topic("claim/+")],
+            [this._topic("command/sync"), this._topic("command/withdraw"), this._topic("command/rebuild_discovery"), this._topic("withdraw/lock/set"), this._topic("fast/poll/set"), this._topic("claim/lock/set"), this._topic("auto_accept/set"), this._topic("currency/mode/set"), this._topic("claim/+")],
             { qos: 1 }
           );
           this.logger.debug(`Subscribed to ${this._topic("command/sync")}`);
           this.logger.debug(`Subscribed to ${this._topic("command/withdraw")}`);
+          this.logger.debug(`Subscribed to ${this._topic("command/rebuild_discovery")}`);
           this.logger.debug(`Subscribed to ${this._topic("withdraw/lock/set")}`);
           this.logger.debug(`Subscribed to ${this._topic("fast/poll/set")}`);
           this.logger.debug(`Subscribed to ${this._topic("claim/lock/set")}`);
@@ -628,6 +631,9 @@ var require_mqtt_bridge = __commonJS({
           } else if (topic === this._topic("command/withdraw") && message === "withdraw") {
             this.logger.info("Received withdraw request via MQTT");
             this.withdrawRequested.value = true;
+          } else if (topic === this._topic("command/rebuild_discovery") && message === "rebuild") {
+            this.logger.info("Received discovery rebuild request via MQTT");
+            this.rebuildDiscoveryRequested.value = true;
           } else if (topic === this._topic("withdraw/lock/set") && message === "on") {
             this.logger.info("Received withdraw lock request: ON");
             this.withdrawLockChange.value = true;
@@ -716,6 +722,18 @@ var require_mqtt_bridge = __commonJS({
           payload_available: "online",
           payload_not_available: "offline",
           icon: "mdi:refresh",
+          device: this.device
+        });
+        this._publishDiscovery("button", "rebuild_discovery", {
+          name: "Rebuild Discovery",
+          unique_id: `${this.topicPrefix}_rebuild_discovery`,
+          entity_category: "config",
+          command_topic: this._topic("command/rebuild_discovery"),
+          payload_press: "rebuild",
+          availability_topic: this._topic("availability"),
+          payload_available: "online",
+          payload_not_available: "offline",
+          icon: "mdi:database-refresh",
           device: this.device
         });
         this._publishDiscovery("switch", "withdraw_locked", {
@@ -1011,6 +1029,35 @@ var require_mqtt_bridge = __commonJS({
           icon: "mdi:cash-sync",
           device: this.device
         });
+      }
+      rebuildDiscovery({ currencyUnit = "USD" } = {}) {
+        this.logger.info("Rebuilding MQTT discovery payloads");
+        [
+          ["button", "sync_now"],
+          ["button", "rebuild_discovery"],
+          ["switch", "withdraw_locked"],
+          ["switch", "claim_projects_locked"],
+          ["switch", "fast_polling"],
+          ["switch", "currency_mode"],
+          ["switch", "auto_accept"],
+          ["button", "withdraw_funds"],
+          ["sensor", "profile_name"],
+          ["sensor", "project_count"],
+          ["sensor", "total_tasks"],
+          ["binary_sensor", "in_progress_task"],
+          ["sensor", "available_funds"],
+          ["binary_sensor", "can_withdraw"],
+          ["sensor", "next_withdrawal"],
+          ["sensor", "next_payout"],
+          ["sensor", "total_earnings"],
+          ["sensor", "total_paid_out"],
+          ["sensor", "this_month"],
+          ["sensor", "best_month"],
+          ["sensor", "pending_approval"],
+          ["sensor", "last_payout"],
+          ["sensor", "usd_php_rate"]
+        ].forEach(([component, objectId]) => this._publish(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, "", true));
+        this.publishDiscovery({ currencyUnit });
       }
       publishOnline() {
         this._availabilityState = "online";
@@ -4395,22 +4442,7 @@ var require_dataannotation_app = __commonJS({
         await bridge.waitForConnection();
         bridge.publishOnline();
         bridge.publishDiscovery({ currencyUnit: getDisplayCurrency2(state.currencyState) });
-        bridge.publishProfile(config.profile || "Data Annotation");
-        bridge.publishWithdrawLockState(state.withdrawLocked);
-        bridge.publishClaimProjectsLockState(state.claimProjectsLocked);
-        bridge.publishFastPollingState(state.fastPollingEnabled);
-        bridge.publishAutoAcceptState(state.autoAcceptEnabled);
-        bridge.publishCurrencyModeState(state.currencyState.convert_to_php);
-        if (Number.isFinite(state.currencyState.usd_php_rate)) {
-          bridge.publishCurrencyRate({
-            base: "USD",
-            quote: "PHP",
-            rate: state.currencyState.usd_php_rate,
-            date: state.currencyState.usd_php_rate_date,
-            source: state.currencyState.usd_php_rate_source || "frankfurter",
-            fetched_at: state.currencyState.usd_php_rate_fetched_at
-          });
-        }
+        this._publishStaticState();
       }
       async _applyBridgeChanges() {
         const { bridge, logger, state } = this;
@@ -4454,6 +4486,12 @@ var require_dataannotation_app = __commonJS({
           bridge.publishDiscovery({ currencyUnit: getDisplayCurrency2(state.currencyState) });
           republishCurrencyViews2(bridge, state.lastSuccessfulProjects, state.lastSuccessfulPayments, state.currencyState, state.lastSuccessfulSyncAt);
           logger.info(`Currency mode updated: ${state.currencyState.convert_to_php ? "PHP" : "USD"}`);
+        }
+        if (bridge.rebuildDiscoveryRequested.value) {
+          bridge.rebuildDiscoveryRequested.value = false;
+          bridge.rebuildDiscovery({ currencyUnit: getDisplayCurrency2(state.currencyState) });
+          this._publishStaticState();
+          logger.info("MQTT discovery rebuild completed");
         }
         if (bridge.claimRequested.value) {
           const claimRequest = bridge.claimRequested.value;
@@ -4565,6 +4603,25 @@ var require_dataannotation_app = __commonJS({
         state.nextRunAt = Date.parse(computeNextRunAt2(getActivePollCron2(config, state.fastPollingEnabled), /* @__PURE__ */ new Date()));
         if (Number.isFinite(state.nextExpeditedFundsHistoryAt)) {
           state.nextRunAt = Math.min(state.nextRunAt, state.nextExpeditedFundsHistoryAt);
+        }
+      }
+      _publishStaticState() {
+        const { config, state, bridge } = this;
+        bridge.publishProfile(config.profile || "Data Annotation");
+        bridge.publishWithdrawLockState(state.withdrawLocked);
+        bridge.publishClaimProjectsLockState(state.claimProjectsLocked);
+        bridge.publishFastPollingState(state.fastPollingEnabled);
+        bridge.publishAutoAcceptState(state.autoAcceptEnabled);
+        bridge.publishCurrencyModeState(state.currencyState.convert_to_php);
+        if (Number.isFinite(state.currencyState.usd_php_rate)) {
+          bridge.publishCurrencyRate({
+            base: "USD",
+            quote: "PHP",
+            rate: state.currencyState.usd_php_rate,
+            date: state.currencyState.usd_php_rate_date,
+            source: state.currencyState.usd_php_rate_source || "frankfurter",
+            fetched_at: state.currencyState.usd_php_rate_fetched_at
+          });
         }
       }
     };
