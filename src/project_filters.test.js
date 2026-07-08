@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { filterExcludedProjects, parseExcludedProjectPatterns } = require('./project_filters');
+const { filterExcludedProjects, parseExcludedProjectPatterns } = require('./projects/project_filters.ts');
 
 test('parseExcludedProjectPatterns accepts multiline patterns', () => {
   assert.deepEqual(

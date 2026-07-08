@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { detectNewTaskProjects } = require('./project_delta');
+const { detectNewTaskProjects } = require('./projects/project_delta.ts');
 
 test('detectNewTaskProjects detects a brand new project as added tasks', () => {
   const deltas = detectNewTaskProjects([], [

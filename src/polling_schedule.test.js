@@ -6,7 +6,7 @@ const {
   getPollingCronIntervalSeconds,
   normalizePollingCron,
   validatePollingCron,
-} = require('./polling_schedule');
+} = require('./shared/polling_schedule.ts');
 
 test('normalizePollingCron keeps the supported simple schedules', () => {
   assert.equal(normalizePollingCron('*/5 * * * *'), '*/5 * * * *');

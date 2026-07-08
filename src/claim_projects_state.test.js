@@ -9,7 +9,7 @@ const {
   loadClaimProjectsLockState,
   normalizeClaimProjectsLockState,
   saveClaimProjectsLockState,
-} = require('./claim_projects_state');
+} = require('./state/claim_projects_state.ts');
 
 test('normalizeClaimProjectsLockState defaults to unlocked', () => {
   assert.equal(DEFAULT_CLAIM_PROJECTS_LOCKED, false);

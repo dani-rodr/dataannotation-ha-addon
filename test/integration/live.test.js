@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { DataAnnotationClient } = require('../../src/dataannotation_client');
+const { DataAnnotationClient } = require('../../src/clients/dataannotation_client.js');
 const { summarizeProjects } = require('../../src/scrapers/projects');
 const { loadIntegrationCredentials } = require('../helpers/integration-credentials');
 

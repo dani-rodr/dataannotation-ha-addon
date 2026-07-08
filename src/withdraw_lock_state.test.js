@@ -9,7 +9,7 @@ const {
   loadWithdrawLockState,
   normalizeWithdrawLockState,
   saveWithdrawLockState,
-} = require('./withdraw_lock_state');
+} = require('./state/withdraw_lock_state.ts');
 
 test('normalizeWithdrawLockState defaults to locked', () => {
   assert.equal(DEFAULT_WITHDRAW_LOCKED, true);

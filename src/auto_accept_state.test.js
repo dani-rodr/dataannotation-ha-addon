@@ -9,7 +9,7 @@ const {
   loadAutoAcceptState,
   normalizeAutoAcceptState,
   saveAutoAcceptState,
-} = require('./auto_accept_state');
+} = require('./state/auto_accept_state.ts');
 
 test('normalizeAutoAcceptState defaults to disabled', () => {
   assert.equal(DEFAULT_AUTO_ACCEPT_ENABLED, false);

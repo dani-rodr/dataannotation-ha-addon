@@ -1,13 +1,13 @@
-const { readConfig, configureLogging } = require('./config');
-const { DataAnnotationClient } = require('./dataannotation_client');
-const { detectNewTaskProjects } = require('./project_delta');
-const { createPersistentNotification } = require('./ha_notifications');
-const { DataAnnotationMqttBridge } = require('./mqtt_bridge');
-const { createLogger } = require('./logger');
+const { readConfig, configureLogging } = require('./config/config.ts');
+const { DataAnnotationClient } = require('./clients/dataannotation_client.js');
+const { detectNewTaskProjects } = require('./projects/project_delta.ts');
+const { createPersistentNotification } = require('./integrations/ha_notifications.js');
+const { DataAnnotationMqttBridge } = require('./integrations/mqtt_bridge.js');
+const { createLogger } = require('./shared/logger.ts');
 const { summarizeProjects } = require('./scrapers/projects');
-const { computeNextRunAt } = require('./polling_schedule');
-const { loadClaimProjectsLockState, saveClaimProjectsLockState } = require('./claim_projects_state');
-const { loadAutoAcceptState, saveAutoAcceptState } = require('./auto_accept_state');
+const { computeNextRunAt } = require('./shared/polling_schedule.ts');
+const { loadClaimProjectsLockState, saveClaimProjectsLockState } = require('./state/claim_projects_state.ts');
+const { loadAutoAcceptState, saveAutoAcceptState } = require('./state/auto_accept_state.ts');
 const {
   computeNextFxRateRefreshAt,
   convertPaymentsForCurrency,
@@ -23,10 +23,10 @@ const {
   pickFundsHistoryFields,
   retainNextWithdrawalAt,
   shouldIncludeFundsHistory,
-} = require('./sync_policy');
-const { loadFastPollingState, saveFastPollingState } = require('./fast_polling_state');
-const { loadWithdrawLockState, saveWithdrawLockState } = require('./withdraw_lock_state');
-const { filterExcludedProjects } = require('./project_filters');
+} = require('./state/sync_policy.ts');
+const { loadFastPollingState, saveFastPollingState } = require('./state/fast_polling_state.ts');
+const { loadWithdrawLockState, saveWithdrawLockState } = require('./state/withdraw_lock_state.ts');
+const { filterExcludedProjects } = require('./projects/project_filters.ts');
 
 const { version } = require('../package.json');
 
