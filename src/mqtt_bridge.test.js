@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const Module = require('module');
 
 const { buildDeviceInfo, buildDiscoveryNames, formatProjectEntityName, shortenProjectName } = require('./mqtt_bridge');
 const { formatClaimProjectEntityName } = require('./project_claim');
@@ -45,4 +46,52 @@ test('claim project entity names are prefixed and shortened', () => {
     formatClaimProjectEntityName('Boxing 🥊 - Create Complex Coding Task Prompts for your Assigned Interaction Mode - 06/14/26').startsWith('Claim Project - '),
     true
   );
+});
+
+test('claim project discovery includes project availability and offline publication updates published slugs', () => {
+  const publishes = [];
+  const originalLoad = Module._load;
+  Module._load = function(request, parent, isMain) {
+    if (request === 'mqtt') {
+      return {
+        connect() {
+          return {
+            on() {},
+            subscribe() {},
+            publish(topic, payload) {
+              publishes.push({ topic, payload });
+            },
+            end(_force, _options, callback) {
+              callback?.();
+            },
+          };
+        },
+      };
+    }
+
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const { DataAnnotationMqttBridge } = require('./mqtt_bridge');
+    const bridge = new DataAnnotationMqttBridge({
+      host: 'localhost',
+      port: 1883,
+      topicPrefix: 'dataannotation',
+      profileName: 'Test Profile',
+      version: '1.0.0',
+    });
+
+    bridge._publishProjectClaimDiscovery({ slug: 'project-1', name: 'Example Project' });
+    const claimConfig = publishes.find((entry) => entry.topic === 'homeassistant/button/dataannotation_claim_project_project-1/config');
+    assert.ok(claimConfig);
+    assert.equal(JSON.parse(claimConfig.payload).availability_topic, 'dataannotation/projects/project-1/availability');
+
+    publishes.length = 0;
+    bridge.publishedProjectSlugs.add('project-1');
+    bridge.publishPublishedProjectAvailability(false);
+    assert.deepEqual(publishes, [{ topic: 'dataannotation/projects/project-1/availability', payload: 'offline' }]);
+  } finally {
+    Module._load = originalLoad;
+  }
 });

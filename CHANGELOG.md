@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.16
+
+- Add persistent MQTT error logging and mark known project availability offline when a sync fails.
+
 ## 0.4.15
 
 - Retain the last future `Next Withdrawal` timestamp while funds remain withdrawable.

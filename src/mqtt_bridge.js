@@ -1,5 +1,3 @@
-const crypto = require('crypto');
-
 const NULL_LOGGER = {
   debug() {},
   info() {},
@@ -21,7 +19,6 @@ class DataAnnotationMqttBridge {
     this.profileName = options.profileName;
     this.version = options.version;
     this.logger = options.logger || NULL_LOGGER;
-    this.publishTargets = new Set(options.publishTargets || ['projects', 'status']);
     this.scanRequested = { value: false };
     this.withdrawRequested = { value: false };
     this.withdrawLockChange = { value: null };
@@ -71,6 +68,9 @@ class DataAnnotationMqttBridge {
     this.client.on('close', () => {
       this.connected = false;
       this.logger.warning('MQTT connection closed');
+    });
+    this.client.on('error', (error) => {
+      this.logger.warning(`MQTT error: ${error.message}`);
     });
     this.client.on('message', (topic, payload) => {
       const message = String(payload || '').trim().toLowerCase();
@@ -628,6 +628,13 @@ class DataAnnotationMqttBridge {
     this.publishedClaimProjectSlugs = currentClaimSlugs;
   }
 
+  publishPublishedProjectAvailability(available) {
+    const state = available ? 'online' : 'offline';
+    for (const slug of this.publishedProjectSlugs) {
+      this._publish(this._projectAvailabilityTopic(slug), state, true);
+    }
+  }
+
   publishPayments(payments, scrapedAt = new Date().toISOString()) {
     this.logger.debug(`Publishing payments summary: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`);
     this._publishJson(this._topic('payments/summary'), { ...payments, scraped_at: payments.scraped_at || scrapedAt }, true);
@@ -667,7 +674,7 @@ class DataAnnotationMqttBridge {
       unique_id: `${this.topicPrefix}_claim_project_${project.slug}`,
       command_topic: this._topic(`claim/${project.slug}`),
       payload_press: 'claim',
-      availability_topic: this._topic('availability'),
+      availability_topic: this._projectAvailabilityTopic(project.slug),
       payload_available: 'online',
       payload_not_available: 'offline',
       icon: 'mdi:briefcase-check',

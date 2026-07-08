@@ -67,7 +67,6 @@ async function main() {
     profileName: config.profile || 'Data Annotation',
     version,
     logger,
-    publishTargets: ['projects', 'status'],
   });
 
   const client = new DataAnnotationClient({
@@ -413,6 +412,7 @@ async function doSync(
       lastSuccessfulSyncAt: lastSuccessfulSyncAt,
       lastError: error.message,
     });
+    bridge.publishPublishedProjectAvailability(false);
     bridge.publishWithdrawLockState(withdrawLocked);
       logger.warning('Retaining last known project summary because sync did not complete');
     return {
