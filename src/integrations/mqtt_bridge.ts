@@ -168,6 +168,12 @@ class DataAnnotationMqttBridge {
   publishDiscovery({ currencyUnit = 'USD' } = {}) {
     const names = buildDiscoveryNames();
     this.logger.debug('Publishing MQTT discovery payloads');
+    this._removeDiscovery('binary_sensor', 'status');
+    this._removeDiscovery('sensor', 'last_sync');
+    this._clearRetainedTopic('status/state');
+    this._clearRetainedTopic('status/attributes');
+    this._clearRetainedTopic('last_sync');
+
     this._publishDiscovery('button', 'sync_now', {
       name: names.button,
       unique_id: `${this.topicPrefix}_sync_now`,
@@ -315,20 +321,6 @@ class DataAnnotationMqttBridge {
       device: this.device,
     });
 
-    this._publishDiscovery('binary_sensor', 'status', {
-      name: names.status,
-      unique_id: `${this.topicPrefix}_status`,
-      state_topic: this._topic('status/state'),
-      payload_on: 'ON',
-      payload_off: 'OFF',
-      force_update: true,
-      availability_topic: this._topic('availability'),
-      payload_available: 'online',
-      payload_not_available: 'offline',
-      icon: 'mdi:cloud-search',
-      device: this.device,
-    });
-
     this._publishDiscovery('binary_sensor', 'in_progress_task', {
       name: names.in_progress_task,
       unique_id: `${this.topicPrefix}_in_progress_task`,
@@ -340,20 +332,6 @@ class DataAnnotationMqttBridge {
       payload_available: 'online',
       payload_not_available: 'offline',
       icon: 'mdi:briefcase-clock',
-      device: this.device,
-    });
-
-    this._publishDiscovery('sensor', 'last_sync', {
-      name: names.last_sync,
-      unique_id: `${this.topicPrefix}_last_sync`,
-      state_topic: this._topic('last_sync'),
-      value_template: '{{ value_json.lastSuccessfulSyncAt }}',
-      force_update: true,
-      availability_topic: this._topic('availability'),
-      payload_available: 'online',
-      payload_not_available: 'offline',
-      device_class: 'timestamp',
-      icon: 'mdi:clock-check-outline',
       device: this.device,
     });
 
@@ -577,16 +555,10 @@ class DataAnnotationMqttBridge {
 
   publishStatusSuccess(attributes) {
     this.logger.debug('Publishing status success');
-    this._publish(this._topic('status/state'), 'ON', true);
-    this._publishJson(this._topic('status/attributes'), attributes, true);
-    this._publishJson(this._topic('last_sync'), attributes, true);
   }
 
   publishStatusError(attributes) {
     this.logger.debug('Publishing status error');
-    this._publish(this._topic('status/state'), 'OFF', true);
-    this._publishJson(this._topic('status/attributes'), attributes, true);
-    this._publishJson(this._topic('last_sync'), attributes, true);
   }
 
   publishTaskStatus(taskStatus, scrapedAt = new Date().toISOString()) {
@@ -689,6 +661,14 @@ class DataAnnotationMqttBridge {
 
   _publishDiscovery(component, objectId, payload) {
     this._publishJson(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, payload, true);
+  }
+
+  _removeDiscovery(component, objectId) {
+    this._publish(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, '', true);
+  }
+
+  _clearRetainedTopic(suffix) {
+    this._publish(this._topic(suffix), '', true);
   }
 
   _deleteProjectEntity(slug) {

@@ -20,9 +20,7 @@ test('discovery names stay short', () => {
     profile: 'Profile',
     project_count: 'Project Count',
     total_tasks: 'Total Tasks',
-    status: 'Status',
     in_progress_task: 'In Progress Task',
-    last_sync: 'Last Sync',
     withdraw_locked: 'Withdraw Locked',
     claim_projects_locked: 'Claim Projects Locked',
     fast_polling: 'Fast Polling',
@@ -86,6 +84,19 @@ test('claim project discovery includes project availability and offline publicat
     const claimConfig = publishes.find((entry) => entry.topic === 'homeassistant/button/dataannotation_claim_project_project-1/config');
     assert.ok(claimConfig);
     assert.equal(JSON.parse(claimConfig.payload).availability_topic, 'dataannotation/projects/project-1/availability');
+
+    publishes.length = 0;
+    bridge.publishDiscovery();
+    assert.deepEqual(
+      publishes.filter((entry) => entry.topic === 'homeassistant/binary_sensor/dataannotation_status/config' || entry.topic === 'homeassistant/sensor/dataannotation_last_sync/config' || entry.topic === 'dataannotation/status/state' || entry.topic === 'dataannotation/status/attributes' || entry.topic === 'dataannotation/last_sync'),
+      [
+        { topic: 'homeassistant/binary_sensor/dataannotation_status/config', payload: '' },
+        { topic: 'homeassistant/sensor/dataannotation_last_sync/config', payload: '' },
+        { topic: 'dataannotation/status/state', payload: '' },
+        { topic: 'dataannotation/status/attributes', payload: '' },
+        { topic: 'dataannotation/last_sync', payload: '' },
+      ]
+    );
 
     publishes.length = 0;
     bridge.publishedProjectSlugs.add('project-1');

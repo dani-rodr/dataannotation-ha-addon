@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.4
+
+- Remove the noisy MQTT `Status` and `Last Sync` entities and clean up their retained discovery topics.
+
 ## 0.6.3
 
 - Split the runtime into smaller app, MQTT, and browser-session modules while keeping live behavior unchanged.
