@@ -7,7 +7,7 @@ const {
   retainNextWithdrawalAt,
   shouldIncludeFundsHistory,
   shouldIncludePayments,
-} = require('./state/sync_policy.ts');
+} = require('../../../src/state/sync_policy.ts');
 
 test('shouldIncludePayments always keeps the lightweight payments scrape enabled', () => {
   assert.equal(shouldIncludePayments({ initialSyncCompleted: false, manualSyncRequested: false, fastPollingEnabled: true }), true);
