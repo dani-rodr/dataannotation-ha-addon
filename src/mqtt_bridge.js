@@ -735,24 +735,24 @@ function buildDeviceInfo(profileName, version) {
 }
 
 function buildDiscoveryNames() {
-    return {
-      button: 'Sync Now',
-      profile: 'Profile',
-      project_count: 'Project Count',
-      total_tasks: 'Total Tasks',
-      status: 'Status',
-      in_progress_task: 'In Progress Task',
-      last_sync: 'Last Sync',
-      withdraw_locked: 'Withdraw Locked',
-      claim_projects_locked: 'Claim Projects Locked',
-      fast_polling: 'Fast Polling',
-      auto_accept: 'Auto Accept',
-      currency_mode: 'Currency to PHP',
-      usd_php_rate: 'USD to PHP Rate',
-      withdraw_funds: 'Withdraw Funds',
-      next_payout: 'Next Payout',
-    };
-  }
+  return {
+    button: 'Sync Now',
+    profile: 'Profile',
+    project_count: 'Project Count',
+    total_tasks: 'Total Tasks',
+    status: 'Status',
+    in_progress_task: 'In Progress Task',
+    last_sync: 'Last Sync',
+    withdraw_locked: 'Withdraw Locked',
+    claim_projects_locked: 'Claim Projects Locked',
+    fast_polling: 'Fast Polling',
+    auto_accept: 'Auto Accept',
+    currency_mode: 'Currency to PHP',
+    usd_php_rate: 'USD to PHP Rate',
+    withdraw_funds: 'Withdraw Funds',
+    next_payout: 'Next Payout',
+  };
+}
 
 function formatProjectEntityName(name) {
   return `Project - ${shortenProjectName(name, 40)}`;
