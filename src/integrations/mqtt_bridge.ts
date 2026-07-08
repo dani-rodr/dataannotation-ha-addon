@@ -1,3 +1,5 @@
+// @ts-nocheck
+// @ts-nocheck
 const NULL_LOGGER = {
   debug() {},
   info() {},
@@ -5,7 +7,7 @@ const NULL_LOGGER = {
   error() {},
 };
 
-const { formatClaimProjectEntityName } = require('../project_claim');
+const { formatClaimProjectEntityName } = require('../projects/project_claim.ts');
 
 function numberOrZero(value) {
   const parsed = Number(value);

@@ -2,8 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('module');
 
-const { buildDeviceInfo, buildDiscoveryNames, formatProjectEntityName, shortenProjectName } = require('../../../src/integrations/mqtt_bridge.js');
-const { formatClaimProjectEntityName } = require('../../../src/project_claim.js');
+const { buildDeviceInfo, buildDiscoveryNames, formatProjectEntityName, shortenProjectName } = require('../../../src/integrations/mqtt_bridge.ts');
+const { formatClaimProjectEntityName } = require('../../../src/projects/project_claim.ts');
 
 test('device metadata uses a clean Data Annotation name', () => {
   const device = buildDeviceInfo('Daniel Rodriguez', '0.1.1');
@@ -73,7 +73,7 @@ test('claim project discovery includes project availability and offline publicat
   };
 
   try {
-    const { DataAnnotationMqttBridge } = require('../../../src/integrations/mqtt_bridge.js');
+    const { DataAnnotationMqttBridge } = require('../../../src/integrations/mqtt_bridge.ts');
     const bridge = new DataAnnotationMqttBridge({
       host: 'localhost',
       port: 1883,

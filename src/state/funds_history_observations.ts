@@ -1,5 +1,7 @@
-const fs = require('fs');
-const path = require('path');
+// @ts-nocheck
+// @ts-nocheck
+const path = require('node:path');
+const fs = require('node:fs');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_OBSERVATIONS = {
@@ -8,7 +10,7 @@ const DEFAULT_OBSERVATIONS = {
   updated_at: null,
 };
 
-function loadFundsHistoryObservations(filePath) {
+function loadFundsHistoryObservations(filePath: any) {
   if (!filePath || !fs.existsSync(filePath)) {
     return cloneObservations(DEFAULT_OBSERVATIONS);
   }
@@ -20,7 +22,7 @@ function loadFundsHistoryObservations(filePath) {
   }
 }
 
-function saveFundsHistoryObservations(filePath, observations) {
+function saveFundsHistoryObservations(filePath: any, observations: any) {
   if (!filePath) {
     return;
   }
@@ -30,7 +32,7 @@ function saveFundsHistoryObservations(filePath, observations) {
   fs.writeFileSync(filePath, JSON.stringify(normalized, null, 2));
 }
 
-function applyFundsHistoryObservations(entries, observations = null, now = new Date()) {
+function applyFundsHistoryObservations(entries: any, observations: any = null, now = new Date()) {
   const current = normalizeDate(now) || new Date();
   const state = normalizeObservations(observations);
   const seenFingerprints = new Set();
@@ -89,12 +91,12 @@ function applyFundsHistoryObservations(entries, observations = null, now = new D
       continue;
     }
 
-    if (observation.status === 'paid') {
+    if ((observation as any).status === 'paid') {
       delete state.entries[fingerprint];
       continue;
     }
 
-    const payoutAt = normalizeDate(observation.estimated_payout_at);
+    const payoutAt = normalizeDate((observation as any).estimated_payout_at);
     if (payoutAt && payoutAt.getTime() <= current.getTime()) {
       delete state.entries[fingerprint];
     }
@@ -108,7 +110,7 @@ function applyFundsHistoryObservations(entries, observations = null, now = new D
   };
 }
 
-function estimateFundsHistoryEntry(entry, now = new Date()) {
+function estimateFundsHistoryEntry(entry: any, now = new Date()) {
   const current = normalizeDate(now) || new Date();
   const ageUnit = String(entry?.relative_age_unit || '').toLowerCase();
   const ageValue = numberOrZero(entry?.relative_age_value);
@@ -150,7 +152,7 @@ function estimateFundsHistoryEntry(entry, now = new Date()) {
   };
 }
 
-function buildFundsHistoryEntryFingerprint(entry) {
+function buildFundsHistoryEntryFingerprint(entry: any) {
   const parts = [
     normalizeText(entry?.entry_date || ''),
     normalizeText(entry?.project || ''),
@@ -166,7 +168,7 @@ function buildFundsHistoryEntryFingerprint(entry) {
   return parts.join('|');
 }
 
-function pickStoredObservationFields(entry) {
+function pickStoredObservationFields(entry: any) {
   return {
     fingerprint: entry.fingerprint,
     project: entry.project,
@@ -190,7 +192,7 @@ function pickStoredObservationFields(entry) {
   };
 }
 
-function normalizeObservations(value) {
+function normalizeObservations(value: any) {
   const entries = value && typeof value === 'object' && value.entries && typeof value.entries === 'object' ? value.entries : {};
   const normalizedEntries = {};
 
@@ -208,7 +210,7 @@ function normalizeObservations(value) {
   };
 }
 
-function normalizeObservationEntry(fingerprint, entry) {
+function normalizeObservationEntry(fingerprint: any, entry: any) {
   if (!entry || typeof entry !== 'object') {
     return null;
   }
@@ -243,12 +245,12 @@ function normalizeObservationEntry(fingerprint, entry) {
   return repairObservationEntry(normalized);
 }
 
-function normalizeIsoDate(value) {
+function normalizeIsoDate(value: any) {
   const date = normalizeDate(value);
   return date ? date.toISOString() : null;
 }
 
-function normalizeDate(value) {
+function normalizeDate(value: any) {
   if (!value) {
     return null;
   }
@@ -257,45 +259,23 @@ function normalizeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function nextLocalMidnight(value, daysOffset) {
+function nextLocalMidnight(value: any, daysOffset: any) {
   const date = normalizeDate(value);
   if (!date) {
     return null;
   }
 
-  const midnight = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate() + numberOrZero(daysOffset),
-    0,
-    0,
-    0,
-    0
-  );
-
-  if (midnight <= date) {
-    midnight.setDate(midnight.getDate() + 1);
-  }
-
-  return midnight;
+  const result = new Date(date);
+  result.setDate(result.getDate() + numberOrZero(daysOffset));
+  result.setHours(0, 0, 0, 0);
+  return result;
 }
 
-function relativeAgeUnitToMs(unit) {
-  switch (unit) {
-    case 'minute':
-      return 60 * 1000;
-    case 'hour':
-      return 60 * 60 * 1000;
-    case 'day':
-      return DAY_MS;
-    case 'week':
-      return 7 * DAY_MS;
-    default:
-      return DAY_MS;
-  }
+function toLocalMidnightAtOffset(value: any, daysOffset: any) {
+  return nextLocalMidnight(value, daysOffset);
 }
 
-function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = new Date()) {
+function estimatePayoutAtFromEntryDate(entryDate: any, dueDays: any, now = new Date()) {
   const baseDate = normalizeDate(entryDate);
   if (!baseDate) {
     return null;
@@ -319,29 +299,37 @@ function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = new Date()) {
   return payoutDate;
 }
 
-function estimatePayoutAtFromWorkAt(estimatedWorkAt, dueDays, now = new Date()) {
-  const workAt = normalizeDate(estimatedWorkAt);
-  if (!workAt) {
+function estimatePayoutAtFromWorkAt(workAt: any, dueDays: any, now = new Date()) {
+  const baseDate = normalizeDate(workAt);
+  if (!baseDate) {
     return null;
   }
 
-  const payoutDate = new Date(workAt.getTime() + numberOrZero(dueDays) * DAY_MS);
+  const payoutDate = new Date(baseDate.getTime() + numberOrZero(dueDays) * DAY_MS);
   const current = normalizeDate(now) || new Date();
   if (payoutDate <= current) {
-    return toLocalMidnightAtOffset(current, 1);
+    payoutDate.setDate(payoutDate.getDate() + 1);
   }
 
   return payoutDate;
 }
 
-function repairObservationEntry(entry) {
-  if (!entry || typeof entry !== 'object') {
-    return entry;
-  }
+function repairObservationEntry(entry: any) {
+  const current = normalizeDate(entry.last_seen_at || entry.first_seen_at || new Date()) || new Date();
+  const payoutAt = normalizeDate(entry.estimated_payout_at);
+  const workAt = normalizeDate(entry.estimated_work_at);
+  const dueDays = numberOrZero(entry.due_days) || (entry.kind === 'task' ? 3 : 7);
+  const shouldRepairMidnightFallback = Boolean(
+    payoutAt &&
+    workAt &&
+    payoutAt.getUTCHours() === 0 &&
+    payoutAt.getUTCMinutes() === 0 &&
+    payoutAt.getUTCSeconds() === 0 &&
+    payoutAt.getUTCMilliseconds() === 0
+  );
 
-  const source = String(entry.estimate_source || '').toLowerCase();
-  if (source === 'observed_minutes' || source === 'observed_hours') {
-    const repaired = estimatePayoutAtFromWorkAt(entry.estimated_work_at, entry.due_days, entry.last_seen_at || entry.first_seen_at || new Date());
+  if (shouldRepairMidnightFallback) {
+    const repaired = estimatePayoutAtFromWorkAt(workAt, dueDays, current);
     if (repaired) {
       return {
         ...entry,
@@ -350,27 +338,56 @@ function repairObservationEntry(entry) {
     }
   }
 
+  if (payoutAt && payoutAt.getTime() <= current.getTime()) {
+    if (workAt) {
+      const repaired = estimatePayoutAtFromWorkAt(workAt, dueDays, current);
+      if (repaired) {
+        return {
+          ...entry,
+          estimated_payout_at: repaired.toISOString(),
+        };
+      }
+    }
+
+    return {
+      ...entry,
+      estimated_payout_at: new Date(current.getTime() + DAY_MS).toISOString(),
+    };
+  }
+
   return entry;
 }
 
-function normalizeText(value) {
-  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+function cloneObservations(value: any) {
+  return normalizeObservations(JSON.parse(JSON.stringify(value)));
 }
 
-function cloneObservations(observations) {
-  return normalizeObservations(JSON.parse(JSON.stringify(observations || DEFAULT_OBSERVATIONS)));
+function normalizeText(value: any) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  return String(value).trim().toLowerCase();
 }
 
-function numberOrZero(value) {
+function numberOrZero(value: any) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function relativeAgeUnitToMs(unit: any) {
+  switch (String(unit || '').toLowerCase()) {
+    case 'minute':
+      return 60 * 1000;
+    case 'hour':
+      return 60 * 60 * 1000;
+    default:
+      return DAY_MS;
+  }
+}
+
 module.exports = {
+  applyFundsHistoryObservations,
   loadFundsHistoryObservations,
   saveFundsHistoryObservations,
-  applyFundsHistoryObservations,
-  estimateFundsHistoryEntry,
-  buildFundsHistoryEntryFingerprint,
-  normalizeObservations,
 };

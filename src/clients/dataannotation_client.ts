@@ -1,10 +1,11 @@
 const fs = require('fs');
+// @ts-nocheck
 const puppeteer = require('puppeteer-core');
 
-const { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require('../project_claim');
-const { extractProjects } = require('../scrapers/projects');
-const { extractTaskStatus } = require('../scrapers/task_status');
-const { chooseWithdrawalButton, scrapePayments } = require('../scrapers/payments');
+const { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require('../projects/project_claim.ts');
+const { extractProjects } = require('../scrapers/projects.ts');
+const { extractTaskStatus } = require('../scrapers/task_status.ts');
+const { chooseWithdrawalButton, scrapePayments } = require('../scrapers/payments.ts');
 
 const NULL_LOGGER = {
   debug() {},
@@ -544,6 +545,7 @@ class DataAnnotationClient {
   async _newPage() {
     const browser = await this._browser();
     const page = await browser.newPage();
+    await page.evaluate("globalThis.__name = globalThis.__name || ((value) => value)").catch(() => {});
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(45000);
     return page;

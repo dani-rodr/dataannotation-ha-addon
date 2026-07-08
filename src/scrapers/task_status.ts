@@ -1,4 +1,4 @@
-function extractTaskStatus(props, pageUrl = null, scrapedAt = new Date().toISOString()) {
+function extractTaskStatus(props: any, pageUrl: any = null, scrapedAt: any = null) {
   const inProgressTasks = Array.isArray(props?.inProgressTasksInfo) ? props.inProgressTasksInfo : [];
 
   return {
@@ -11,7 +11,7 @@ function extractTaskStatus(props, pageUrl = null, scrapedAt = new Date().toISOSt
   };
 }
 
-function normalizeInProgressTask(task) {
+function normalizeInProgressTask(task: any) {
   if (!task || typeof task !== 'object') {
     return null;
   }
@@ -26,7 +26,7 @@ function normalizeInProgressTask(task) {
   };
 }
 
-function stringOrNull(value) {
+function stringOrNull(value: any) {
   if (value === undefined || value === null || value === '') {
     return null;
   }

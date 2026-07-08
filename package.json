@@ -3,15 +3,15 @@
   "version": "0.5.0",
   "private": true,
   "description": "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
-  "main": "src/main.js",
+  "main": "src/main.ts",
   "type": "commonjs",
   "license": "MIT",
   "scripts": {
-    "start": "node -r tsx/cjs src/main.js",
-    "test": "node -r tsx/cjs --test test/unit/*.test.js test/unit/*/*.test.js",
-    "test:integration:fixture": "node -r tsx/cjs --test test/integration/projects.fixture.test.js",
-    "test:integration:live": "node -r tsx/cjs --test test/integration/live.test.js",
-    "test:integration": "node -r tsx/cjs --test test/integration/*.test.js",
+    "start": "node -r tsx/cjs src/main.ts",
+    "test": "node -r tsx/cjs --test test/unit/*.test.ts test/unit/*/*.test.ts",
+    "test:integration:fixture": "node -r tsx/cjs --test test/integration/projects.fixture.test.ts",
+    "test:integration:live": "node -r tsx/cjs --test test/integration/live.test.ts",
+    "test:integration": "node -r tsx/cjs --test test/integration/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

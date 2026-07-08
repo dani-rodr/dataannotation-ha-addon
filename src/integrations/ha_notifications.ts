@@ -1,4 +1,4 @@
-async function createPersistentNotification({ title, message, notificationId, logger }) {
+async function createPersistentNotification({ title, message, notificationId, logger }: any) {
   const token = process.env.SUPERVISOR_TOKEN;
   if (!token) {
     throw new Error('SUPERVISOR_TOKEN is required for Home Assistant persistent notifications');

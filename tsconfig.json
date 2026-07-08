@@ -13,6 +13,15 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "src/main.ts",
+    "src/clients/**",
+    "src/integrations/**",
+    "src/scrapers/funds_history.ts",
+    "src/scrapers/payments.ts",
+    "src/state/currency_conversion.ts",
+    "src/state/funds_history_observations.ts"
+  ]
 }

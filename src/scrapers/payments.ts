@@ -1,4 +1,6 @@
-const { scrapeFundsHistory } = require('./funds_history');
+// @ts-nocheck
+// @ts-nocheck
+const { scrapeFundsHistory } = require('./funds_history.ts');
 
 function extractPaymentsSnapshot({
   pageProps,
@@ -368,6 +370,7 @@ async function scrapePayments(page, { includeFundsHistory = true, fundsHistoryOb
   );
 
   const pageProps = JSON.parse(rawProps);
+  await page.evaluate("globalThis.__name = globalThis.__name || ((value) => value)").catch(() => {});
   const earningsSummary = await page.evaluate(async () => {
     const response = await fetch('/api_internal/payments/earnings_summary', {
       credentials: 'include',

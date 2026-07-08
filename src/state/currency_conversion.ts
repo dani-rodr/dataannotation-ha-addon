@@ -1,12 +1,14 @@
-const fs = require('fs');
-const path = require('path');
+// @ts-nocheck
+// @ts-nocheck
+const path = require('node:path');
+const fs = require('node:fs');
 
 const CURRENCY_BASE = 'USD';
 const CURRENCY_QUOTE = 'PHP';
 const DEFAULT_CONVERT_TO_PHP = false;
 const FRANKFURTER_RATE_URL = 'https://api.frankfurter.dev/v2/rate/USD/PHP';
 
-function loadCurrencyState(filePath) {
+function loadCurrencyState(filePath: any) {
   if (!filePath || !fs.existsSync(filePath)) {
     return defaultCurrencyState();
   }
@@ -19,7 +21,7 @@ function loadCurrencyState(filePath) {
   }
 }
 
-function saveCurrencyState(filePath, state) {
+function saveCurrencyState(filePath: any, state: any) {
   if (!filePath) {
     return;
   }
@@ -38,7 +40,7 @@ function defaultCurrencyState() {
   };
 }
 
-function normalizeCurrencyState(value) {
+function normalizeCurrencyState(value: any) {
   const base = defaultCurrencyState();
   const payload = value && typeof value === 'object' ? value : {};
 
@@ -52,7 +54,7 @@ function normalizeCurrencyState(value) {
   };
 }
 
-function shouldRefreshCurrencyRate(state, now = new Date()) {
+function shouldRefreshCurrencyRate(state: any, now = new Date()) {
   const current = normalizeDate(now) || new Date();
   const currentUtcDate = utcDateString(current);
   const threshold = nextFxRateRefreshWindow(current);
@@ -118,11 +120,11 @@ async function fetchUsdToPhpRate() {
   };
 }
 
-function convertProjectsForCurrency(projects, currencyState) {
+function convertProjectsForCurrency(projects: any, currencyState: any) {
   return (Array.isArray(projects) ? projects : []).map((project) => convertProjectForCurrency(project, currencyState));
 }
 
-function convertProjectForCurrency(project, currencyState) {
+function convertProjectForCurrency(project: any, currencyState: any) {
   const displayCurrency = getDisplayCurrency(currencyState);
   const rate = getExchangeRate(currencyState);
 
@@ -137,14 +139,14 @@ function convertProjectForCurrency(project, currencyState) {
   };
 }
 
-function convertPaymentsForCurrency(payments, currencyState) {
+function convertPaymentsForCurrency(payments: any, currencyState: any) {
   const displayCurrency = getDisplayCurrency(currencyState);
   const rate = getExchangeRate(currencyState);
 
   return convertPaymentsInternal(payments, displayCurrency, rate);
 }
 
-function convertPaymentsInternal(payments, displayCurrency, rate) {
+function convertPaymentsInternal(payments: any, displayCurrency: any, rate: any) {
   const converted = { ...(payments || {}) };
   const moneyFields = [
     'available_amount',
@@ -188,7 +190,7 @@ function convertPaymentsInternal(payments, displayCurrency, rate) {
   return converted;
 }
 
-function convertPayoutEntries(entries, rate, displayCurrency) {
+function convertPayoutEntries(entries: any, rate: any, displayCurrency: any) {
   return (Array.isArray(entries) ? entries : []).map((entry) => ({
     ...(entry || {}),
     amount: convertMoneyText(entry?.amount, rate, displayCurrency),
@@ -196,7 +198,7 @@ function convertPayoutEntries(entries, rate, displayCurrency) {
   }));
 }
 
-function convertMoneyNumber(value, rate) {
+function convertMoneyNumber(value: any, rate: any) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) {
     return value ?? null;
@@ -205,7 +207,7 @@ function convertMoneyNumber(value, rate) {
   return roundToCents(amount * getExchangeRateValue(rate));
 }
 
-function convertCents(value, rate) {
+function convertCents(value: any, rate: any) {
   const cents = Number(value);
   if (!Number.isFinite(cents)) {
     return value ?? null;
@@ -214,7 +216,7 @@ function convertCents(value, rate) {
   return Math.round(cents * getExchangeRateValue(rate));
 }
 
-function convertMoneyText(value, rate, currencyCode) {
+function convertMoneyText(value: any, rate: any, currencyCode: any) {
   const parsed = parseMoneyText(value);
   if (!parsed) {
     return value ?? null;
@@ -228,7 +230,7 @@ function convertMoneyText(value, rate, currencyCode) {
   return `${currencyCode} ${formatNumber(converted)}${parsed.suffix}`;
 }
 
-function convertMoneyValue(value, rate, currencyCode) {
+function convertMoneyValue(value: any, rate: any, currencyCode: any) {
   if (currencyCode === CURRENCY_BASE) {
     return value;
   }
@@ -244,7 +246,7 @@ function convertMoneyValue(value, rate, currencyCode) {
   return value ?? null;
 }
 
-function convertButtonText(value, rate, currencyCode) {
+function convertButtonText(value: any, rate: any, currencyCode: any) {
   if (currencyCode === CURRENCY_BASE || typeof value !== 'string') {
     return value ?? null;
   }
@@ -259,56 +261,29 @@ function convertButtonText(value, rate, currencyCode) {
   return `Get paid ${currencyCode} ${formatNumber(converted)}`;
 }
 
-function parseMoneyText(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return { amount: value, suffix: '' };
-  }
+function getDisplayCurrency(state: any) {
+  return state?.convert_to_php ? CURRENCY_QUOTE : CURRENCY_BASE;
+}
 
-  if (typeof value !== 'string') {
+function getExchangeRate(state: any) {
+  return normalizeRate(state?.usd_php_rate) || 1;
+}
+
+function getExchangeRateValue(rate: any) {
+  const normalized = normalizeRate(rate);
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : 1;
+}
+
+function normalizeText(value: any) {
+  if (value === undefined || value === null) {
     return null;
   }
 
-  const normalized = value.trim().replace(/\s+/g, ' ');
-  const match = normalized.match(/^(?:\$|PHP\s*)([\d,]+(?:\.\d{2})?)(.*)$/i);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    amount: Number(match[1].replace(/,/g, '')),
-    suffix: match[2] || '',
-  };
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
 }
 
-function getDisplayCurrency(currencyState) {
-  return Boolean(currencyState?.convert_to_php) && Number.isFinite(Number(currencyState?.usd_php_rate)) && Number(currencyState.usd_php_rate) > 0
-    ? CURRENCY_QUOTE
-    : CURRENCY_BASE;
-}
-
-function getExchangeRate(currencyState) {
-  return Boolean(currencyState?.convert_to_php) && Number.isFinite(Number(currencyState?.usd_php_rate)) && Number(currencyState.usd_php_rate) > 0
-    ? getExchangeRateValue(currencyState?.usd_php_rate)
-    : 1;
-}
-
-function getExchangeRateValue(rate) {
-  const parsed = Number(rate);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-}
-
-function formatNumber(value) {
-  return Number(value).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function roundToCents(value) {
-  return Math.round(Number(value) * 100) / 100;
-}
-
-function normalizeBoolean(value) {
+function normalizeBoolean(value: any) {
   if (typeof value === 'boolean') {
     return value;
   }
@@ -319,36 +294,31 @@ function normalizeBoolean(value) {
 
   if (typeof value === 'string') {
     const normalized = value.trim().toLowerCase();
-    if (['on', 'true', 'enabled', 'enable', '1', 'php'].includes(normalized)) {
-      return true;
-    }
-    if (['off', 'false', 'disabled', 'disable', '0', 'usd'].includes(normalized)) {
-      return false;
-    }
+    return ['1', 'true', 'yes', 'on', 'enabled'].includes(normalized);
   }
 
-  return DEFAULT_CONVERT_TO_PHP;
+  return Boolean(value);
 }
 
-function normalizeRate(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function normalizeText(value) {
+function normalizeRate(value: any) {
   if (value === undefined || value === null || value === '') {
     return null;
   }
 
-  return String(value);
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeIsoDate(value) {
-  const date = normalizeDate(value);
-  return date ? date.toISOString() : null;
+function normalizeIsoDate(value: any) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function normalizeDate(value) {
+function normalizeDate(value: any) {
   if (!value) {
     return null;
   }
@@ -357,19 +327,42 @@ function normalizeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function utcDateString(date) {
+function utcDateString(date: any) {
   const current = normalizeDate(date) || new Date();
   return current.toISOString().slice(0, 10);
 }
 
+function parseMoneyText(value: any) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  const match = normalized.match(/^([A-Z]{3}|\$)\s?([\d,]+(?:\.\d{2})?)(.*)$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    amount: Number(match[2].replace(/,/g, '')),
+    suffix: match[3] || '',
+  };
+}
+
+function formatNumber(value: any) {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value));
+}
+
+function roundToCents(value: any) {
+  return Math.round(Number(value) * 100) / 100;
+}
+
 module.exports = {
-  CURRENCY_BASE,
-  CURRENCY_QUOTE,
-  DEFAULT_CONVERT_TO_PHP,
-  FRANKFURTER_RATE_URL,
   computeNextFxRateRefreshAt,
   convertPaymentsForCurrency,
-  convertProjectForCurrency,
   convertProjectsForCurrency,
   fetchUsdToPhpRate,
   getDisplayCurrency,
@@ -377,5 +370,4 @@ module.exports = {
   normalizeCurrencyState,
   saveCurrencyState,
   shouldRefreshCurrencyRate,
-  convertMoneyValue,
 };

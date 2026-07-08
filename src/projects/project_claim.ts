@@ -1,3 +1,5 @@
+const crypto = require('node:crypto');
+
 const CLAIM_WORK_SCREEN_METRICS = {
   width: 2560,
   height: 1440,
@@ -11,11 +13,11 @@ const CLAIM_WORK_SCREEN_METRICS = {
   dontSetVisibleSize: false,
 };
 
-function formatClaimProjectEntityName(name) {
+function formatClaimProjectEntityName(name: any) {
   return `Claim Project - ${shortenProjectName(name, 40)}`;
 }
 
-function buildClaimProjectTarget(project) {
+function buildClaimProjectTarget(project: any) {
   return {
     slug: String(project?.slug || '').trim(),
     name: String(project?.name || '').trim(),
@@ -23,7 +25,7 @@ function buildClaimProjectTarget(project) {
   };
 }
 
-function claimProjectTargetMatchesRowText(rowText, target) {
+function claimProjectTargetMatchesRowText(rowText: any, target: any) {
   const normalizedRowText = normalizeClaimText(rowText);
   const normalizedTarget = buildClaimProjectTarget(target);
 
@@ -32,7 +34,7 @@ function claimProjectTargetMatchesRowText(rowText, target) {
     .some((needle) => normalizedRowText.includes(normalizeClaimText(needle)));
 }
 
-function shortenProjectName(name, maxLength = 40) {
+function shortenProjectName(name: any, maxLength = 40) {
   const cleaned = normalizeProjectName(name);
   if (cleaned.length <= maxLength) {
     return cleaned;
@@ -41,7 +43,7 @@ function shortenProjectName(name, maxLength = 40) {
   return `${cleaned.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
-function normalizeProjectName(name) {
+function normalizeProjectName(name: any) {
   return String(name || 'Unknown project')
     .replace(/^(?:\[[^\]]+\]\s*)+/, '')
     .replace(/\s+-\s+\d{2}\/\d{2}\/\d{2}\s*$/, '')
@@ -49,7 +51,7 @@ function normalizeProjectName(name) {
     .trim();
 }
 
-function normalizeClaimText(value) {
+function normalizeClaimText(value: any) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 

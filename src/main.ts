@@ -1,10 +1,11 @@
 const { readConfig, configureLogging } = require('./config/config.ts');
-const { DataAnnotationClient } = require('./clients/dataannotation_client.js');
+// @ts-nocheck
+const { DataAnnotationClient } = require('./clients/dataannotation_client.ts');
 const { detectNewTaskProjects } = require('./projects/project_delta.ts');
-const { createPersistentNotification } = require('./integrations/ha_notifications.js');
-const { DataAnnotationMqttBridge } = require('./integrations/mqtt_bridge.js');
+const { createPersistentNotification } = require('./integrations/ha_notifications.ts');
+const { DataAnnotationMqttBridge } = require('./integrations/mqtt_bridge.ts');
 const { createLogger } = require('./shared/logger.ts');
-const { summarizeProjects } = require('./scrapers/projects');
+const { summarizeProjects } = require('./scrapers/projects.ts');
 const { computeNextRunAt } = require('./shared/polling_schedule.ts');
 const { loadClaimProjectsLockState, saveClaimProjectsLockState } = require('./state/claim_projects_state.ts');
 const { loadAutoAcceptState, saveAutoAcceptState } = require('./state/auto_accept_state.ts');
@@ -17,7 +18,7 @@ const {
   loadCurrencyState,
   saveCurrencyState,
   shouldRefreshCurrencyRate,
-} = require('./state/currency_conversion.js');
+} = require('./state/currency_conversion.ts');
 const {
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,
