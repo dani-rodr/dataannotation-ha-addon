@@ -87,16 +87,7 @@ test('claim project discovery includes project availability and offline publicat
 
     publishes.length = 0;
     bridge.publishDiscovery();
-    assert.deepEqual(
-      publishes.filter((entry) => entry.topic === 'homeassistant/binary_sensor/dataannotation_status/config' || entry.topic === 'homeassistant/sensor/dataannotation_last_sync/config' || entry.topic === 'dataannotation/status/state' || entry.topic === 'dataannotation/status/attributes' || entry.topic === 'dataannotation/last_sync'),
-      [
-        { topic: 'homeassistant/binary_sensor/dataannotation_status/config', payload: '' },
-        { topic: 'homeassistant/sensor/dataannotation_last_sync/config', payload: '' },
-        { topic: 'dataannotation/status/state', payload: '' },
-        { topic: 'dataannotation/status/attributes', payload: '' },
-        { topic: 'dataannotation/last_sync', payload: '' },
-      ]
-    );
+    assert.equal(publishes.some((entry) => entry.topic.includes('dataannotation_status') || entry.topic.includes('dataannotation_last_sync')), false);
 
     publishes.length = 0;
     bridge.publishedProjectSlugs.add('project-1');

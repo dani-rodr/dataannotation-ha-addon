@@ -168,11 +168,6 @@ class DataAnnotationMqttBridge {
   publishDiscovery({ currencyUnit = 'USD' } = {}) {
     const names = buildDiscoveryNames();
     this.logger.debug('Publishing MQTT discovery payloads');
-    this._removeDiscovery('binary_sensor', 'status');
-    this._removeDiscovery('sensor', 'last_sync');
-    this._clearRetainedTopic('status/state');
-    this._clearRetainedTopic('status/attributes');
-    this._clearRetainedTopic('last_sync');
 
     this._publishDiscovery('button', 'sync_now', {
       name: names.button,
@@ -661,14 +656,6 @@ class DataAnnotationMqttBridge {
 
   _publishDiscovery(component, objectId, payload) {
     this._publishJson(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, payload, true);
-  }
-
-  _removeDiscovery(component, objectId) {
-    this._publish(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, '', true);
-  }
-
-  _clearRetainedTopic(suffix) {
-    this._publish(this._topic(suffix), '', true);
   }
 
   _deleteProjectEntity(slug) {
