@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { extractTaskStatus, normalizeInProgressTask } = require('./task_status');
+const { extractTaskStatus, normalizeInProgressTask } = require('../../../src/scrapers/task_status');
 
 test('normalizeInProgressTask keeps the live in-progress task fields', () => {
   const task = normalizeInProgressTask({

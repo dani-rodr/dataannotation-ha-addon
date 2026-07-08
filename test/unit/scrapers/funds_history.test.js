@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { parseFundsHistoryEntries, summarizeFundsHistoryEntries, parseFundsHistoryDetailRow } = require('./funds_history');
+const { parseFundsHistoryEntries, summarizeFundsHistoryEntries, parseFundsHistoryDetailRow } = require('../../../src/scrapers/funds_history');
 
 function localMidnightIsoFrom(now, daysOffset) {
   const date = new Date(now);

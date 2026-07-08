@@ -8,8 +8,8 @@ const {
   applyFundsHistoryObservations,
   loadFundsHistoryObservations,
   saveFundsHistoryObservations,
-} = require('./state/funds_history_observations.js');
-const { parseFundsHistoryDetailRow } = require('./scrapers/funds_history');
+} = require('../../../src/state/funds_history_observations.js');
+const { parseFundsHistoryDetailRow } = require('../../../src/scrapers/funds_history.js');
 
 test('funds history observations persist and reuse the original payout estimate', () => {
   const now = new Date('2026-06-28T19:45:00.000Z');

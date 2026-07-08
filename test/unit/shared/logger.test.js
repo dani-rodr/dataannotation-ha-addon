@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { createLogger } = require('./shared/logger.ts');
+const { createLogger } = require('../../../src/shared/logger.ts');
 
 test('createLogger prefixes messages with an ISO timestamp', () => {
   const originalLog = console.log;

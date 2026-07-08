@@ -9,7 +9,7 @@ const {
   loadFastPollingState,
   normalizeFastPollingState,
   saveFastPollingState,
-} = require('./state/fast_polling_state.ts');
+} = require('../../../src/state/fast_polling_state.ts');
 
 test('normalizeFastPollingState defaults to disabled', () => {
   assert.equal(DEFAULT_FAST_POLLING_ENABLED, false);

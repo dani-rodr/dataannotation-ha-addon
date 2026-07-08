@@ -8,7 +8,7 @@
   "license": "MIT",
   "scripts": {
     "start": "node -r tsx/cjs src/main.js",
-    "test": "node -r tsx/cjs --test src/*.test.js src/scrapers/*.test.js",
+    "test": "node -r tsx/cjs --test test/unit/*.test.js test/unit/*/*.test.js",
     "test:integration:fixture": "node -r tsx/cjs --test test/integration/projects.fixture.test.js",
     "test:integration:live": "node -r tsx/cjs --test test/integration/live.test.js",
     "test:integration": "node -r tsx/cjs --test test/integration/*.test.js",

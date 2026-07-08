@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { chooseWithdrawalButton, estimateNextWithdrawalAt, extractPaymentsSnapshot } = require('./payments');
+const { chooseWithdrawalButton, estimateNextWithdrawalAt, extractPaymentsSnapshot } = require('../../../src/scrapers/payments');
 
 function localMidnightIsoFrom(now, daysOffset) {
   const date = new Date(now);

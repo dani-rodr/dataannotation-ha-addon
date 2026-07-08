@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { extractProjects, summarizeProjects } = require('./projects');
+const { extractProjects, summarizeProjects } = require('../../../src/scrapers/projects');
 
 test('extractProjects normalizes a DataAnnotation project payload', () => {
   const projects = extractProjects({

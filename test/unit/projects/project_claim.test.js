@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { buildClaimProjectTarget, claimProjectTargetMatchesRowText, formatClaimProjectEntityName } = require('./project_claim');
+const { buildClaimProjectTarget, claimProjectTargetMatchesRowText, formatClaimProjectEntityName } = require('../../../src/project_claim.js');
 
 test('buildClaimProjectTarget preserves slug name and id', () => {
   const target = buildClaimProjectTarget({ slug: 'project_123', name: 'Boxing', id: 'abc-123' });
