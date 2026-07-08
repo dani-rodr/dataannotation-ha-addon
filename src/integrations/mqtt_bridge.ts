@@ -8,6 +8,8 @@ const NULL_LOGGER = {
 };
 
 const { formatClaimProjectEntityName } = require('../projects/project_claim.ts');
+const { buildDeviceInfo, buildDiscoveryNames, formatProjectEntityName, shortenProjectName, slugify } = require('./mqtt_discovery.ts');
+const { buildTopicHelpers } = require('./mqtt_topics.ts');
 
 function numberOrZero(value) {
   const parsed = Number(value);
@@ -18,6 +20,7 @@ class DataAnnotationMqttBridge {
   constructor(options) {
     const mqtt = require('mqtt');
     this.topicPrefix = options.topicPrefix;
+    this.topics = buildTopicHelpers(this.topicPrefix);
     this.profileName = options.profileName;
     this.version = options.version;
     this.logger = options.logger || NULL_LOGGER;
@@ -706,75 +709,16 @@ class DataAnnotationMqttBridge {
   }
 
   _topic(suffix) {
-    return `${this.topicPrefix}/${suffix}`;
+    return this.topics.topic(suffix);
   }
 
   _projectStateTopic(slug) {
-    return this._topic(`projects/${slug}/state`);
+    return this.topics.projectStateTopic(slug);
   }
 
   _projectAvailabilityTopic(slug) {
-    return this._topic(`projects/${slug}/availability`);
+    return this.topics.projectAvailabilityTopic(slug);
   }
-}
-
-function slugify(value) {
-  const normalized = String(value || 'dataannotation')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-  return normalized || 'dataannotation';
-}
-
-function buildDeviceInfo(profileName, version) {
-  return {
-    identifiers: [`dataannotation_${slugify(profileName)}`],
-    name: 'Data Annotation',
-    manufacturer: 'Data Annotation',
-    model: 'Worker Projects Scraper',
-    sw_version: version,
-  };
-}
-
-function buildDiscoveryNames() {
-  return {
-    button: 'Sync Now',
-    profile: 'Profile',
-    project_count: 'Project Count',
-    total_tasks: 'Total Tasks',
-    status: 'Status',
-    in_progress_task: 'In Progress Task',
-    last_sync: 'Last Sync',
-    withdraw_locked: 'Withdraw Locked',
-    claim_projects_locked: 'Claim Projects Locked',
-    fast_polling: 'Fast Polling',
-    auto_accept: 'Auto Accept',
-    currency_mode: 'Currency to PHP',
-    usd_php_rate: 'USD to PHP Rate',
-    withdraw_funds: 'Withdraw Funds',
-    next_payout: 'Next Payout',
-  };
-}
-
-function formatProjectEntityName(name) {
-  return `Project - ${shortenProjectName(name, 40)}`;
-}
-
-function shortenProjectName(name, maxLength = 40) {
-  const cleaned = normalizeProjectName(name);
-  if (cleaned.length <= maxLength) {
-    return cleaned;
-  }
-
-  return `${cleaned.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
-}
-
-function normalizeProjectName(name) {
-  return String(name || 'Unknown project')
-    .replace(/^(?:\[[^\]]+\]\s*)+/, '')
-    .replace(/\s+-\s+\d{2}\/\d{2}\/\d{2}\s*$/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 module.exports = {

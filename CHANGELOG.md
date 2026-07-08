@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3
+
+- Split the runtime into smaller app, MQTT, and browser-session modules while keeping live behavior unchanged.
+
 ## 0.6.2
 
 - Build a bundled JavaScript entrypoint at image build time and run that in Home Assistant.
