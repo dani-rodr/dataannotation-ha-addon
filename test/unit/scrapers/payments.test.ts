@@ -3,6 +3,16 @@ const assert = require('node:assert/strict');
 
 const { chooseWithdrawalButton, estimateNextWithdrawalAt, extractPaymentsSnapshot } = require('../../../src/scrapers/payments');
 
+function formatHumanTimestamp(value) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 function localMidnightIsoFrom(now, daysOffset) {
   const date = new Date(now);
   return new Date(
@@ -156,15 +166,17 @@ test('extractPaymentsSnapshot uses the next payout timestamp when funds are zero
   assert.equal(snapshot.next_payout_entries_count, 1);
   assert.deepEqual(snapshot.next_payout_entries, [
     {
-      amount: '$0.00',
+      project: 'Example Project',
       kind: 'hourly',
+      amount: '$0.00',
+      estimated_work_at: null,
+      estimated_payout_at: formatHumanTimestamp(nextPayoutAt),
       relative_age: null,
-      estimated_payout_at: nextPayoutAt,
-      estimated_payout_at_human: nextPayoutAtHuman,
       source: 'row_date_fallback',
       confidence: 'low',
     },
   ]);
+  assert.deepEqual(snapshot.pending_payout_entries, snapshot.next_payout_entries);
 });
 
 test('estimateNextWithdrawalAt uses last payout plus three days while still in the future', () => {

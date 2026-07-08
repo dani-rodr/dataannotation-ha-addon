@@ -553,7 +553,8 @@ class DataAnnotationMqttBridge {
           unique_id: `${this.topicPrefix}_pending_approval`,
           state_topic: this._topic('payments/summary'),
           value_template: '{{ value_json.pending_approval }}',
-          json_attributes_topic: this._topic('payments/summary'),
+          json_attributes_template:
+            "{{ {'pending_payout_entries': value_json.pending_payout_entries} | tojson }}",
           unit_of_measurement: currencyUnit,
           force_update: true,
           availability_topic: this._topic('availability'),

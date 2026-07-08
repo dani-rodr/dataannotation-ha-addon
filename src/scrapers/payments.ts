@@ -1,6 +1,6 @@
 // @ts-nocheck
 // @ts-nocheck
-const { scrapeFundsHistory } = require('./funds_history.ts');
+const { formatPublicPayoutEntries, scrapeFundsHistory } = require('./funds_history.ts');
 
 function extractPaymentsSnapshot({
   pageProps,
@@ -72,7 +72,7 @@ function extractPaymentsSnapshot({
     next_payout_at: normalizeIsoDate(next_payout_at),
     next_payout_at_human: formatHumanTimestamp(next_payout_at),
     next_payout_entries_count: numberOrZero(next_payout_entries_count),
-    pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
+    pending_payout_entries: formatPublicPayoutEntries(pending_payout_entries),
     next_payout_entries: nextPayoutEntries,
     next_payout_amount: nextPayoutEntry?.amount || null,
     next_payout_source: nextPayoutEntry?.source || null,
@@ -82,17 +82,7 @@ function extractPaymentsSnapshot({
 }
 
 function buildNextPayoutEntries(pendingEntries) {
-  return (Array.isArray(pendingEntries) ? pendingEntries : [])
-    .filter((entry) => entry && entry.status === 'pending')
-    .map((entry) => ({
-      amount: entry.amount || formatCents(entry.amount_cents),
-      kind: entry.kind || null,
-      relative_age: entry.relative_age_text || null,
-      estimated_payout_at: normalizeIsoDate(entry.estimated_payout_at) || null,
-      estimated_payout_at_human: formatHumanTimestamp(entry.estimated_payout_at),
-      source: entry.estimate_source || null,
-      confidence: entry.estimate_confidence || null,
-    }))
+  return formatPublicPayoutEntries(pendingEntries)
     .sort((left, right) => String(left.estimated_payout_at || '').localeCompare(String(right.estimated_payout_at || '')));
 }
 

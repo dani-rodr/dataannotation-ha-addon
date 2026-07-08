@@ -83,6 +83,7 @@ test('configuration and diagnostic entities are categorized for the device page'
     assert.equal(parse('homeassistant/sensor/dataannotation_this_month/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_best_month/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_last_payout/config').entity_category, 'diagnostic');
+    assert.equal(parse('homeassistant/sensor/dataannotation_pending_approval/config').json_attributes_template, "{{ {'pending_payout_entries': value_json.pending_payout_entries} | tojson }}");
     assert.equal(parse('homeassistant/button/dataannotation_rebuild_discovery/config').entity_category, 'config');
   } finally {
     Module._load = originalLoad;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.9
+
+- Slim down payout history attributes and reuse the cleaned entry shape for next payout data.
+
 ## 0.6.8
 
 - Fix currency conversion so switching back to USD leaves values unchanged and clears currency history.

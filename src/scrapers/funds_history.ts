@@ -99,7 +99,24 @@ function summarizeFundsHistoryEntries(entries, now = new Date()) {
     next_payout_days: nextPayoutDays,
     next_payout_at: nextPayoutAt,
     next_payout_entries_count: pendingEntries.length,
-    pending_payout_entries: pendingEntries,
+    pending_payout_entries: formatPublicPayoutEntries(pendingEntries),
+  };
+}
+
+function formatPublicPayoutEntries(entries) {
+  return (Array.isArray(entries) ? entries : []).map((entry) => formatPublicPayoutEntry(entry));
+}
+
+function formatPublicPayoutEntry(entry) {
+  return {
+    project: entry?.project || null,
+    kind: entry?.kind || null,
+    amount: entry?.amount || null,
+    relative_age: entry?.relative_age_text || null,
+    estimated_work_at: formatHumanTimestamp(entry?.estimated_work_at),
+    estimated_payout_at: formatHumanTimestamp(entry?.estimated_payout_at),
+    source: entry?.estimate_source || null,
+    confidence: entry?.estimate_confidence || null,
   };
 }
 
@@ -401,6 +418,21 @@ function normalizeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function formatHumanTimestamp(value) {
+  const date = normalizeDate(value);
+  if (!date) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
 function normalizeIsoDate(value) {
   const date = normalizeDate(value);
   return date ? date.toISOString() : null;
@@ -420,6 +452,7 @@ module.exports = {
   parseFundsHistoryEntries,
   summarizeFundsHistoryEntries,
   parseFundsHistoryDetailRow,
+  formatPublicPayoutEntries,
   isProjectSummaryRow,
   extractProjectName,
 };

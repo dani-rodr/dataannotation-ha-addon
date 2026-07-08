@@ -1089,7 +1089,7 @@ var require_mqtt_bridge = __commonJS({
               unique_id: `${this.topicPrefix}_pending_approval`,
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.pending_approval }}",
-              json_attributes_topic: this._topic("payments/summary"),
+              json_attributes_template: "{{ {'pending_payout_entries': value_json.pending_payout_entries} | tojson }}",
               unit_of_measurement: currencyUnit,
               force_update: true,
               availability_topic: this._topic("availability"),
@@ -1911,7 +1911,22 @@ var require_funds_history = __commonJS({
         next_payout_days: nextPayoutDays,
         next_payout_at: nextPayoutAt,
         next_payout_entries_count: pendingEntries.length,
-        pending_payout_entries: pendingEntries
+        pending_payout_entries: formatPublicPayoutEntries(pendingEntries)
+      };
+    }
+    function formatPublicPayoutEntries(entries) {
+      return (Array.isArray(entries) ? entries : []).map((entry) => formatPublicPayoutEntry(entry));
+    }
+    function formatPublicPayoutEntry(entry) {
+      return {
+        project: entry?.project || null,
+        kind: entry?.kind || null,
+        amount: entry?.amount || null,
+        relative_age: entry?.relative_age_text || null,
+        estimated_work_at: formatHumanTimestamp(entry?.estimated_work_at),
+        estimated_payout_at: formatHumanTimestamp(entry?.estimated_payout_at),
+        source: entry?.estimate_source || null,
+        confidence: entry?.estimate_confidence || null
       };
     }
     function parseFundsHistoryDetailRow(text, project, entryDate = null, now = /* @__PURE__ */ new Date()) {
@@ -2153,6 +2168,19 @@ var require_funds_history = __commonJS({
       const date = value instanceof Date ? value : new Date(value);
       return Number.isNaN(date.getTime()) ? null : date;
     }
+    function formatHumanTimestamp(value) {
+      const date = normalizeDate2(value);
+      if (!date) {
+        return null;
+      }
+      return new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      }).format(date);
+    }
     function normalizeIsoDate(value) {
       const date = normalizeDate2(value);
       return date ? date.toISOString() : null;
@@ -2169,6 +2197,7 @@ var require_funds_history = __commonJS({
       parseFundsHistoryEntries,
       summarizeFundsHistoryEntries,
       parseFundsHistoryDetailRow,
+      formatPublicPayoutEntries,
       isProjectSummaryRow,
       extractProjectName
     };
@@ -2179,7 +2208,7 @@ var require_funds_history = __commonJS({
 var require_payments = __commonJS({
   "src/scrapers/payments.ts"(exports2, module2) {
     "use strict";
-    var { scrapeFundsHistory } = require_funds_history();
+    var { formatPublicPayoutEntries, scrapeFundsHistory } = require_funds_history();
     function extractPaymentsSnapshot({
       pageProps,
       earningsSummary,
@@ -2249,7 +2278,7 @@ var require_payments = __commonJS({
         next_payout_at: normalizeIsoDate(next_payout_at),
         next_payout_at_human: formatHumanTimestamp(next_payout_at),
         next_payout_entries_count: numberOrZero3(next_payout_entries_count),
-        pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
+        pending_payout_entries: formatPublicPayoutEntries(pending_payout_entries),
         next_payout_entries: nextPayoutEntries,
         next_payout_amount: nextPayoutEntry?.amount || null,
         next_payout_source: nextPayoutEntry?.source || null,
@@ -2258,15 +2287,7 @@ var require_payments = __commonJS({
       };
     }
     function buildNextPayoutEntries(pendingEntries) {
-      return (Array.isArray(pendingEntries) ? pendingEntries : []).filter((entry) => entry && entry.status === "pending").map((entry) => ({
-        amount: entry.amount || formatCents(entry.amount_cents),
-        kind: entry.kind || null,
-        relative_age: entry.relative_age_text || null,
-        estimated_payout_at: normalizeIsoDate(entry.estimated_payout_at) || null,
-        estimated_payout_at_human: formatHumanTimestamp(entry.estimated_payout_at),
-        source: entry.estimate_source || null,
-        confidence: entry.estimate_confidence || null
-      })).sort((left, right) => String(left.estimated_payout_at || "").localeCompare(String(right.estimated_payout_at || "")));
+      return formatPublicPayoutEntries(pendingEntries).sort((left, right) => String(left.estimated_payout_at || "").localeCompare(String(right.estimated_payout_at || "")));
     }
     function normalizeBestMonth(bestMonth) {
       if (!bestMonth) {
@@ -4761,7 +4782,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.6.8",
+      version: "0.6.9",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",
