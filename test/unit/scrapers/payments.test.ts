@@ -164,19 +164,26 @@ test('extractPaymentsSnapshot uses the next payout timestamp when funds are zero
   assert.equal(snapshot.next_payout_at_human, nextPayoutAtHuman);
   assert.equal(snapshot.next_withdrawal_at, nextPayoutAt);
   assert.equal(snapshot.next_payout_entries_count, 1);
-  assert.deepEqual(snapshot.next_payout_entries, [
+  assert.equal(snapshot.next_payout_entries[0].project, 'Example Project');
+  assert.equal(snapshot.next_payout_entries[0].kind, 'hourly');
+  assert.equal(snapshot.next_payout_entries[0].amount, '$0.00');
+  assert.equal(snapshot.next_payout_entries[0].status, 'pending');
+  assert.equal(snapshot.next_payout_entries[0].estimated_payout_at, nextPayoutAt);
+  assert.equal(snapshot.next_payout_entries[0].estimate_source, 'row_date_fallback');
+  assert.equal(snapshot.next_payout_entries[0].estimate_confidence, 'low');
+  assert.deepEqual(snapshot.next_payout_entries_public, [
     {
       project: 'Example Project',
       kind: 'hourly',
       amount: '$0.00',
+      relative_age: null,
       estimated_work_at: null,
       estimated_payout_at: formatHumanTimestamp(nextPayoutAt),
-      relative_age: null,
       source: 'row_date_fallback',
       confidence: 'low',
     },
   ]);
-  assert.deepEqual(snapshot.pending_payout_entries, snapshot.next_payout_entries);
+  assert.deepEqual(snapshot.pending_payout_entries_public, snapshot.next_payout_entries_public);
 });
 
 test('estimateNextWithdrawalAt uses last payout plus three days while still in the future', () => {

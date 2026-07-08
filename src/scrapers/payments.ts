@@ -72,8 +72,10 @@ function extractPaymentsSnapshot({
     next_payout_at: normalizeIsoDate(next_payout_at),
     next_payout_at_human: formatHumanTimestamp(next_payout_at),
     next_payout_entries_count: numberOrZero(next_payout_entries_count),
-    pending_payout_entries: formatPublicPayoutEntries(pending_payout_entries),
+    pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
+    pending_payout_entries_public: formatPublicPayoutEntries(pending_payout_entries),
     next_payout_entries: nextPayoutEntries,
+    next_payout_entries_public: formatPublicPayoutEntries(nextPayoutEntries),
     next_payout_amount: nextPayoutEntry?.amount || null,
     next_payout_source: nextPayoutEntry?.source || null,
     next_payout_confidence: nextPayoutEntry?.confidence || null,
@@ -82,7 +84,8 @@ function extractPaymentsSnapshot({
 }
 
 function buildNextPayoutEntries(pendingEntries) {
-  return formatPublicPayoutEntries(pendingEntries)
+  return (Array.isArray(pendingEntries) ? pendingEntries : [])
+    .filter((entry) => entry && entry.status === 'pending')
     .sort((left, right) => String(left.estimated_payout_at || '').localeCompare(String(right.estimated_payout_at || '')));
 }
 

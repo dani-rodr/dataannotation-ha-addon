@@ -999,7 +999,7 @@ var require_mqtt_bridge = __commonJS({
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.next_payout_at if value_json.next_payout_at else 'unknown' }}",
               json_attributes_topic: this._topic("payments/summary"),
-              json_attributes_template: "{{ {'next_payout_at_human': value_json.next_payout_at_human, 'next_payout_entries': value_json.next_payout_entries, 'next_payout_entries_count': value_json.next_payout_entries_count, 'next_payout_amount': value_json.next_payout_amount, 'next_payout_source': value_json.next_payout_source, 'next_payout_confidence': value_json.next_payout_confidence} | tojson }}",
+              json_attributes_template: "{{ {'next_payout_at_human': value_json.next_payout_at_human, 'next_payout_entries': value_json.next_payout_entries_public, 'next_payout_entries_count': value_json.next_payout_entries_count, 'next_payout_amount': value_json.next_payout_amount, 'next_payout_source': value_json.next_payout_source, 'next_payout_confidence': value_json.next_payout_confidence} | tojson }}",
               force_update: true,
               availability_topic: this._topic("availability"),
               payload_available: "online",
@@ -1089,7 +1089,8 @@ var require_mqtt_bridge = __commonJS({
               unique_id: `${this.topicPrefix}_pending_approval`,
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.pending_approval }}",
-              json_attributes_template: "{{ {'pending_payout_entries': value_json.pending_payout_entries} | tojson }}",
+              json_attributes_topic: this._topic("payments/summary"),
+              json_attributes_template: "{{ {'pending_payout_entries': value_json.pending_payout_entries_public} | tojson }}",
               unit_of_measurement: currencyUnit,
               force_update: true,
               availability_topic: this._topic("availability"),
@@ -1911,7 +1912,7 @@ var require_funds_history = __commonJS({
         next_payout_days: nextPayoutDays,
         next_payout_at: nextPayoutAt,
         next_payout_entries_count: pendingEntries.length,
-        pending_payout_entries: formatPublicPayoutEntries(pendingEntries)
+        pending_payout_entries: pendingEntries
       };
     }
     function formatPublicPayoutEntries(entries) {
@@ -2278,8 +2279,10 @@ var require_payments = __commonJS({
         next_payout_at: normalizeIsoDate(next_payout_at),
         next_payout_at_human: formatHumanTimestamp(next_payout_at),
         next_payout_entries_count: numberOrZero3(next_payout_entries_count),
-        pending_payout_entries: formatPublicPayoutEntries(pending_payout_entries),
+        pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
+        pending_payout_entries_public: formatPublicPayoutEntries(pending_payout_entries),
         next_payout_entries: nextPayoutEntries,
+        next_payout_entries_public: formatPublicPayoutEntries(nextPayoutEntries),
         next_payout_amount: nextPayoutEntry?.amount || null,
         next_payout_source: nextPayoutEntry?.source || null,
         next_payout_confidence: nextPayoutEntry?.confidence || null,
@@ -2287,7 +2290,7 @@ var require_payments = __commonJS({
       };
     }
     function buildNextPayoutEntries(pendingEntries) {
-      return formatPublicPayoutEntries(pendingEntries).sort((left, right) => String(left.estimated_payout_at || "").localeCompare(String(right.estimated_payout_at || "")));
+      return (Array.isArray(pendingEntries) ? pendingEntries : []).filter((entry) => entry && entry.status === "pending").sort((left, right) => String(left.estimated_payout_at || "").localeCompare(String(right.estimated_payout_at || "")));
     }
     function normalizeBestMonth(bestMonth) {
       if (!bestMonth) {
@@ -3416,6 +3419,7 @@ var require_currency_conversion = __commonJS({
     "use strict";
     var path5 = require("node:path");
     var fs6 = require("node:fs");
+    var { formatPublicPayoutEntries } = require_funds_history();
     var CURRENCY_BASE = "USD";
     var CURRENCY_QUOTE = "PHP";
     var DEFAULT_CONVERT_TO_PHP = false;
@@ -3564,6 +3568,8 @@ var require_currency_conversion = __commonJS({
       converted.withdraw_button_text = convertButtonText(converted.withdraw_button_text, rate, displayCurrency);
       converted.next_payout_entries = convertPayoutEntries(converted.next_payout_entries, rate, displayCurrency);
       converted.pending_payout_entries = convertPayoutEntries(converted.pending_payout_entries, rate, displayCurrency);
+      converted.next_payout_entries_public = formatPublicPayoutEntries(converted.next_payout_entries);
+      converted.pending_payout_entries_public = formatPublicPayoutEntries(converted.pending_payout_entries);
       converted.currency = displayCurrency;
       converted.exchange_rate = rate;
       converted.base_currency = CURRENCY_BASE;
@@ -4782,7 +4788,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.6.9",
+      version: "0.6.10",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

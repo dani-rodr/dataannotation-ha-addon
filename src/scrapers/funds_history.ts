@@ -99,7 +99,7 @@ function summarizeFundsHistoryEntries(entries, now = new Date()) {
     next_payout_days: nextPayoutDays,
     next_payout_at: nextPayoutAt,
     next_payout_entries_count: pendingEntries.length,
-    pending_payout_entries: formatPublicPayoutEntries(pendingEntries),
+    pending_payout_entries: pendingEntries,
   };
 }
 

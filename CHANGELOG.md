@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.10
+
+- Fix payout attribute cleanup so raw next-payout estimates stay accurate while MQTT attributes use the slim public fields.
+
 ## 0.6.9
 
 - Slim down payout history attributes and reuse the cleaned entry shape for next payout data.

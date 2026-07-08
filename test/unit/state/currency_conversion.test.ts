@@ -122,7 +122,13 @@ test('convertPaymentsForCurrency converts monetary summary fields into PHP', () 
   assert.equal(payments.this_month_formatted, 'PHP 137,460.84');
   assert.equal(payments.next_payout_amount, 758.55);
   assert.equal(payments.next_payout_entries[0].amount, 'PHP 758.55');
+  assert.equal(payments.next_payout_entries[0].amount_cents, 75855);
   assert.equal(payments.pending_payout_entries[0].amount, 'PHP 758.55');
+  assert.equal(payments.pending_payout_entries[0].amount_cents, 75855);
+  assert.equal(payments.next_payout_entries_public[0].amount, 'PHP 758.55');
+  assert.equal(payments.next_payout_entries_public[0].amount_cents, undefined);
+  assert.equal(payments.pending_payout_entries_public[0].amount, 'PHP 758.55');
+  assert.equal(payments.pending_payout_entries_public[0].amount_cents, undefined);
 });
 
 test('convertPaymentsForCurrency leaves monetary summary fields unchanged in USD mode', () => {
@@ -166,7 +172,13 @@ test('convertPaymentsForCurrency leaves monetary summary fields unchanged in USD
   assert.equal(payments.this_month_formatted, '$2,236.19');
   assert.equal(payments.next_payout_amount, 12.34);
   assert.equal(payments.next_payout_entries[0].amount, '$12.34');
+  assert.equal(payments.next_payout_entries[0].amount_cents, 1234);
   assert.equal(payments.pending_payout_entries[0].amount, '$12.34');
+  assert.equal(payments.pending_payout_entries[0].amount_cents, 1234);
+  assert.equal(payments.next_payout_entries_public[0].amount, '$12.34');
+  assert.equal(payments.next_payout_entries_public[0].amount_cents, undefined);
+  assert.equal(payments.pending_payout_entries_public[0].amount, '$12.34');
+  assert.equal(payments.pending_payout_entries_public[0].amount_cents, undefined);
 });
 
 test('convertPaymentsForCurrency converts formatted next payout amounts into PHP', () => {

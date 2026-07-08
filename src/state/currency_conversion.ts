@@ -2,6 +2,7 @@
 // @ts-nocheck
 const path = require('node:path');
 const fs = require('node:fs');
+const { formatPublicPayoutEntries } = require('../scrapers/funds_history.ts');
 
 const CURRENCY_BASE = 'USD';
 const CURRENCY_QUOTE = 'PHP';
@@ -181,6 +182,8 @@ function convertPaymentsInternal(payments: any, displayCurrency: any, rate: any)
 
   converted.next_payout_entries = convertPayoutEntries(converted.next_payout_entries, rate, displayCurrency);
   converted.pending_payout_entries = convertPayoutEntries(converted.pending_payout_entries, rate, displayCurrency);
+  converted.next_payout_entries_public = formatPublicPayoutEntries(converted.next_payout_entries);
+  converted.pending_payout_entries_public = formatPublicPayoutEntries(converted.pending_payout_entries);
 
   converted.currency = displayCurrency;
   converted.exchange_rate = rate;
