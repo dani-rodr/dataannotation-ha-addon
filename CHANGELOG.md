@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1
+
+- Fix the Home Assistant service launcher to start the TypeScript entrypoint after the migration.
+
 ## 0.6.0
 
 - Convert the remaining runtime and test modules from JavaScript to TypeScript.
