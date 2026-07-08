@@ -1015,6 +1015,7 @@ var require_mqtt_bridge = __commonJS({
             payload: {
               name: "Total Earnings",
               unique_id: `${this.topicPrefix}_total_earnings`,
+              entity_category: "diagnostic",
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.total_earnings }}",
               unit_of_measurement: currencyUnit,
@@ -1032,6 +1033,7 @@ var require_mqtt_bridge = __commonJS({
             payload: {
               name: "Total Paid Out",
               unique_id: `${this.topicPrefix}_total_paid_out`,
+              entity_category: "diagnostic",
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.total_paid_out }}",
               unit_of_measurement: currencyUnit,
@@ -1049,6 +1051,7 @@ var require_mqtt_bridge = __commonJS({
             payload: {
               name: "This Month",
               unique_id: `${this.topicPrefix}_this_month`,
+              entity_category: "diagnostic",
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.this_month }}",
               unit_of_measurement: currencyUnit,
@@ -1066,6 +1069,7 @@ var require_mqtt_bridge = __commonJS({
             payload: {
               name: "Best Month",
               unique_id: `${this.topicPrefix}_best_month`,
+              entity_category: "diagnostic",
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.best_month }}",
               unit_of_measurement: currencyUnit,
@@ -1101,6 +1105,7 @@ var require_mqtt_bridge = __commonJS({
             payload: {
               name: "Last Payout",
               unique_id: `${this.topicPrefix}_last_payout`,
+              entity_category: "diagnostic",
               state_topic: this._topic("payments/summary"),
               value_template: '{{ value_json.last_payout_at if value_json.last_payout_at else "unknown" }}',
               force_update: true,

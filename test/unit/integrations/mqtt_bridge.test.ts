@@ -78,6 +78,11 @@ test('configuration and diagnostic entities are categorized for the device page'
     assert.equal(parse('homeassistant/switch/dataannotation_auto_accept/config').entity_category, 'config');
     assert.equal(parse('homeassistant/sensor/dataannotation_profile_name/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_usd_php_rate/config').entity_category, 'diagnostic');
+    assert.equal(parse('homeassistant/sensor/dataannotation_total_earnings/config').entity_category, 'diagnostic');
+    assert.equal(parse('homeassistant/sensor/dataannotation_total_paid_out/config').entity_category, 'diagnostic');
+    assert.equal(parse('homeassistant/sensor/dataannotation_this_month/config').entity_category, 'diagnostic');
+    assert.equal(parse('homeassistant/sensor/dataannotation_best_month/config').entity_category, 'diagnostic');
+    assert.equal(parse('homeassistant/sensor/dataannotation_last_payout/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/button/dataannotation_rebuild_discovery/config').entity_category, 'config');
   } finally {
     Module._load = originalLoad;
