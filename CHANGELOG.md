@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.8
+
+- Fix currency conversion so switching back to USD leaves values unchanged and clears currency history.
+
 ## 0.6.7
 
 - Mark earnings and payout summary sensors as diagnostic so the device page groups them away from controls.
