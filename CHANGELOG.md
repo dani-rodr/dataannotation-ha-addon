@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.6
+
+- Refactor static MQTT discovery publishing so rebuilds and startup use the same source of truth.
+
 ## 0.6.5
 
 - Categorize Data Annotation MQTT entities so configuration switches and reference sensors are grouped more cleanly in Home Assistant.

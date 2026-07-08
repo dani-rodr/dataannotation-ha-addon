@@ -4714,7 +4714,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.6.5",
+      version: "0.6.6",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",
