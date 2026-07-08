@@ -27,6 +27,35 @@ async function createPersistentNotification({ title, message, notificationId, lo
   logger?.info?.(`Created persistent notification: ${title}`);
 }
 
+async function purgeRecorderEntities({ entityIds, keepDays = 0, logger }: any) {
+  const token = process.env.SUPERVISOR_TOKEN;
+  if (!token) {
+    throw new Error('SUPERVISOR_TOKEN is required to purge recorder entities');
+  }
+
+  const response = await fetch('http://supervisor/core/api/services/recorder/purge_entities', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      entity_id: entityIds,
+      keep_days: keepDays,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    const error = new Error(`Failed to purge recorder entities (${response.status}): ${body}`);
+    logger?.warning?.(error.message);
+    throw error;
+  }
+
+  logger?.info?.(`Purged recorder history for ${Array.isArray(entityIds) ? entityIds.length : 1} entities`);
+}
+
 module.exports = {
   createPersistentNotification,
+  purgeRecorderEntities,
 };

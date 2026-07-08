@@ -266,6 +266,10 @@ function getDisplayCurrency(state: any) {
 }
 
 function getExchangeRate(state: any) {
+  if (!state?.convert_to_php) {
+    return 1;
+  }
+
   return normalizeRate(state?.usd_php_rate) || 1;
 }
 

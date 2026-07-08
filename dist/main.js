@@ -3609,6 +3609,9 @@ var require_currency_conversion = __commonJS({
       return state?.convert_to_php ? CURRENCY_QUOTE : CURRENCY_BASE;
     }
     function getExchangeRate(state) {
+      if (!state?.convert_to_php) {
+        return 1;
+      }
       return normalizeRate(state?.usd_php_rate) || 1;
     }
     function getExchangeRateValue(rate) {
@@ -4003,8 +4006,33 @@ var require_ha_notifications = __commonJS({
       }
       logger?.info?.(`Created persistent notification: ${title}`);
     }
+    async function purgeRecorderEntities({ entityIds, keepDays = 0, logger }) {
+      const token = process.env.SUPERVISOR_TOKEN;
+      if (!token) {
+        throw new Error("SUPERVISOR_TOKEN is required to purge recorder entities");
+      }
+      const response = await fetch("http://supervisor/core/api/services/recorder/purge_entities", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          entity_id: entityIds,
+          keep_days: keepDays
+        })
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        const error = new Error(`Failed to purge recorder entities (${response.status}): ${body}`);
+        logger?.warning?.(error.message);
+        throw error;
+      }
+      logger?.info?.(`Purged recorder history for ${Array.isArray(entityIds) ? entityIds.length : 1} entities`);
+    }
     module2.exports = {
-      createPersistentNotification: createPersistentNotification2
+      createPersistentNotification: createPersistentNotification2,
+      purgeRecorderEntities
     };
   }
 });
@@ -4448,7 +4476,16 @@ var require_dataannotation_app = __commonJS({
     var { shouldIncludeFundsHistory: shouldIncludeFundsHistory2 } = (init_sync_policy(), __toCommonJS(sync_policy_exports));
     var { doSync: doSync2, getActivePollCron: getActivePollCron2, republishCurrencyViews: republishCurrencyViews2 } = (init_sync(), __toCommonJS(sync_exports));
     var { handleClaimRequest: handleClaimRequest2, handleWithdrawRequest: handleWithdrawRequest2 } = (init_commands(), __toCommonJS(commands_exports));
+    var { purgeRecorderEntities } = require_ha_notifications();
     var { RuntimeState } = require_runtime_state();
+    var CURRENCY_HISTORY_ENTITY_IDS = [
+      "sensor.data_annotation_available_funds",
+      "sensor.data_annotation_total_earnings",
+      "sensor.data_annotation_total_paid_out",
+      "sensor.data_annotation_this_month",
+      "sensor.data_annotation_best_month",
+      "sensor.data_annotation_pending_approval"
+    ];
     var WITHDRAW_LOCK_STATE_PATH = "/data/withdraw-lock-state.json";
     var CLAIM_PROJECTS_LOCK_STATE_PATH = "/data/claim-projects-lock-state.json";
     var FAST_POLLING_STATE_PATH = "/data/fast-polling-state.json";
@@ -4565,6 +4602,11 @@ var require_dataannotation_app = __commonJS({
           bridge.publishCurrencyModeState(state.currencyState.convert_to_php);
           bridge.publishDiscovery({ currencyUnit: getDisplayCurrency2(state.currencyState) });
           republishCurrencyViews2(bridge, state.lastSuccessfulProjects, state.lastSuccessfulPayments, state.currencyState, state.lastSuccessfulSyncAt);
+          try {
+            await purgeRecorderEntities({ entityIds: CURRENCY_HISTORY_ENTITY_IDS, keepDays: 0, logger });
+          } catch (error) {
+            logger.warning(`Failed to purge currency history after mode change: ${error.message}`);
+          }
           logger.info(`Currency mode updated: ${state.currencyState.convert_to_php ? "PHP" : "USD"}`);
         }
         if (bridge.rebuildDiscoveryRequested.value) {

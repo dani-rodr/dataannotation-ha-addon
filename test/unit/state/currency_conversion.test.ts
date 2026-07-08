@@ -125,6 +125,50 @@ test('convertPaymentsForCurrency converts monetary summary fields into PHP', () 
   assert.equal(payments.pending_payout_entries[0].amount, 'PHP 758.55');
 });
 
+test('convertPaymentsForCurrency leaves monetary summary fields unchanged in USD mode', () => {
+  const payments = convertPaymentsForCurrency(
+    {
+      available_amount: 371.25,
+      available_amount_cents: 37125,
+      available_amount_formatted: '$371.25',
+      total_earnings: 2236.19,
+      total_earnings_cents: 223619,
+      total_earnings_formatted: '$2,236.19',
+      total_paid_out: 403.76,
+      total_paid_out_cents: 40376,
+      total_paid_out_formatted: '$403.76',
+      this_month: 2236.19,
+      this_month_cents: 223619,
+      this_month_formatted: '$2,236.19',
+      best_month: 2236.19,
+      best_month_cents: 223619,
+      best_month_formatted: '$2,236.19',
+      pending_approval: 1832.43,
+      pending_approval_cents: 183243,
+      pending_approval_formatted: '$1,832.43',
+      next_payout_amount: 12.34,
+      next_payout_entries: [{ amount: '$12.34', amount_cents: 1234 }],
+      pending_payout_entries: [{ amount: '$12.34', amount_cents: 1234 }],
+    },
+    {
+      convert_to_php: false,
+      usd_php_rate: 61.471,
+    }
+  );
+
+  assert.equal(payments.currency, 'USD');
+  assert.equal(payments.exchange_rate, 1);
+  assert.equal(payments.available_amount, 371.25);
+  assert.equal(payments.available_amount_cents, 37125);
+  assert.equal(payments.available_amount_formatted, '$371.25');
+  assert.equal(payments.total_earnings, 2236.19);
+  assert.equal(payments.total_paid_out, 403.76);
+  assert.equal(payments.this_month_formatted, '$2,236.19');
+  assert.equal(payments.next_payout_amount, 12.34);
+  assert.equal(payments.next_payout_entries[0].amount, '$12.34');
+  assert.equal(payments.pending_payout_entries[0].amount, '$12.34');
+});
+
 test('convertPaymentsForCurrency converts formatted next payout amounts into PHP', () => {
   const payments = convertPaymentsForCurrency(
     {

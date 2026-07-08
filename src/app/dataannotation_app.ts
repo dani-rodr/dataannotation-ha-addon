@@ -17,7 +17,17 @@ const { loadWithdrawLockState, saveWithdrawLockState } = require('../state/withd
 const { shouldIncludeFundsHistory } = require('../state/sync_policy.ts');
 const { doSync, getActivePollCron, republishCurrencyViews } = require('./sync.ts');
 const { handleClaimRequest, handleWithdrawRequest } = require('./commands.ts');
+const { purgeRecorderEntities } = require('../integrations/ha_notifications.ts');
 const { RuntimeState } = require('./runtime_state.ts');
+
+const CURRENCY_HISTORY_ENTITY_IDS = [
+  'sensor.data_annotation_available_funds',
+  'sensor.data_annotation_total_earnings',
+  'sensor.data_annotation_total_paid_out',
+  'sensor.data_annotation_this_month',
+  'sensor.data_annotation_best_month',
+  'sensor.data_annotation_pending_approval',
+];
 
 const WITHDRAW_LOCK_STATE_PATH = '/data/withdraw-lock-state.json';
 const CLAIM_PROJECTS_LOCK_STATE_PATH = '/data/claim-projects-lock-state.json';
@@ -146,6 +156,11 @@ class DataAnnotationApp {
       bridge.publishCurrencyModeState(state.currencyState.convert_to_php);
       bridge.publishDiscovery({ currencyUnit: getDisplayCurrency(state.currencyState) });
       republishCurrencyViews(bridge, state.lastSuccessfulProjects, state.lastSuccessfulPayments, state.currencyState, state.lastSuccessfulSyncAt);
+      try {
+        await purgeRecorderEntities({ entityIds: CURRENCY_HISTORY_ENTITY_IDS, keepDays: 0, logger });
+      } catch (error: any) {
+        logger.warning(`Failed to purge currency history after mode change: ${error.message}`);
+      }
       logger.info(`Currency mode updated: ${state.currencyState.convert_to_php ? 'PHP' : 'USD'}`);
     }
 
