@@ -32,6 +32,99 @@ test('discovery names stay short', () => {
   });
 });
 
+test('configuration and diagnostic entities are categorized for the device page', () => {
+  const publishes = [];
+  const originalLoad = Module._load;
+  Module._load = function(request, parent, isMain) {
+    if (request === 'mqtt') {
+      return {
+        connect() {
+          return {
+            on() {},
+            subscribe() {},
+            publish(topic, payload) {
+              publishes.push({ topic, payload });
+            },
+            end(_force, _options, callback) {
+              callback?.();
+            },
+          };
+        },
+      };
+    }
+
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const { DataAnnotationMqttBridge } = require('../../../src/integrations/mqtt_bridge.ts');
+    const bridge = new DataAnnotationMqttBridge({
+      host: 'localhost',
+      port: 1883,
+      topicPrefix: 'dataannotation',
+      profileName: 'Test Profile',
+      version: '1.0.0',
+    });
+
+    bridge.publishDiscovery();
+
+    const parse = (topic) => JSON.parse(publishes.find((entry) => entry.topic === topic).payload);
+
+    assert.equal(parse('homeassistant/switch/dataannotation_withdraw_locked/config').entity_category, 'config');
+    assert.equal(parse('homeassistant/switch/dataannotation_claim_projects_locked/config').entity_category, 'config');
+    assert.equal(parse('homeassistant/switch/dataannotation_fast_polling/config').entity_category, 'config');
+    assert.equal(parse('homeassistant/switch/dataannotation_currency_mode/config').entity_category, 'config');
+    assert.equal(parse('homeassistant/switch/dataannotation_auto_accept/config').entity_category, 'config');
+    assert.equal(parse('homeassistant/sensor/dataannotation_profile_name/config').entity_category, 'diagnostic');
+    assert.equal(parse('homeassistant/sensor/dataannotation_usd_php_rate/config').entity_category, 'diagnostic');
+  } finally {
+    Module._load = originalLoad;
+  }
+});
+
+test('total tasks discovery omits long-term statistics metadata', () => {
+  const publishes = [];
+  const originalLoad = Module._load;
+  Module._load = function(request, parent, isMain) {
+    if (request === 'mqtt') {
+      return {
+        connect() {
+          return {
+            on() {},
+            subscribe() {},
+            publish(topic, payload) {
+              publishes.push({ topic, payload });
+            },
+            end(_force, _options, callback) {
+              callback?.();
+            },
+          };
+        },
+      };
+    }
+
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const { DataAnnotationMqttBridge } = require('../../../src/integrations/mqtt_bridge.ts');
+    const bridge = new DataAnnotationMqttBridge({
+      host: 'localhost',
+      port: 1883,
+      topicPrefix: 'dataannotation',
+      profileName: 'Test Profile',
+      version: '1.0.0',
+    });
+
+    bridge.publishDiscovery();
+    const discovery = publishes.find((entry) => entry.topic === 'homeassistant/sensor/dataannotation_total_tasks/config');
+    assert.ok(discovery);
+    assert.equal(JSON.parse(discovery.payload).state_class, undefined);
+  } finally {
+    Module._load = originalLoad;
+  }
+});
+
 test('project entity names are prefixed and shortened', () => {
   const short = shortenProjectName('Boxing 🥊 - Create Complex Coding Task Prompts for your Assigned Interaction Mode - 06/14/26');
   assert.equal(short.includes('06/14/26'), false);

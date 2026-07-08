@@ -721,6 +721,7 @@ var require_mqtt_bridge = __commonJS({
         this._publishDiscovery("switch", "withdraw_locked", {
           name: names.withdraw_locked,
           unique_id: `${this.topicPrefix}_withdraw_locked`,
+          entity_category: "config",
           state_topic: this._topic("withdraw/lock/state"),
           command_topic: this._topic("withdraw/lock/set"),
           payload_on: "ON",
@@ -736,6 +737,7 @@ var require_mqtt_bridge = __commonJS({
         this._publishDiscovery("switch", "claim_projects_locked", {
           name: names.claim_projects_locked,
           unique_id: `${this.topicPrefix}_claim_projects_locked`,
+          entity_category: "config",
           state_topic: this._topic("claim/lock/state"),
           command_topic: this._topic("claim/lock/set"),
           payload_on: "ON",
@@ -751,6 +753,7 @@ var require_mqtt_bridge = __commonJS({
         this._publishDiscovery("switch", "fast_polling", {
           name: names.fast_polling,
           unique_id: `${this.topicPrefix}_fast_polling`,
+          entity_category: "config",
           state_topic: this._topic("fast/poll/state"),
           command_topic: this._topic("fast/poll/set"),
           payload_on: "ON",
@@ -766,6 +769,7 @@ var require_mqtt_bridge = __commonJS({
         this._publishDiscovery("switch", "currency_mode", {
           name: names.currency_mode,
           unique_id: `${this.topicPrefix}_currency_mode`,
+          entity_category: "config",
           state_topic: this._topic("currency/mode/state"),
           command_topic: this._topic("currency/mode/set"),
           payload_on: "ON",
@@ -781,6 +785,7 @@ var require_mqtt_bridge = __commonJS({
         this._publishDiscovery("switch", "auto_accept", {
           name: names.auto_accept,
           unique_id: `${this.topicPrefix}_auto_accept`,
+          entity_category: "config",
           state_topic: this._topic("auto_accept/state"),
           command_topic: this._topic("auto_accept/set"),
           payload_on: "ON",
@@ -807,6 +812,7 @@ var require_mqtt_bridge = __commonJS({
         this._publishDiscovery("sensor", "profile_name", {
           name: names.profile,
           unique_id: `${this.topicPrefix}_profile_name`,
+          entity_category: "diagnostic",
           state_topic: this._topic("profile/state"),
           force_update: true,
           availability_topic: this._topic("availability"),
@@ -839,7 +845,6 @@ var require_mqtt_bridge = __commonJS({
           payload_available: "online",
           payload_not_available: "offline",
           unit_of_measurement: "tasks",
-          state_class: "measurement",
           icon: "mdi:counter-plus",
           device: this.device
         });
@@ -993,6 +998,7 @@ var require_mqtt_bridge = __commonJS({
         this._publishDiscovery("sensor", "usd_php_rate", {
           name: names.usd_php_rate,
           unique_id: `${this.topicPrefix}_usd_php_rate`,
+          entity_category: "diagnostic",
           state_topic: this._topic("currency/rate"),
           value_template: "{{ value_json.rate }}",
           json_attributes_topic: this._topic("currency/rate"),
