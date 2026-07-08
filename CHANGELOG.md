@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.5
+
+- Categorize Data Annotation MQTT entities so configuration switches and reference sensors are grouped more cleanly in Home Assistant.
+
 ## 0.6.4
 
 - Remove the noisy MQTT `Status` and `Last Sync` entities and clean up their retained discovery topics.
