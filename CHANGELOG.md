@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.7
+
+- Mark earnings and payout summary sensors as diagnostic so the device page groups them away from controls.
+
 ## 0.6.6
 
 - Refactor static MQTT discovery publishing so rebuilds and startup use the same source of truth.
