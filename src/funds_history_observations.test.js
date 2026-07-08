@@ -8,7 +8,7 @@ const {
   applyFundsHistoryObservations,
   loadFundsHistoryObservations,
   saveFundsHistoryObservations,
-} = require('./funds_history_observations');
+} = require('./state/funds_history_observations.js');
 const { parseFundsHistoryDetailRow } = require('./scrapers/funds_history');
 
 test('funds history observations persist and reuse the original payout estimate', () => {

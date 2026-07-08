@@ -17,7 +17,7 @@ const {
   loadCurrencyState,
   saveCurrencyState,
   shouldRefreshCurrencyRate,
-} = require('./currency_conversion');
+} = require('./state/currency_conversion.js');
 const {
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,

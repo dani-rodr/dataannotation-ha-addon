@@ -3,7 +3,7 @@ const {
   applyFundsHistoryObservations,
   loadFundsHistoryObservations,
   saveFundsHistoryObservations,
-} = require('../funds_history_observations');
+} = require('../state/funds_history_observations.js');
 
 const DETAIL_ROW_PATTERN = /^(Time Entry|Task Submission)\s+(?:·{1,3}\s+)?(\$[\d,]+(?:\.\d{2})?)(?:\s+(.*?))?\s+(Pending Approval|Paid)\s+·\s+(\d+)\s+(minute|hour|day|week)s?\s+ago$/i;
 const DETAIL_KIND_PATTERN = /\b(Time Entry|Task Submission)\b/i;

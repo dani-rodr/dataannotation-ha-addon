@@ -13,7 +13,7 @@ const {
   normalizeCurrencyState,
   saveCurrencyState,
   shouldRefreshCurrencyRate,
-} = require('./currency_conversion');
+} = require('./state/currency_conversion.js');
 
 test('normalizeCurrencyState defaults to USD mode', () => {
   const state = normalizeCurrencyState({});
