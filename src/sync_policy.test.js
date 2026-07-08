@@ -4,6 +4,7 @@ const test = require('node:test');
 const {
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,
+  retainNextWithdrawalAt,
   shouldIncludeFundsHistory,
   shouldIncludePayments,
 } = require('./sync_policy');
@@ -123,4 +124,40 @@ test('mergePaymentsWithFundsHistory keeps current summary and prior history fiel
   assert.equal(merged.next_payout_amount, 12.34);
   assert.equal(merged.next_payout_source, 'funds_history');
   assert.equal(merged.next_payout_confidence, 'high');
+});
+
+test('retainNextWithdrawalAt keeps a future withdrawal timestamp while funds are available', () => {
+  const retained = retainNextWithdrawalAt(
+    {
+      can_withdraw: true,
+      next_withdrawal_at: '2026-07-08T10:00:00.000Z',
+      next_withdrawal_text: 'Next withdrawal: July 8, 2026 at 10:00 AM GMT+0',
+    },
+    {
+      next_withdrawal_at: '2026-07-10T19:16:00.000Z',
+      next_withdrawal_text: 'Next withdrawal: July 10, 2026 at 7:16 PM GMT+0',
+    },
+    new Date('2026-07-08T09:00:00.000Z')
+  );
+
+  assert.equal(retained.next_withdrawal_at, '2026-07-10T19:16:00.000Z');
+  assert.equal(retained.next_withdrawal_text, 'Next withdrawal: July 10, 2026 at 7:16 PM GMT+0');
+});
+
+test('retainNextWithdrawalAt clears stale withdrawal timestamps while funds are available', () => {
+  const retained = retainNextWithdrawalAt(
+    {
+      can_withdraw: true,
+      next_withdrawal_at: '2026-07-08T10:00:00.000Z',
+      next_withdrawal_text: 'Next withdrawal: July 8, 2026 at 10:00 AM GMT+0',
+    },
+    {
+      next_withdrawal_at: '2026-07-07T19:16:00.000Z',
+      next_withdrawal_text: 'Next withdrawal: July 7, 2026 at 7:16 PM GMT+0',
+    },
+    new Date('2026-07-08T09:00:00.000Z')
+  );
+
+  assert.equal(retained.next_withdrawal_at, null);
+  assert.equal(retained.next_withdrawal_text, null);
 });

@@ -21,6 +21,7 @@ const {
 const {
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,
+  retainNextWithdrawalAt,
   shouldIncludeFundsHistory,
 } = require('./sync_policy');
 const { loadFastPollingState, saveFastPollingState } = require('./fast_polling_state');
@@ -173,7 +174,7 @@ async function main() {
 
       if (bridge.withdrawRequested.value) {
         bridge.withdrawRequested.value = false;
-        await handleWithdrawRequest(client, bridge, withdrawLocked, currencyState, logger);
+        await handleWithdrawRequest(client, bridge, withdrawLocked, currencyState, lastSuccessfulPayments, logger);
         bridge.scanRequested.value = true;
       }
 
@@ -380,12 +381,13 @@ async function doSync(
     const mergedPayments = includeFundsHistory
       ? payments
       : mergePaymentsWithFundsHistory(payments, lastFundsHistorySnapshot);
-    logger.info(`Payments snapshot complete: available=${mergedPayments.available_amount_formatted}, canWithdraw=${mergedPayments.can_withdraw}`);
-    logger.debug(`Payments page URL: ${mergedPayments.pageUrl}`);
+    const paymentsForPublish = retainNextWithdrawalAt(mergedPayments, lastSuccessfulPayments, new Date());
+    logger.info(`Payments snapshot complete: available=${paymentsForPublish.available_amount_formatted}, canWithdraw=${paymentsForPublish.can_withdraw}`);
+    logger.debug(`Payments page URL: ${paymentsForPublish.pageUrl}`);
     if (!includeFundsHistory) {
       logger.debug('Payments snapshot reused last known Funds History fields');
     }
-    const publishedPayments = convertPaymentsForCurrency(mergedPayments, currencyState);
+    const publishedPayments = convertPaymentsForCurrency(paymentsForPublish, currencyState);
     bridge.publishPayments(publishedPayments, mergedPayments.scraped_at || completedAt);
 
     return {
@@ -393,7 +395,7 @@ async function doSync(
       lastSuccessfulProjectCount: projectSummary.count,
       lastSuccessfulTotalTaskCount: projectSummary.total_tasks,
       projects,
-      payments: mergedPayments,
+      payments: paymentsForPublish,
       currencyUnit: displayCurrency,
       autoAcceptState: autoAcceptResult,
       fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(mergedPayments) : null,
@@ -512,7 +514,7 @@ async function maybeAutoAcceptNewTasks({
   return { enabled, lastAttemptSignature: nextAttemptSignature };
 }
 
-async function handleWithdrawRequest(client, bridge, withdrawLocked, currencyState, logger) {
+async function handleWithdrawRequest(client, bridge, withdrawLocked, currencyState, lastSuccessfulPayments, logger) {
   logger.info('Processing withdraw request');
 
   if (withdrawLocked) {
@@ -532,7 +534,7 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, currencySta
 
   logger.debug('Submitting withdrawal request through fresh eligibility check');
   const result = await client.withdrawAvailableFunds();
-  const payments = result.payments || {};
+  const payments = retainNextWithdrawalAt(result.payments || {}, lastSuccessfulPayments || null, new Date());
   const publishedPayments = convertPaymentsForCurrency(payments, currencyState);
 
   if (result.status !== 'submitted') {

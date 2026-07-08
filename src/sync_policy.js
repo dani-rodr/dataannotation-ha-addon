@@ -51,9 +51,40 @@ function mergePaymentsWithFundsHistory(payments, fundsHistorySnapshot) {
   };
 }
 
+function retainNextWithdrawalAt(currentPayments, previousPayments, now = new Date()) {
+  const current = { ...(currentPayments || {}) };
+  if (!current.can_withdraw) {
+    return current;
+  }
+
+  const previousNextWithdrawalAt = parseDate(previousPayments?.next_withdrawal_at);
+  const currentTime = parseDate(now) || new Date();
+  if (previousNextWithdrawalAt && previousNextWithdrawalAt > currentTime) {
+    current.next_withdrawal_at = previousPayments.next_withdrawal_at;
+    if (previousPayments?.next_withdrawal_text) {
+      current.next_withdrawal_text = previousPayments.next_withdrawal_text;
+    }
+  } else {
+    current.next_withdrawal_at = null;
+    current.next_withdrawal_text = null;
+  }
+
+  return current;
+}
+
+function parseDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 module.exports = {
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,
+  retainNextWithdrawalAt,
   shouldIncludeFundsHistory,
   shouldIncludePayments,
 };

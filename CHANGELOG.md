@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.15
+
+- Retain the last future `Next Withdrawal` timestamp while funds remain withdrawable.
+
 ## 0.4.14
 
 - Bump the add-on version so Home Assistant detects the latest currency and withdrawal fixes.
