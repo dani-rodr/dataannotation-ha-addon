@@ -1,20 +1,26 @@
 {
   "name": "dataannotation-projects-ha-addon",
-  "version": "0.4.16",
+  "version": "0.5.0",
   "private": true,
   "description": "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
   "main": "src/main.js",
   "type": "commonjs",
   "license": "MIT",
   "scripts": {
-    "start": "node src/main.js",
-    "test": "node --test src/*.test.js src/scrapers/*.test.js",
-    "test:integration:fixture": "node --test test/integration/projects.fixture.test.js",
-    "test:integration:live": "node --test test/integration/live.test.js",
-    "test:integration": "node --test test/integration/*.test.js"
+    "start": "node -r tsx/cjs src/main.js",
+    "test": "node -r tsx/cjs --test src/*.test.js src/scrapers/*.test.js",
+    "test:integration:fixture": "node -r tsx/cjs --test test/integration/projects.fixture.test.js",
+    "test:integration:live": "node -r tsx/cjs --test test/integration/live.test.js",
+    "test:integration": "node -r tsx/cjs --test test/integration/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "mqtt": "^5.10.3",
-    "puppeteer-core": "^24.18.0"
+    "puppeteer-core": "^24.18.0",
+    "tsx": "^4.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "typescript": "^5.9.3"
   }
 }

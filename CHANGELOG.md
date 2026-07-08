@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0
+
+- Checkpoint release before continuing the TypeScript migration.
+
 ## 0.4.16
 
 - Add persistent MQTT error logging and mark known project availability offline when a sync fails.
