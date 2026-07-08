@@ -1,4 +1,4 @@
-import type { PaymentSnapshot } from './types';
+import type { PaymentSnapshot } from '../shared/types';
 
 export function shouldIncludePayments(_options: { initialSyncCompleted: boolean; manualSyncRequested: boolean; fastPollingEnabled: boolean }): boolean {
   return true;

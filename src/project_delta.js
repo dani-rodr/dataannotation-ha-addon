@@ -1,1 +1,1 @@
-module.exports = require('./project_delta.ts');
+module.exports = require('./projects/project_delta.ts');

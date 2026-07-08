@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { ProjectLike, ProjectSummary } from '../types';
+import type { ProjectLike, ProjectSummary } from '../shared/types';
 
 type RawBadge = {
   kind?: string;

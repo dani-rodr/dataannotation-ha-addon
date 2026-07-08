@@ -1,1 +1,1 @@
-module.exports = require('./polling_schedule.ts');
+module.exports = require('./shared/polling_schedule.ts');

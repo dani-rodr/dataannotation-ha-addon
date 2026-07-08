@@ -1,4 +1,4 @@
-import type { FilteredProjectsResult, ProjectLike } from './types';
+import type { FilteredProjectsResult, ProjectLike } from '../shared/types';
 
 export function parseExcludedProjectPatterns(value: unknown): string[] {
   if (!value) {

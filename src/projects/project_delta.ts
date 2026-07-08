@@ -1,5 +1,5 @@
-import { buildProjectUrl } from './scrapers/projects';
-import type { ProjectDelta, ProjectLike } from './types';
+import { buildProjectUrl } from '../scrapers/projects';
+import type { ProjectDelta, ProjectLike } from '../shared/types';
 
 export function detectNewTaskProjects(previousProjects: Array<ProjectLike> | null | undefined, currentProjects: Array<ProjectLike> | null | undefined): ProjectDelta[] {
   const previousBySlug = indexProjectsBySlug(previousProjects);

@@ -1,1 +1,1 @@
-module.exports = require('./project_filters.ts');
+module.exports = require('./projects/project_filters.ts');

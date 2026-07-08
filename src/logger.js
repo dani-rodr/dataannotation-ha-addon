@@ -1,1 +1,1 @@
-module.exports = require('./logger.ts');
+module.exports = require('./shared/logger.ts');

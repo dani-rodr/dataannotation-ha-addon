@@ -1,1 +1,1 @@
-module.exports = require('./sync_policy.ts');
+module.exports = require('./state/sync_policy.ts');
