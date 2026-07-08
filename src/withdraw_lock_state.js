@@ -1,1 +1,1 @@
-module.exports = require('./state/withdraw_lock_state.js');
+module.exports = require('./state/withdraw_lock_state.ts');

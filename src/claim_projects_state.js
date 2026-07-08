@@ -1,1 +1,1 @@
-module.exports = require('./state/claim_projects_state.js');
+module.exports = require('./state/claim_projects_state.ts');

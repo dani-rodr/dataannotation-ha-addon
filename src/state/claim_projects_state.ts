@@ -1,9 +1,9 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
-const DEFAULT_CLAIM_PROJECTS_LOCKED = false;
+export const DEFAULT_CLAIM_PROJECTS_LOCKED = false;
 
-function loadClaimProjectsLockState(filePath) {
+export function loadClaimProjectsLockState(filePath: string | null | undefined): boolean {
   if (!filePath || !fs.existsSync(filePath)) {
     return DEFAULT_CLAIM_PROJECTS_LOCKED;
   }
@@ -16,7 +16,7 @@ function loadClaimProjectsLockState(filePath) {
   }
 }
 
-function saveClaimProjectsLockState(filePath, locked) {
+export function saveClaimProjectsLockState(filePath: string | null | undefined, locked: boolean): void {
   if (!filePath) {
     return;
   }
@@ -35,7 +35,7 @@ function saveClaimProjectsLockState(filePath, locked) {
   );
 }
 
-function normalizeClaimProjectsLockState(value) {
+export function normalizeClaimProjectsLockState(value: unknown): boolean {
   if (typeof value === 'boolean') {
     return value;
   }
@@ -56,10 +56,3 @@ function normalizeClaimProjectsLockState(value) {
 
   return DEFAULT_CLAIM_PROJECTS_LOCKED;
 }
-
-module.exports = {
-  DEFAULT_CLAIM_PROJECTS_LOCKED,
-  loadClaimProjectsLockState,
-  normalizeClaimProjectsLockState,
-  saveClaimProjectsLockState,
-};

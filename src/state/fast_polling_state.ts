@@ -1,9 +1,9 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
-const DEFAULT_FAST_POLLING_ENABLED = false;
+export const DEFAULT_FAST_POLLING_ENABLED = false;
 
-function loadFastPollingState(filePath) {
+export function loadFastPollingState(filePath: string | null | undefined): boolean {
   if (!filePath || !fs.existsSync(filePath)) {
     return DEFAULT_FAST_POLLING_ENABLED;
   }
@@ -16,7 +16,7 @@ function loadFastPollingState(filePath) {
   }
 }
 
-function saveFastPollingState(filePath, enabled) {
+export function saveFastPollingState(filePath: string | null | undefined, enabled: boolean): void {
   if (!filePath) {
     return;
   }
@@ -35,7 +35,7 @@ function saveFastPollingState(filePath, enabled) {
   );
 }
 
-function normalizeFastPollingState(value) {
+export function normalizeFastPollingState(value: unknown): boolean {
   if (typeof value === 'boolean') {
     return value;
   }
@@ -56,10 +56,3 @@ function normalizeFastPollingState(value) {
 
   return DEFAULT_FAST_POLLING_ENABLED;
 }
-
-module.exports = {
-  DEFAULT_FAST_POLLING_ENABLED,
-  loadFastPollingState,
-  normalizeFastPollingState,
-  saveFastPollingState,
-};

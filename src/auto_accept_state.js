@@ -1,1 +1,1 @@
-module.exports = require('./state/auto_accept_state.js');
+module.exports = require('./state/auto_accept_state.ts');

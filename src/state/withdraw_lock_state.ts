@@ -1,9 +1,9 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
-const DEFAULT_WITHDRAW_LOCKED = true;
+export const DEFAULT_WITHDRAW_LOCKED = true;
 
-function loadWithdrawLockState(filePath) {
+export function loadWithdrawLockState(filePath: string | null | undefined): boolean {
   if (!filePath || !fs.existsSync(filePath)) {
     return DEFAULT_WITHDRAW_LOCKED;
   }
@@ -16,7 +16,7 @@ function loadWithdrawLockState(filePath) {
   }
 }
 
-function saveWithdrawLockState(filePath, locked) {
+export function saveWithdrawLockState(filePath: string | null | undefined, locked: boolean): void {
   if (!filePath) {
     return;
   }
@@ -35,7 +35,7 @@ function saveWithdrawLockState(filePath, locked) {
   );
 }
 
-function normalizeWithdrawLockState(value) {
+export function normalizeWithdrawLockState(value: unknown): boolean {
   if (typeof value === 'boolean') {
     return value;
   }
@@ -56,10 +56,3 @@ function normalizeWithdrawLockState(value) {
 
   return DEFAULT_WITHDRAW_LOCKED;
 }
-
-module.exports = {
-  DEFAULT_WITHDRAW_LOCKED,
-  loadWithdrawLockState,
-  normalizeWithdrawLockState,
-  saveWithdrawLockState,
-};

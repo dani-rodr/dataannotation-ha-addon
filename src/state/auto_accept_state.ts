@@ -1,9 +1,9 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
-const DEFAULT_AUTO_ACCEPT_ENABLED = false;
+export const DEFAULT_AUTO_ACCEPT_ENABLED = false;
 
-function loadAutoAcceptState(filePath) {
+export function loadAutoAcceptState(filePath: string | null | undefined): boolean {
   if (!filePath || !fs.existsSync(filePath)) {
     return DEFAULT_AUTO_ACCEPT_ENABLED;
   }
@@ -16,7 +16,7 @@ function loadAutoAcceptState(filePath) {
   }
 }
 
-function saveAutoAcceptState(filePath, enabled) {
+export function saveAutoAcceptState(filePath: string | null | undefined, enabled: boolean): void {
   if (!filePath) {
     return;
   }
@@ -35,7 +35,7 @@ function saveAutoAcceptState(filePath, enabled) {
   );
 }
 
-function normalizeAutoAcceptState(value) {
+export function normalizeAutoAcceptState(value: unknown): boolean {
   if (typeof value === 'boolean') {
     return value;
   }
@@ -56,10 +56,3 @@ function normalizeAutoAcceptState(value) {
 
   return DEFAULT_AUTO_ACCEPT_ENABLED;
 }
-
-module.exports = {
-  DEFAULT_AUTO_ACCEPT_ENABLED,
-  loadAutoAcceptState,
-  normalizeAutoAcceptState,
-  saveAutoAcceptState,
-};

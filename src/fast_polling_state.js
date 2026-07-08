@@ -1,1 +1,1 @@
-module.exports = require('./state/fast_polling_state.js');
+module.exports = require('./state/fast_polling_state.ts');
