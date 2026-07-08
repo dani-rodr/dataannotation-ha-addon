@@ -21,11 +21,43 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build bundled entrypoint
+        run: npm run build
+
+      - name: Check bundled JS syntax
+        run: node --check dist/main.js
+
+      - name: Check service launcher syntax
+        run: bash -n rootfs/etc/services.d/dataannotation_projects/run
+
+      - name: Verify service launcher uses bundled entrypoint
+        run: grep -q 'node /app/dist/main.js' rootfs/etc/services.d/dataannotation_projects/run
+
       - name: Run unit tests
         run: npm test
 
       - name: Run fixture integration tests
         run: npm run test:integration:fixture
+
+  docker-build:
+    needs: unit-and-fixture
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build add-on image
+        run: |
+          docker build \
+            --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20 \
+            -t dataannotation-addon:test .
+
+      - name: Verify bundled entrypoint exists in image
+        run: |
+          docker run --rm --entrypoint sh dataannotation-addon:test -c 'test -f /app/dist/main.js'
 
   live-integration:
     if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
