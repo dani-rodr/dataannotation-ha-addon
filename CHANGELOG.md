@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2
+
+- Build a bundled JavaScript entrypoint at image build time and run that in Home Assistant.
+- Remove the runtime dependency on `tsx` from the add-on launcher.
+
 ## 0.6.1
 
 - Fix the Home Assistant service launcher to start the TypeScript entrypoint after the migration.

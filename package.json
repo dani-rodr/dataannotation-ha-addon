@@ -1,13 +1,14 @@
 {
   "name": "dataannotation-projects-ha-addon",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
-  "main": "src/main.ts",
+  "main": "dist/main.js",
   "type": "commonjs",
   "license": "MIT",
   "scripts": {
-    "start": "node -r tsx/cjs src/main.ts",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --packages=external --outfile=dist/main.js",
+    "start": "node dist/main.js",
     "test": "node -r tsx/cjs --test test/unit/*.test.ts test/unit/*/*.test.ts",
     "test:integration:fixture": "node -r tsx/cjs --test test/integration/projects.fixture.test.ts",
     "test:integration:live": "node -r tsx/cjs --test test/integration/live.test.ts",
@@ -16,11 +17,12 @@
   },
   "dependencies": {
     "mqtt": "^5.10.3",
-    "puppeteer-core": "^24.18.0",
-    "tsx": "^4.23.0"
+    "puppeteer-core": "^24.18.0"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.23.0",
     "typescript": "^5.9.3"
   }
 }

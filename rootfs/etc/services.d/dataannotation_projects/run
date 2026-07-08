@@ -1,4 +1,4 @@
 #!/usr/bin/with-contenv bashio
 
 bashio::log.info "Starting DataAnnotation Projects app..."
-exec node -r tsx/cjs /app/src/main.ts
+exec node /app/dist/main.js

@@ -15,9 +15,12 @@ RUN apk add --no-cache \
 
 COPY package.json ./
 COPY package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 COPY src/ ./src/
+RUN npm run build
+RUN npm prune --omit=dev
+
 COPY rootfs /
 
 RUN chmod a+x /etc/services.d/dataannotation_projects/run
