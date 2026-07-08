@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+- Convert the remaining runtime and test modules from JavaScript to TypeScript.
+- Update the add-on entrypoint and test scripts to use TypeScript directly.
+- Preserve the live DataAnnotation scrape behavior and fix the funds-history midnight repair regression.
+
 ## 0.5.0
 
 - Checkpoint release before continuing the TypeScript migration.
