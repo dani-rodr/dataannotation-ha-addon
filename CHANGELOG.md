@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.11
+
+- Handle the DataAnnotation in-page notification prompt once after login while keeping payout estimates and MQTT attributes accurate.
+
 ## 0.6.10
 
 - Fix payout attribute cleanup so raw next-payout estimates stay accurate while MQTT attributes use the slim public fields.

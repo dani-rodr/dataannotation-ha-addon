@@ -30,6 +30,7 @@ class DataAnnotationClient {
       executablePath: this.executablePath,
       logger: this.logger,
     });
+    this.notificationPromptHandled = false;
   }
 
   async close() {
@@ -269,11 +270,13 @@ class DataAnnotationClient {
       await this._login(page);
       await page.goto(PROJECTS_URL, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]', { timeout: 30000 });
+      await this._handleNotificationPrompt(page, 'projects landing after login');
       return 'authenticated';
     }
 
     this.logger.debug('Authenticated session detected, waiting for projects payload');
     await page.waitForSelector('div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]', { timeout: 30000 });
+    await this._handleNotificationPrompt(page, 'projects landing');
     return 'authenticated';
   }
 
@@ -292,11 +295,13 @@ class DataAnnotationClient {
       await this._login(page);
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector(readySelector, { timeout: 30000 });
+      await this._handleNotificationPrompt(page, `authenticated load for ${url}`);
       return 'authenticated';
     }
 
     this.logger.debug(`Authenticated session detected, waiting for payload at ${url}`);
     await page.waitForSelector(readySelector, { timeout: 30000 });
+    await this._handleNotificationPrompt(page, `authenticated load for ${url}`);
     return 'authenticated';
   }
 
@@ -325,6 +330,52 @@ class DataAnnotationClient {
     if (page.url().includes('/users/sign_in')) {
       throw new Error('DataAnnotation login failed or session was rejected');
     }
+
+    await this._handleNotificationPrompt(page, 'login redirect');
+  }
+
+  async _handleNotificationPrompt(page, context = 'authenticated page') {
+    if (this.notificationPromptHandled) {
+      return false;
+    }
+
+    const result = await page.evaluate(() => {
+      const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+      const isVisible = (node) => {
+        const style = window.getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+      };
+
+      const bodyText = normalize(document.body?.innerText || '');
+      const promptText = 'New projects fill up fast';
+      if (!bodyText.includes(promptText)) {
+        return { seen: false, clicked: false };
+      }
+
+      const buttons = Array.from(document.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]'));
+      const target = buttons.find((node) => normalize(node.innerText || node.textContent || node.getAttribute('aria-label') || '') === 'Allow notifications' && !node.disabled && isVisible(node));
+      if (!target) {
+        return { seen: true, clicked: false };
+      }
+
+      target.click();
+      return { seen: true, clicked: true };
+    });
+
+    if (!result.seen) {
+      this.logger.debug(`No notification prompt seen on ${context}`);
+      return false;
+    }
+
+    if (result.clicked) {
+      this.notificationPromptHandled = true;
+      this.logger.info(`Accepted DataAnnotation notification prompt on ${context}`);
+      return true;
+    }
+
+    this.logger.warning(`Notification prompt was seen on ${context} but no exact Allow notifications button was found`);
+    return false;
   }
 
   async _scrapeProjects(page) {

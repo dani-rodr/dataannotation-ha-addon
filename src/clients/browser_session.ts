@@ -53,6 +53,7 @@ class DataAnnotationBrowserSession {
         '--window-size=1440,900',
       ],
     });
+    await this.browser.defaultBrowserContext().overridePermissions('https://app.dataannotation.tech', ['notifications']).catch(() => {});
 
     return this.browser;
   }
