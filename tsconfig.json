@@ -18,10 +18,6 @@
     "node_modules",
     "src/main.ts",
     "src/clients/**",
-    "src/integrations/**",
-    "src/scrapers/funds_history.ts",
-    "src/scrapers/payments.ts",
-    "src/state/currency_conversion.ts",
-    "src/state/funds_history_observations.ts"
+    "src/integrations/**"
   ]
 }

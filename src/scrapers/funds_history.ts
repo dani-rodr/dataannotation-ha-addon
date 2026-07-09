@@ -23,14 +23,14 @@ const MONTH_NAMES = [
   'dec',
 ];
 
-async function scrapeFundsHistory(page, { observationsPath = null, now = new Date() } = {}) {
+async function scrapeFundsHistory(page: any, { observationsPath = null, now = new Date() }: any = {}) {
   await openFundsHistoryTab(page);
   await expandFundsHistoryRows(page);
 
-  const rows = await page.$$eval('tr', (tableRows) => {
-    const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+  const rows = await page.$$eval('tr', (tableRows: any[]) => {
+    const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
     return tableRows
-      .map((row) => normalize(row.innerText || row.textContent || ''))
+      .map((row: any) => normalize((row as any).innerText || (row as any).textContent || ''))
       .filter(Boolean);
   });
 
@@ -49,7 +49,7 @@ async function scrapeFundsHistory(page, { observationsPath = null, now = new Dat
   return summarizeFundsHistoryEntries(merged.entries, now);
 }
 
-function parseFundsHistoryEntries(rows, now = new Date()) {
+function parseFundsHistoryEntries(rows: any, now = new Date()) {
   const entries = [];
   let currentProject = null;
   let currentMonthDate = null;
@@ -80,7 +80,7 @@ function parseFundsHistoryEntries(rows, now = new Date()) {
   return entries;
 }
 
-function summarizeFundsHistoryEntries(entries, now = new Date()) {
+function summarizeFundsHistoryEntries(entries: any, now = new Date()) {
   const pendingEntries = Array.isArray(entries)
     ? entries.filter((entry) => entry.status === 'pending')
     : [];
@@ -103,11 +103,11 @@ function summarizeFundsHistoryEntries(entries, now = new Date()) {
   };
 }
 
-function formatPublicPayoutEntries(entries) {
+function formatPublicPayoutEntries(entries: any) {
   return (Array.isArray(entries) ? entries : []).map((entry) => formatPublicPayoutEntry(entry));
 }
 
-function formatPublicPayoutEntry(entry) {
+function formatPublicPayoutEntry(entry: any) {
   return {
     project: entry?.project || null,
     kind: entry?.kind || null,
@@ -120,7 +120,7 @@ function formatPublicPayoutEntry(entry) {
   };
 }
 
-function parseFundsHistoryDetailRow(text, project, entryDate = null, now = new Date()) {
+function parseFundsHistoryDetailRow(text: string, project: string | null, entryDate: string | Date | null = null, now = new Date()) {
   const match = text.match(DETAIL_ROW_PATTERN);
 
   if (!match) {
@@ -140,7 +140,8 @@ function parseFundsHistoryDetailRow(text, project, entryDate = null, now = new D
       : normalizedAgeUnit === 'week'
         ? normalizedAgeValue * 7
         : normalizedAgeValue;
-  const entryDateValue = normalizeDate(entryDate) ? normalizeDate(entryDate).toISOString() : null;
+  const normalizedEntryDate = normalizeDate(entryDate);
+  const entryDateValue = normalizedEntryDate ? normalizedEntryDate.toISOString() : null;
   const isPreciseEstimate = (normalizedAgeUnit === 'minute' || normalizedAgeUnit === 'hour') && Number.isFinite(normalizedAgeValue) && normalizedAgeValue > 0;
   const estimatedWorkAt = isPreciseEstimate
     ? estimateWorkAt(now, normalizedAgeValue, normalizedAgeUnit, entryDateValue)
@@ -174,18 +175,18 @@ function parseFundsHistoryDetailRow(text, project, entryDate = null, now = new D
   };
 }
 
-function isProjectSummaryRow(text) {
+function isProjectSummaryRow(text: string) {
   return /^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text)
     && !MONTH_SUMMARY_PATTERN.test(text)
     && !DETAIL_KIND_PATTERN.test(text)
     && !/\b(Paid|Pending Approval)\b/i.test(text);
 }
 
-function extractProjectName(text) {
+function extractProjectName(text: string) {
   return text.replace(/\s+\$[\d,]+(?:\.\d{2})?$/, '').trim();
 }
 
-function parseMonthSummaryDate(text, now = new Date()) {
+function parseMonthSummaryDate(text: string, now = new Date()) {
   const match = String(text).trim().match(/^([A-Z][a-z]{2})\s+(\d{1,2})/);
   if (!match) {
     return null;
@@ -201,7 +202,7 @@ function parseMonthSummaryDate(text, now = new Date()) {
   return new Date(year, monthIndex, Number(match[2]), 0, 0, 0, 0);
 }
 
-function inferYearForMonth(monthIndex, now) {
+function inferYearForMonth(monthIndex: number, now: Date) {
   let year = now.getFullYear();
   if (monthIndex > now.getMonth() + 1) {
     year -= 1;
@@ -210,7 +211,7 @@ function inferYearForMonth(monthIndex, now) {
   return year;
 }
 
-function computeNextPayoutAt(entry, now = new Date()) {
+function computeNextPayoutAt(entry: any, now = new Date()) {
   if (!entry || entry.status !== 'pending') {
     return null;
   }
@@ -242,7 +243,7 @@ function computeNextPayoutAt(entry, now = new Date()) {
   return null;
 }
 
-function estimateWorkAt(now, ageValue, ageUnit, fallbackEntryDate) {
+function estimateWorkAt(now: Date, ageValue: number, ageUnit: string, fallbackEntryDate: string | null) {
   const current = normalizeDate(now) || new Date();
   if (Number.isFinite(ageValue) && ageValue > 0) {
     const ms = ageValue * relativeAgeUnitToMs(ageUnit);
@@ -252,7 +253,7 @@ function estimateWorkAt(now, ageValue, ageUnit, fallbackEntryDate) {
   return fallbackEntryDate || current.toISOString();
 }
 
-function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = new Date()) {
+function estimatePayoutAtFromEntryDate(entryDate: string | Date | null, dueDays: number, now = new Date()) {
   const baseDate = normalizeDate(entryDate);
   if (!baseDate) {
     return null;
@@ -276,7 +277,7 @@ function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = new Date()) {
   return payoutDate.toISOString();
 }
 
-function estimatePayoutAt(estimatedWorkAt, dueDays, now = new Date()) {
+function estimatePayoutAt(estimatedWorkAt: string | Date | null, dueDays: number, now = new Date()) {
   const workAt = normalizeDate(estimatedWorkAt);
   if (!workAt) {
     return null;
@@ -291,7 +292,7 @@ function estimatePayoutAt(estimatedWorkAt, dueDays, now = new Date()) {
   return payoutAt.toISOString();
 }
 
-function relativeAgeUnitToMs(unit) {
+function relativeAgeUnitToMs(unit: string) {
   switch (String(unit || '').toLowerCase()) {
     case 'minute':
       return 60 * 1000;
@@ -305,7 +306,7 @@ function relativeAgeUnitToMs(unit) {
   }
 }
 
-function amountToCents(value) {
+function amountToCents(value: string) {
   const match = String(value || '').match(/^\$([\d,]+)(?:\.(\d{2}))?$/);
   if (!match) {
     return 0;
@@ -315,7 +316,7 @@ function amountToCents(value) {
   return Number(dollarsRaw.replace(/,/g, '')) * 100 + Number(centsRaw);
 }
 
-function toLocalMidnightAtOffset(now, daysOffset) {
+function toLocalMidnightAtOffset(now: Date, daysOffset: number) {
   const date = normalizeDate(now) || new Date();
   const localMidnight = new Date(
     date.getFullYear(),
@@ -334,25 +335,27 @@ function toLocalMidnightAtOffset(now, daysOffset) {
   return localMidnight.toISOString();
 }
 
-async function openFundsHistoryTab(page) {
+async function openFundsHistoryTab(page: any) {
   await page.evaluate(() => {
-    const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+    const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
     const target = Array.from(document.querySelectorAll('button,[role="tab"]')).find((element) => {
-      const text = normalize(element.innerText || element.textContent || '');
+      const node = element as any;
+      const text = normalize(node.innerText || node.textContent || '');
       const aria = normalize(element.getAttribute('aria-label') || '');
       const title = normalize(element.getAttribute('title') || '');
       return /Funds History/i.test(text) || /Funds History/i.test(aria) || /Funds History/i.test(title);
     });
 
     if (target) {
-      target.click();
+      (target as any).click();
     }
   });
 
   await page.waitForFunction(() => {
-    const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+    const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
     return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
-      const text = normalize(element.innerText || element.textContent || '');
+      const node = element as any;
+      const text = normalize(node.innerText || node.textContent || '');
       return /^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text);
     });
   }, { timeout: 30000 }).catch(() => {});
@@ -360,12 +363,13 @@ async function openFundsHistoryTab(page) {
   await sleep(250);
 }
 
-async function expandFundsHistoryRows(page) {
+async function expandFundsHistoryRows(page: any) {
   await clickFundsHistoryRows(page, 'month');
   await page.waitForFunction(() => {
-    const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+    const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
     return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
-      const text = normalize(element.innerText || element.textContent || '');
+      const node = element as any;
+      const text = normalize(node.innerText || node.textContent || '');
       return /^(Time Entry|Task Submission)/i.test(text) || (/^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text) && !/^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text));
     });
   }, { timeout: 30000 }).catch(() => {});
@@ -373,9 +377,10 @@ async function expandFundsHistoryRows(page) {
   await sleep(250);
   await clickFundsHistoryRows(page, 'project');
   await page.waitForFunction(() => {
-    const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+    const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
     return Array.from(document.querySelectorAll('tr')).some((row) => {
-      const text = normalize(row.innerText || row.textContent || '');
+      const node = row as any;
+      const text = normalize(node.innerText || node.textContent || '');
       return /Pending Approval/i.test(text) || /Paid/i.test(text);
     });
   }, { timeout: 30000 }).catch(() => {});
@@ -383,18 +388,19 @@ async function expandFundsHistoryRows(page) {
   await sleep(250);
 }
 
-async function clickFundsHistoryRows(page, kind) {
-  return page.evaluate((rowKind) => {
-    const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
-    const isMonth = (text) => /^[A-Z][a-z]{2}\s+\d{1,2}\s+\$[\d,]+(?:\.\d{2})?$/.test(text);
-    const isDetail = (text) => /^(Time Entry|Task Submission|Paid|Pending Approval)/i.test(text);
-    const isProject = (text) => /^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text) && !isMonth(text) && !isDetail(text);
+async function clickFundsHistoryRows(page: any, kind: 'month' | 'project') {
+  return page.evaluate((rowKind: 'month' | 'project') => {
+    const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
+    const isMonth = (text: string) => /^[A-Z][a-z]{2}\s+\d{1,2}\s+\$[\d,]+(?:\.\d{2})?$/.test(text);
+    const isDetail = (text: string) => /^(Time Entry|Task Submission|Paid|Pending Approval)/i.test(text);
+    const isProject = (text: string) => /^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text) && !isMonth(text) && !isDetail(text);
     const predicate = rowKind === 'month' ? isMonth : isProject;
     let count = 0;
 
     for (const row of Array.from(document.querySelectorAll('tr'))) {
-      const text = normalize(row.innerText || row.textContent || '');
-      const target = row.querySelector('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer');
+      const node = row as any;
+      const text = normalize(node.innerText || node.textContent || '');
+      const target = node.querySelector('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer') as any;
       if (text && target && predicate(text)) {
         target.click();
         count += 1;
@@ -405,11 +411,11 @@ async function clickFundsHistoryRows(page, kind) {
   }, kind);
 }
 
-function normalizeText(value) {
+function normalizeText(value: any) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
-function normalizeDate(value) {
+function normalizeDate(value: any) {
   if (!value) {
     return null;
   }
@@ -418,7 +424,7 @@ function normalizeDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function formatHumanTimestamp(value) {
+function formatHumanTimestamp(value: any) {
   const date = normalizeDate(value);
   if (!date) {
     return null;
@@ -433,17 +439,17 @@ function formatHumanTimestamp(value) {
   }).format(date);
 }
 
-function normalizeIsoDate(value) {
+function normalizeIsoDate(value: any) {
   const date = normalizeDate(value);
   return date ? date.toISOString() : null;
 }
 
-function numberOrZero(value) {
+function numberOrZero(value: any) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function sleep(ms) {
+function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
