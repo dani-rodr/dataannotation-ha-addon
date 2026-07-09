@@ -1,9 +1,10 @@
 const assert = require('node:assert/strict');
+// @ts-nocheck
 const test = require('node:test');
 
 const { createLogger } = require('../../../src/shared/logger.ts');
 
-test('createLogger prefixes messages with an ISO timestamp', () => {
+test('createLogger prefixes messages with a local log timestamp', () => {
   const originalLog = console.log;
   const originalWarn = console.warn;
   const originalError = console.error;
@@ -18,8 +19,8 @@ test('createLogger prefixes messages with an ISO timestamp', () => {
     logger.info('hello');
     logger.warning('careful');
 
-    assert.match(messages[0], /^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\] \[INFO\] hello$/);
-    assert.match(messages[1], /^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\] \[WARN\] careful$/);
+    assert.match(messages[0], /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} .+\] \[INFO\] hello$/);
+    assert.match(messages[1], /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} .+\] \[WARN\] careful$/);
   } finally {
     console.log = originalLog;
     console.warn = originalWarn;

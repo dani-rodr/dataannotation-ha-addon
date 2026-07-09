@@ -3,6 +3,7 @@
 ## 0.6.11
 
 - Handle the DataAnnotation in-page notification prompt once after login while keeping payout estimates and MQTT attributes accurate.
+- Format log timestamps in local time while keeping them concise and log-friendly.
 
 ## 0.6.10
 

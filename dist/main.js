@@ -3306,7 +3306,7 @@ function createLogger(level) {
   const threshold = LEVELS[String(level || "info").toLowerCase()] ?? LEVELS.info;
   const withTimestamp = (levelLabel, method, minLevel) => (...args) => {
     if (threshold <= minLevel) {
-      method(`[${(/* @__PURE__ */ new Date()).toISOString()}] ${levelLabel}`, ...args);
+      method(`[${formatLogTimestamp(/* @__PURE__ */ new Date())}] ${levelLabel}`, ...args);
     }
   };
   return {
@@ -3315,6 +3315,28 @@ function createLogger(level) {
     warning: withTimestamp("[WARN]", console.warn, LEVELS.warning),
     error: withTimestamp("[ERROR]", console.error, LEVELS.error)
   };
+}
+function formatLogTimestamp(date) {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZoneName: "shortOffset"
+  });
+  const parts = formatter.formatToParts(date);
+  const get = (type) => parts.find((part) => part.type === type)?.value || "";
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  const hour = get("hour");
+  const minute = get("minute");
+  const second = get("second");
+  const timeZone = get("timeZoneName") || "local";
+  return `${year}-${month}-${day} ${hour}:${minute}:${second} ${timeZone}`;
 }
 var LEVELS;
 var init_logger = __esm({
