@@ -1942,7 +1942,8 @@ var require_funds_history = __commonJS({
       const normalizedAgeUnit = relativeAgeUnit.toLowerCase();
       const dueDays = kind === "hourly" ? 7 : 3;
       const ageDays = normalizedAgeUnit === "minute" ? normalizedAgeValue / (24 * 60) : normalizedAgeUnit === "hour" ? normalizedAgeValue / 24 : normalizedAgeUnit === "week" ? normalizedAgeValue * 7 : normalizedAgeValue;
-      const entryDateValue = normalizeDate2(entryDate) ? normalizeDate2(entryDate).toISOString() : null;
+      const normalizedEntryDate = normalizeDate2(entryDate);
+      const entryDateValue = normalizedEntryDate ? normalizedEntryDate.toISOString() : null;
       const isPreciseEstimate = (normalizedAgeUnit === "minute" || normalizedAgeUnit === "hour") && Number.isFinite(normalizedAgeValue) && normalizedAgeValue > 0;
       const estimatedWorkAt = isPreciseEstimate ? estimateWorkAt(now, normalizedAgeValue, normalizedAgeUnit, entryDateValue) : entryDateValue || normalizeDate2(now)?.toISOString() || (/* @__PURE__ */ new Date()).toISOString();
       const estimatedPayoutAt = isPreciseEstimate ? estimatePayoutAt(estimatedWorkAt, dueDays, now) : estimatePayoutAtFromEntryDate(entryDateValue, dueDays, now) || toLocalMidnightAtOffset(now, dueDays);
@@ -2099,7 +2100,8 @@ var require_funds_history = __commonJS({
       await page.evaluate(() => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         const target = Array.from(document.querySelectorAll('button,[role="tab"]')).find((element) => {
-          const text = normalize(element.innerText || element.textContent || "");
+          const node = element;
+          const text = normalize(node.innerText || node.textContent || "");
           const aria = normalize(element.getAttribute("aria-label") || "");
           const title = normalize(element.getAttribute("title") || "");
           return /Funds History/i.test(text) || /Funds History/i.test(aria) || /Funds History/i.test(title);
@@ -2111,7 +2113,8 @@ var require_funds_history = __commonJS({
       await page.waitForFunction(() => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
-          const text = normalize(element.innerText || element.textContent || "");
+          const node = element;
+          const text = normalize(node.innerText || node.textContent || "");
           return /^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text);
         });
       }, { timeout: 3e4 }).catch(() => {
@@ -2123,7 +2126,8 @@ var require_funds_history = __commonJS({
       await page.waitForFunction(() => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
-          const text = normalize(element.innerText || element.textContent || "");
+          const node = element;
+          const text = normalize(node.innerText || node.textContent || "");
           return /^(Time Entry|Task Submission)/i.test(text) || /^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text) && !/^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text);
         });
       }, { timeout: 3e4 }).catch(() => {
@@ -2133,7 +2137,8 @@ var require_funds_history = __commonJS({
       await page.waitForFunction(() => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         return Array.from(document.querySelectorAll("tr")).some((row) => {
-          const text = normalize(row.innerText || row.textContent || "");
+          const node = row;
+          const text = normalize(node.innerText || node.textContent || "");
           return /Pending Approval/i.test(text) || /Paid/i.test(text);
         });
       }, { timeout: 3e4 }).catch(() => {
@@ -2149,8 +2154,9 @@ var require_funds_history = __commonJS({
         const predicate = rowKind === "month" ? isMonth : isProject;
         let count = 0;
         for (const row of Array.from(document.querySelectorAll("tr"))) {
-          const text = normalize(row.innerText || row.textContent || "");
-          const target = row.querySelector('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer');
+          const node = row;
+          const text = normalize(node.innerText || node.textContent || "");
+          const target = node.querySelector('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer');
           if (text && target && predicate(text)) {
             target.click();
             count += 1;

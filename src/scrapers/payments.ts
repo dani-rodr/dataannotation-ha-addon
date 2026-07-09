@@ -1,5 +1,4 @@
 // @ts-nocheck
-// @ts-nocheck
 const { formatPublicPayoutEntries, scrapeFundsHistory } = require('./funds_history.ts');
 
 function extractPaymentsSnapshot({

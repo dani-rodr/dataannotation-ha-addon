@@ -1,5 +1,4 @@
 // @ts-nocheck
-// @ts-nocheck
 const path = require('node:path');
 const fs = require('node:fs');
 const { formatPublicPayoutEntries } = require('../scrapers/funds_history.ts');
