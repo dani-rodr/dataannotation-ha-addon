@@ -46,6 +46,11 @@ function createPromptPage({ bodyText, buttons }) {
   const page = {
     evaluate: async (fn) => {
       evaluateCalls += 1;
+      if (typeof fn === 'string') {
+        const runner = new Function('document', 'window', `return (${fn});`);
+        return runner(fakeDocument, fakeWindow);
+      }
+
       const previousDocument = global.document;
       const previousWindow = global.window;
       global.document = fakeDocument;

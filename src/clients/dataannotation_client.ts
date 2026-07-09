@@ -339,43 +339,49 @@ class DataAnnotationClient {
       return false;
     }
 
-    const result = await page.evaluate(() => {
-      const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
-      const isVisible = (node) => {
-        const style = window.getComputedStyle(node);
-        const rect = node.getBoundingClientRect();
-        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
-      };
+    this.notificationPromptHandled = true;
 
-      const bodyText = normalize(document.body?.innerText || '');
-      const promptText = 'New projects fill up fast';
-      if (!bodyText.includes(promptText)) {
-        return { seen: false, clicked: false };
+    try {
+      const result = await page.evaluate(`(() => {
+        const normalize = (value) => String(value || '').trim().replace(/\\s+/g, ' ');
+        const isVisible = (node) => {
+          const style = window.getComputedStyle(node);
+          const rect = node.getBoundingClientRect();
+          return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+        };
+
+        const bodyText = normalize(document.body?.innerText || '');
+        const promptText = 'New projects fill up fast';
+        if (!bodyText.includes(promptText)) {
+          return { seen: false, clicked: false };
+        }
+
+        const buttons = Array.from(document.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]'));
+        const target = buttons.find((node) => normalize(node.innerText || node.textContent || node.getAttribute('aria-label') || '') === 'Allow notifications' && !node.disabled && isVisible(node));
+        if (!target) {
+          return { seen: true, clicked: false };
+        }
+
+        target.click();
+        return { seen: true, clicked: true };
+      })()`);
+
+      if (!result.seen) {
+        this.logger.debug(`No notification prompt seen on ${context}`);
+        return false;
       }
 
-      const buttons = Array.from(document.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]'));
-      const target = buttons.find((node) => normalize(node.innerText || node.textContent || node.getAttribute('aria-label') || '') === 'Allow notifications' && !node.disabled && isVisible(node));
-      if (!target) {
-        return { seen: true, clicked: false };
+      if (result.clicked) {
+        this.logger.info(`Accepted DataAnnotation notification prompt on ${context}`);
+        return true;
       }
 
-      target.click();
-      return { seen: true, clicked: true };
-    });
-
-    if (!result.seen) {
-      this.logger.debug(`No notification prompt seen on ${context}`);
+      this.logger.warning(`Notification prompt was seen on ${context} but no exact Allow notifications button was found`);
+      return false;
+    } catch (error) {
+      this.logger.warning(`Notification prompt handling failed on ${context}: ${error.message}`);
       return false;
     }
-
-    if (result.clicked) {
-      this.notificationPromptHandled = true;
-      this.logger.info(`Accepted DataAnnotation notification prompt on ${context}`);
-      return true;
-    }
-
-    this.logger.warning(`Notification prompt was seen on ${context} but no exact Allow notifications button was found`);
-    return false;
   }
 
   async _scrapeProjects(page) {
