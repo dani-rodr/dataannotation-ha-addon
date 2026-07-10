@@ -216,6 +216,10 @@ function convertMoneyNumber(value: any, rate: any) {
 }
 
 function convertCents(value: any, rate: any) {
+  if (value === null || value === undefined) {
+    return value ?? null;
+  }
+
   const cents = Number(value);
   if (!Number.isFinite(cents)) {
     return value ?? null;

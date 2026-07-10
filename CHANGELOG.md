@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.14
+
+- Preserve missing last payout amounts as null and backfill from total paid out delta when live funds history does not expose a parseable paid batch.
+
 ## 0.6.13
 
 - Add last payout amount attributes to the Last Payout entity.

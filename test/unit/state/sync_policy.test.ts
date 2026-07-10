@@ -188,3 +188,25 @@ test('retainNextWithdrawalAt clears stale withdrawal timestamps while funds are 
   assert.equal(retained.next_withdrawal_amount, 100);
   assert.equal(retained.next_withdrawal_amount_formatted, '$100.00');
 });
+
+test('retainNextWithdrawalAt backfills last payout amount from total paid out delta', () => {
+  const retained = retainNextWithdrawalAt(
+    {
+      can_withdraw: true,
+      total_paid_out_cents: 562678,
+      last_payout_at: '2026-07-10T11:17:10.950Z',
+      last_payout_amount_cents: null,
+      last_payout_amount: null,
+      last_payout_amount_formatted: null,
+    },
+    {
+      total_paid_out_cents: 513178,
+      last_payout_at: '2026-07-08T11:17:10.950Z',
+    },
+    new Date('2026-07-10T12:00:00.000Z')
+  );
+
+  assert.equal(retained.last_payout_amount_cents, 49500);
+  assert.equal(retained.last_payout_amount, 495);
+  assert.equal(retained.last_payout_amount_formatted, '$495.00');
+});

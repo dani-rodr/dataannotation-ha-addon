@@ -143,6 +143,24 @@ test('convertPaymentsForCurrency converts monetary summary fields into PHP', () 
   assert.equal(payments.pending_payout_entries_public[0].amount_cents, undefined);
 });
 
+test('convertPaymentsForCurrency preserves null payout amounts', () => {
+  const payments = convertPaymentsForCurrency(
+    {
+      last_payout_amount: null,
+      last_payout_amount_cents: null,
+      last_payout_amount_formatted: null,
+    },
+    {
+      convert_to_php: true,
+      usd_php_rate: 61.471,
+    }
+  );
+
+  assert.equal(payments.last_payout_amount, null);
+  assert.equal(payments.last_payout_amount_cents, null);
+  assert.equal(payments.last_payout_amount_formatted, null);
+});
+
 test('convertPaymentsForCurrency leaves monetary summary fields unchanged in USD mode', () => {
   const payments = convertPaymentsForCurrency(
     {

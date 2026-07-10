@@ -2036,7 +2036,7 @@ var require_funds_history = __commonJS({
       return {
         amount_cents: amountCents,
         amount: centsToNumber(amountCents),
-        amount_formatted: formatCents(amountCents)
+        amount_formatted: formatCents2(amountCents)
       };
     }
     function normalizePayoutGroupKey(entry) {
@@ -2046,7 +2046,7 @@ var require_funds_history = __commonJS({
     function centsToNumber(value) {
       return numberOrZero3(value) / 100;
     }
-    function formatCents(value) {
+    function formatCents2(value) {
       return `$${new Intl.NumberFormat("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -2304,10 +2304,10 @@ var require_withdrawal_amount = __commonJS({
       return {
         next_withdrawal_amount_cents: cents,
         next_withdrawal_amount: cents / 100,
-        next_withdrawal_amount_formatted: formatCents(cents)
+        next_withdrawal_amount_formatted: formatCents2(cents)
       };
     }
-    function formatCents(value) {
+    function formatCents2(value) {
       return `$${new Intl.NumberFormat("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -2390,7 +2390,7 @@ var require_payments = __commonJS({
       return {
         available_amount_cents: availableAmountCents,
         available_amount: centsToNumber(availableAmountCents),
-        available_amount_formatted: formatCents(availableAmountCents),
+        available_amount_formatted: formatCents2(availableAmountCents),
         can_withdraw: canWithdraw,
         button_enabled: normalizedWithdrawButton.enabled,
         button_text: normalizedWithdrawButton.text,
@@ -2404,20 +2404,20 @@ var require_payments = __commonJS({
         payment_status: pageProps?.paymentStatus?.type || null,
         total_earnings_cents: totalEarningsCents,
         total_earnings: centsToNumber(totalEarningsCents),
-        total_earnings_formatted: formatCents(totalEarningsCents),
+        total_earnings_formatted: formatCents2(totalEarningsCents),
         total_paid_out_cents: totalPaidOutCents,
         total_paid_out: centsToNumber(totalPaidOutCents),
-        total_paid_out_formatted: formatCents(totalPaidOutCents),
+        total_paid_out_formatted: formatCents2(totalPaidOutCents),
         this_month_cents: thisMonthCents,
         this_month: centsToNumber(thisMonthCents),
-        this_month_formatted: formatCents(thisMonthCents),
+        this_month_formatted: formatCents2(thisMonthCents),
         best_month_cents: bestMonthSource.cents,
         best_month: centsToNumber(bestMonthSource.cents),
         best_month_label: bestMonthSource.label,
-        best_month_formatted: formatCents(bestMonthSource.cents),
+        best_month_formatted: formatCents2(bestMonthSource.cents),
         pending_approval_cents: pendingApprovalCents,
         pending_approval: centsToNumber(pendingApprovalCents),
-        pending_approval_formatted: formatCents(pendingApprovalCents),
+        pending_approval_formatted: formatCents2(pendingApprovalCents),
         last_payout_at: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
         next_payout_days: numberOrZero3(next_payout_days),
         next_payout_at: normalizeIsoDate(next_payout_at),
@@ -2473,7 +2473,7 @@ var require_payments = __commonJS({
         count: 1
       };
     }
-    function formatCents(value) {
+    function formatCents2(value) {
       return `$${new Intl.NumberFormat("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -2795,7 +2795,7 @@ var require_payments = __commonJS({
       if (button.disabled || button.ariaDisabled === "true") {
         return false;
       }
-      const exactAmount = availableAmountCents === null ? null : formatCents(availableAmountCents);
+      const exactAmount = availableAmountCents === null ? null : formatCents2(availableAmountCents);
       const matchesLegacyText = WITHDRAW_BUTTON_TEXT_PATTERN.test(button.text) && (exactAmount === null || button.text === `${exactAmount} available`);
       if (matchesLegacyText) {
         return true;
@@ -2813,7 +2813,7 @@ var require_payments = __commonJS({
       scrapePayments,
       chooseWithdrawalButton,
       formatMonthLabel,
-      formatCents,
+      formatCents: formatCents2,
       estimateNextWithdrawalAt,
       normalizeNextWithdrawalAt,
       parseNextWithdrawalText
@@ -3840,6 +3840,9 @@ var require_currency_conversion = __commonJS({
       return roundToCents(amount * getExchangeRateValue(rate));
     }
     function convertCents(value, rate) {
+      if (value === null || value === void 0) {
+        return value ?? null;
+      }
       const cents = Number(value);
       if (!Number.isFinite(cents)) {
         return value ?? null;
@@ -4176,6 +4179,14 @@ function retainNextWithdrawalAt(currentPayments, previousPayments, now = /* @__P
       current.next_withdrawal_text = null;
     }
   }
+  if (current.last_payout_amount_cents === null || current.last_payout_amount_cents === void 0 || current.last_payout_amount === null || current.last_payout_amount === void 0) {
+    const delta = computeLastPayoutAmountDelta(current, previousPayments);
+    if (delta !== null) {
+      current.last_payout_amount_cents = delta;
+      current.last_payout_amount = delta / 100;
+      current.last_payout_amount_formatted = formatCents(delta);
+    }
+  }
   Object.assign(current, buildWithdrawalAmountSnapshot(current, current.next_withdrawal_at || null, now));
   return current;
 }
@@ -4185,6 +4196,40 @@ function parseDate(value) {
   }
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+function computeLastPayoutAmountDelta(currentPayments, previousPayments) {
+  const currentLastPayoutAt = parseDate(currentPayments?.last_payout_at);
+  const previousLastPayoutAt = parseDate(previousPayments?.last_payout_at);
+  if (!currentLastPayoutAt) {
+    return null;
+  }
+  if (previousLastPayoutAt && currentLastPayoutAt <= previousLastPayoutAt) {
+    return null;
+  }
+  const currentTotal = normalizeCents(currentPayments?.total_paid_out_cents, currentPayments?.total_paid_out);
+  const previousTotal = normalizeCents(previousPayments?.total_paid_out_cents, previousPayments?.total_paid_out);
+  if (currentTotal === null || previousTotal === null) {
+    return null;
+  }
+  const delta = currentTotal - previousTotal;
+  return delta > 0 ? delta : null;
+}
+function normalizeCents(centsValue, amountValue) {
+  const cents = Number(centsValue);
+  if (Number.isFinite(cents)) {
+    return Math.round(cents);
+  }
+  const amount = Number(amountValue);
+  if (Number.isFinite(amount)) {
+    return Math.round(amount * 100);
+  }
+  return null;
+}
+function formatCents(value) {
+  return `$${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value / 100)}`;
 }
 var buildWithdrawalAmountSnapshot;
 var init_sync_policy = __esm({
@@ -5068,7 +5113,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.6.12",
+      version: "0.6.13",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",
