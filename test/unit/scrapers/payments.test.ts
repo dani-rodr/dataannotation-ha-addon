@@ -109,7 +109,7 @@ test('extractPaymentsSnapshot marks withdrawable funds as available', () => {
   assert.equal(snapshot.next_withdrawal_at, '2026-06-26T14:10:02.298Z');
 });
 
-test('extractPaymentsSnapshot uses the next payout timestamp when funds are zero', () => {
+test('extractPaymentsSnapshot does not guess next withdrawal from next payout when funds are zero', () => {
   const now = new Date('2026-06-26T14:05:02.298Z');
   const nextPayoutAt = localMidnightIsoFrom(now, 1);
   const nextPayoutAtHuman = new Intl.DateTimeFormat('en-US', {
@@ -162,7 +162,8 @@ test('extractPaymentsSnapshot uses the next payout timestamp when funds are zero
 
   assert.equal(snapshot.next_payout_at, nextPayoutAt);
   assert.equal(snapshot.next_payout_at_human, nextPayoutAtHuman);
-  assert.equal(snapshot.next_withdrawal_at, nextPayoutAt);
+  assert.equal(snapshot.next_withdrawal_at, null);
+  assert.equal(snapshot.next_withdrawal_source, null);
   assert.equal(snapshot.next_withdrawal_amount_cents, 0);
   assert.equal(snapshot.next_withdrawal_amount, 0);
   assert.equal(snapshot.next_withdrawal_amount_formatted, '$0.00');
@@ -199,7 +200,7 @@ test('extractPaymentsSnapshot sorts payout entries and computes withdrawable amo
       unapprovedAmount: 1234,
       paymentStatus: {
         type: 'cooldown',
-        nextEligibleAt: null,
+        nextEligibleAt: earlier,
         amountInCents: 0,
       },
       unpaidPendingAmountInCents: 0,
@@ -218,7 +219,6 @@ test('extractPaymentsSnapshot sorts payout entries and computes withdrawable amo
     },
     buttonText: '$0.00 available',
     buttonDisabled: true,
-    next_payout_days: 2,
     next_payout_at: earlier,
     next_payout_entries_count: 2,
     pending_payout_entries: [
@@ -299,7 +299,8 @@ test('extractPaymentsSnapshot falls back to a three day estimate when no future 
     now,
   });
 
-  assert.equal(snapshot.next_withdrawal_at, localMidnightIsoFrom(now, 3));
+  assert.equal(snapshot.next_withdrawal_at, null);
+  assert.equal(snapshot.next_withdrawal_source, null);
 });
 
 test('extractPaymentsSnapshot falls back to three days from now when no future payout is known', () => {
@@ -333,7 +334,8 @@ test('extractPaymentsSnapshot falls back to three days from now when no future p
     now,
   });
 
-  assert.equal(snapshot.next_withdrawal_at, localMidnightIsoFrom(now, 3));
+  assert.equal(snapshot.next_withdrawal_at, null);
+  assert.equal(snapshot.next_withdrawal_source, null);
 });
 
 test('chooseWithdrawalButton accepts the exact legacy money available button', () => {

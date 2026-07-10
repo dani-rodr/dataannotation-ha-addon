@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.15
+
+- Preserve a known future Next Withdrawal timestamp across non-direct refreshes instead of overwriting it with next payout guesses.
+
 ## 0.6.14
 
 - Preserve missing last payout amounts as null and backfill from total paid out delta when live funds history does not expose a parseable paid batch.

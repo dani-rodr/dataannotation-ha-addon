@@ -26,14 +26,20 @@ function extractPaymentsSnapshot({
   const bestMonthSource = normalizeBestMonth(earningsSummary?.bestMonth);
   const nextPayoutEntries = buildNextPayoutEntries(pending_payout_entries);
   const nextPayoutEntry = nextPayoutEntries[0] || null;
+  const nextWithdrawalSource = resolveNextWithdrawalSource({
+    nextEligibleAt: pageProps?.paymentStatus?.nextEligibleAt,
+    nextWithdrawalText,
+    availableAmountCents,
+    canWithdraw,
+    nextPayoutAt: next_payout_at,
+    nextPayoutDays: next_payout_days,
+  });
   const nextWithdrawalAt = normalizeNextWithdrawalAt({
     nextEligibleAt: pageProps?.paymentStatus?.nextEligibleAt,
     nextWithdrawalText,
     lastPayoutAt: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
     canWithdraw,
     availableAmountCents,
-    nextPayoutAt: next_payout_at,
-    nextPayoutDays: next_payout_days,
     now,
   });
   const withdrawalAmount = buildWithdrawalAmountSnapshot({
@@ -55,6 +61,7 @@ function extractPaymentsSnapshot({
     withdraw_button_count: normalizedWithdrawButton.count,
     withdraw_button_disabled: normalizedWithdrawButton.present ? normalizedWithdrawButton.disabled : null,
     next_withdrawal_at: nextWithdrawalAt,
+    next_withdrawal_source: nextWithdrawalSource,
     next_withdrawal_text: nextWithdrawalText || null,
     ...withdrawalAmount,
     payment_status: pageProps?.paymentStatus?.type || null,
@@ -196,8 +203,6 @@ function normalizeNextWithdrawalAt({
   lastPayoutAt,
   canWithdraw = false,
   availableAmountCents = 0,
-  nextPayoutAt = null,
-  nextPayoutDays = 0,
   now = new Date(),
 }) {
   const direct = normalizeIsoDate(nextEligibleAt);
@@ -222,16 +227,25 @@ function normalizeNextWithdrawalAt({
     return estimated || nextLocalMidnight(current, 3);
   }
 
-  const payoutAt = normalizeIsoDate(nextPayoutAt);
-  if (payoutAt) {
-    return payoutAt;
+  return null;
+}
+
+function resolveNextWithdrawalSource({
+  nextEligibleAt,
+  nextWithdrawalText,
+  availableAmountCents = 0,
+  canWithdraw = false,
+}) {
+  if (normalizeIsoDate(nextEligibleAt) || parseNextWithdrawalText(nextWithdrawalText)) {
+    return 'direct';
   }
 
-  if (numberOrZero(nextPayoutDays) > 0) {
-    return nextLocalMidnight(current, nextPayoutDays);
+  const availableAmount = numberOrZero(availableAmountCents);
+  if (availableAmount > 0) {
+    return canWithdraw ? 'button' : 'estimated';
   }
 
-  return nextLocalMidnight(current, 3);
+  return null;
 }
 
 function estimateNextWithdrawalAt(lastPayoutAt, now = new Date()) {
@@ -557,5 +571,6 @@ module.exports = {
   formatCents,
   estimateNextWithdrawalAt,
   normalizeNextWithdrawalAt,
+  resolveNextWithdrawalSource,
   parseNextWithdrawalText,
 };

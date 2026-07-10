@@ -67,17 +67,13 @@ export function mergePaymentsWithFundsHistory(payments: PaymentSnapshot | null |
 
 export function retainNextWithdrawalAt(currentPayments: PaymentSnapshot | null | undefined, previousPayments: PaymentSnapshot | null | undefined, now: Date = new Date()): PaymentSnapshot {
   const current = { ...(currentPayments || {}) };
-  if (current.can_withdraw) {
-    const previousNextWithdrawalAt = parseDate(previousPayments?.next_withdrawal_at);
-    const currentTime = parseDate(now) || new Date();
-    if (previousNextWithdrawalAt && previousNextWithdrawalAt > currentTime) {
-      current.next_withdrawal_at = previousPayments?.next_withdrawal_at ?? null;
-      if (previousPayments?.next_withdrawal_text) {
-        current.next_withdrawal_text = previousPayments.next_withdrawal_text;
-      }
-    } else {
-      current.next_withdrawal_at = null;
-      current.next_withdrawal_text = null;
+  const previousNextWithdrawalAt = parseDate(previousPayments?.next_withdrawal_at);
+  const currentTime = parseDate(now) || new Date();
+
+  if (previousNextWithdrawalAt && previousNextWithdrawalAt > currentTime && current.next_withdrawal_source !== 'direct') {
+    current.next_withdrawal_at = previousPayments?.next_withdrawal_at ?? null;
+    if (previousPayments?.next_withdrawal_text) {
+      current.next_withdrawal_text = previousPayments.next_withdrawal_text;
     }
   }
 

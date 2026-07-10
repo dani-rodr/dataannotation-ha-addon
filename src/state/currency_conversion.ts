@@ -189,6 +189,7 @@ function convertPaymentsInternal(payments: any, displayCurrency: any, rate: any)
   converted.pending_payout_entries = convertPayoutEntries(converted.pending_payout_entries, rate, displayCurrency);
   converted.next_payout_entries_public = formatPublicPayoutEntries(converted.next_payout_entries);
   converted.pending_payout_entries_public = formatPublicPayoutEntries(converted.pending_payout_entries);
+  delete converted.next_withdrawal_source;
 
   converted.currency = displayCurrency;
   converted.exchange_rate = rate;

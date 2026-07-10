@@ -2371,14 +2371,20 @@ var require_payments = __commonJS({
       const bestMonthSource = normalizeBestMonth(earningsSummary?.bestMonth);
       const nextPayoutEntries = buildNextPayoutEntries(pending_payout_entries);
       const nextPayoutEntry = nextPayoutEntries[0] || null;
+      const nextWithdrawalSource = resolveNextWithdrawalSource({
+        nextEligibleAt: pageProps?.paymentStatus?.nextEligibleAt,
+        nextWithdrawalText,
+        availableAmountCents,
+        canWithdraw,
+        nextPayoutAt: next_payout_at,
+        nextPayoutDays: next_payout_days
+      });
       const nextWithdrawalAt = normalizeNextWithdrawalAt({
         nextEligibleAt: pageProps?.paymentStatus?.nextEligibleAt,
         nextWithdrawalText,
         lastPayoutAt: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
         canWithdraw,
         availableAmountCents,
-        nextPayoutAt: next_payout_at,
-        nextPayoutDays: next_payout_days,
         now
       });
       const withdrawalAmount = buildWithdrawalAmountSnapshot2({
@@ -2399,6 +2405,7 @@ var require_payments = __commonJS({
         withdraw_button_count: normalizedWithdrawButton.count,
         withdraw_button_disabled: normalizedWithdrawButton.present ? normalizedWithdrawButton.disabled : null,
         next_withdrawal_at: nextWithdrawalAt,
+        next_withdrawal_source: nextWithdrawalSource,
         next_withdrawal_text: nextWithdrawalText || null,
         ...withdrawalAmount,
         payment_status: pageProps?.paymentStatus?.type || null,
@@ -2519,8 +2526,6 @@ var require_payments = __commonJS({
       lastPayoutAt,
       canWithdraw = false,
       availableAmountCents = 0,
-      nextPayoutAt = null,
-      nextPayoutDays = 0,
       now = /* @__PURE__ */ new Date()
     }) {
       const direct = normalizeIsoDate(nextEligibleAt);
@@ -2540,14 +2545,22 @@ var require_payments = __commonJS({
         const estimated = estimateNextWithdrawalAt(lastPayoutAt, current);
         return estimated || nextLocalMidnight(current, 3);
       }
-      const payoutAt = normalizeIsoDate(nextPayoutAt);
-      if (payoutAt) {
-        return payoutAt;
+      return null;
+    }
+    function resolveNextWithdrawalSource({
+      nextEligibleAt,
+      nextWithdrawalText,
+      availableAmountCents = 0,
+      canWithdraw = false
+    }) {
+      if (normalizeIsoDate(nextEligibleAt) || parseNextWithdrawalText(nextWithdrawalText)) {
+        return "direct";
       }
-      if (numberOrZero3(nextPayoutDays) > 0) {
-        return nextLocalMidnight(current, nextPayoutDays);
+      const availableAmount = numberOrZero3(availableAmountCents);
+      if (availableAmount > 0) {
+        return canWithdraw ? "button" : "estimated";
       }
-      return nextLocalMidnight(current, 3);
+      return null;
     }
     function estimateNextWithdrawalAt(lastPayoutAt, now = /* @__PURE__ */ new Date()) {
       const lastPayout = normalizeDate2(lastPayoutAt);
@@ -2816,6 +2829,7 @@ var require_payments = __commonJS({
       formatCents: formatCents2,
       estimateNextWithdrawalAt,
       normalizeNextWithdrawalAt,
+      resolveNextWithdrawalSource,
       parseNextWithdrawalText
     };
   }
@@ -3822,6 +3836,7 @@ var require_currency_conversion = __commonJS({
       converted.pending_payout_entries = convertPayoutEntries(converted.pending_payout_entries, rate, displayCurrency);
       converted.next_payout_entries_public = formatPublicPayoutEntries(converted.next_payout_entries);
       converted.pending_payout_entries_public = formatPublicPayoutEntries(converted.pending_payout_entries);
+      delete converted.next_withdrawal_source;
       converted.currency = displayCurrency;
       converted.exchange_rate = rate;
       converted.base_currency = CURRENCY_BASE;
@@ -4169,17 +4184,12 @@ function mergePaymentsWithFundsHistory(payments, fundsHistorySnapshot) {
 }
 function retainNextWithdrawalAt(currentPayments, previousPayments, now = /* @__PURE__ */ new Date()) {
   const current = { ...currentPayments || {} };
-  if (current.can_withdraw) {
-    const previousNextWithdrawalAt = parseDate(previousPayments?.next_withdrawal_at);
-    const currentTime = parseDate(now) || /* @__PURE__ */ new Date();
-    if (previousNextWithdrawalAt && previousNextWithdrawalAt > currentTime) {
-      current.next_withdrawal_at = previousPayments?.next_withdrawal_at ?? null;
-      if (previousPayments?.next_withdrawal_text) {
-        current.next_withdrawal_text = previousPayments.next_withdrawal_text;
-      }
-    } else {
-      current.next_withdrawal_at = null;
-      current.next_withdrawal_text = null;
+  const previousNextWithdrawalAt = parseDate(previousPayments?.next_withdrawal_at);
+  const currentTime = parseDate(now) || /* @__PURE__ */ new Date();
+  if (previousNextWithdrawalAt && previousNextWithdrawalAt > currentTime && current.next_withdrawal_source !== "direct") {
+    current.next_withdrawal_at = previousPayments?.next_withdrawal_at ?? null;
+    if (previousPayments?.next_withdrawal_text) {
+      current.next_withdrawal_text = previousPayments.next_withdrawal_text;
     }
   }
   retainLastPayoutAmount(current, previousPayments);
