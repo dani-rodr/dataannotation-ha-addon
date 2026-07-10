@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.12
+
+- Add richer debug logging for project scrapes, source buckets, and task deltas to help diagnose intermittent false positives.
+
 ## 0.6.11
 
 - Handle the DataAnnotation in-page notification prompt once after login while keeping payout estimates and MQTT attributes accurate.

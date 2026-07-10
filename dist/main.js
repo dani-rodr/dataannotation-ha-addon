@@ -2818,9 +2818,16 @@ var require_dataannotation_client = __commonJS({
           this.logger.debug("Opening DataAnnotation projects page");
           const loginState = await this._ensureAuthenticated(page);
           const props = await this._readWorkerProjectsProps(page);
+          this.logger.debug(
+            `Raw project payload counts: projects=${countItems(props?.dashboardMerchTargeting?.projects)}, easyProjects=${countItems(props?.dashboardMerchTargeting?.easyProjects)}, reportableProjectsInfo=${countItems(props?.reportableProjectsInfo)}, inProgressTasksInfo=${countItems(props?.inProgressTasksInfo)}`
+          );
+          if (this.logger.debug) {
+            this.logger.debug(`Raw project payload preview: ${describeProjectList2("projects", props?.dashboardMerchTargeting?.projects)}${describeProjectList2("easyProjects", props?.dashboardMerchTargeting?.easyProjects)}${describeProjectList2("reportableProjectsInfo", props?.reportableProjectsInfo)}`);
+          }
           const projects = extractProjects2(props);
           const taskStatus = extractTaskStatus(props, page.url());
           this.logger.debug(`Scraped ${projects.length} DataAnnotation projects`);
+          this.logger.debug(`Normalized projects: ${describeProjectList2("selected", projects)}`);
           return {
             authenticated: true,
             loginState,
@@ -3300,6 +3307,24 @@ var require_dataannotation_client = __commonJS({
         return this.browserSession.newPage();
       }
     };
+    function countItems(value) {
+      return Array.isArray(value) ? value.length : 0;
+    }
+    function describeProjectList2(label, list, limit = 3) {
+      const items = Array.isArray(list) ? list.slice(0, limit) : [];
+      if (items.length === 0) {
+        return `${label}=[]`;
+      }
+      const preview = items.map((project) => {
+        const name = String(project?.name || project?.workerSubtitle || "Unknown project").trim();
+        const id = String(project?.id || project?.slug || "").trim();
+        const tasks = String(project?.availableTasksFor ?? project?.tasks ?? "").trim();
+        const url = String(project?.url || "").trim();
+        const routeHint = url.includes("/report_time") ? " report_time" : "";
+        return `${name}${id ? ` [${id}]` : ""}${tasks ? ` tasks=${tasks}` : ""}${routeHint}`;
+      }).join(" | ");
+      return `${label}=${preview}${countItems(list) > limit ? ` (+${countItems(list) - limit} more)` : ""}; `;
+    }
     function sleep(ms) {
       return new Promise((resolve) => setTimeout(resolve, ms));
     }
@@ -4402,9 +4427,15 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
     const projectSummary = summarizeProjects2(projects);
     const newTaskEvents = initialSyncCompleted ? detectNewTaskProjects2(previousProjects, projects) : [];
     logger.debug(`Project scrape completed in ${Date.now() - projectStartedAt}ms`);
+    logger.debug(
+      `Project filter summary: included=${projects.length}, excluded=${excludedProjects.length}, total_tasks=${projectSummary.total_tasks}`
+    );
+    if (projects.length > 0) {
+      logger.debug(`Included projects: ${describeProjectList(projects, 5)}`);
+    }
     if (excludedProjects.length > 0) {
       logger.info(`Filtered ${excludedProjects.length} excluded project${excludedProjects.length === 1 ? "" : "s"} from project totals`);
-      logger.debug(`Excluded projects: ${excludedProjects.map((project) => project.name).join(" | ")}`);
+      logger.debug(`Excluded projects: ${describeProjectList(excludedProjects, 5)}`);
     }
     logger.info(
       `${includeFundsHistory ? "Sync" : "Fast sync"} complete: ${projectSummary.count} projects, ${projectSummary.total_tasks} total tasks`
@@ -4442,6 +4473,9 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
     bridge.publishProjects(publishedProjects, completedAt);
     bridge.publishTaskStatus(result.taskStatus, completedAt);
     for (const event of newTaskEvents) {
+      logger.debug(
+        `New task delta: slug=${event.slug}, id=${event.id || ""}, previous=${event.previous_tasks}, current=${event.current_tasks}, added=${event.added_tasks}${event.url ? `, url=${event.url}` : ""}`
+      );
       logger.info(`New DataAnnotation task detected: "${event.name}" (+${event.added_tasks}, total ${event.current_tasks})${event.url ? ` ${event.url}` : ""}`);
     }
     const autoAcceptStartedAt = Date.now();
@@ -4513,6 +4547,23 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
       newTaskEvents: []
     };
   }
+}
+function describeProjectList(projects, limit = 5) {
+  const items = Array.isArray(projects) ? projects.slice(0, limit) : [];
+  if (items.length === 0) {
+    return "[]";
+  }
+  const total = Array.isArray(projects) ? projects.length : items.length;
+  const preview = items.map((project) => {
+    const name = String(project?.name || project?.workerSubtitle || "Unknown project").trim();
+    const slug = String(project?.slug || "").trim();
+    const id = String(project?.id || "").trim();
+    const tasks = Number.isFinite(Number(project?.tasks)) ? Number(project.tasks) : null;
+    const url = String(project?.url || "").trim();
+    const routeHint = /\/report_time(?:\?|$)/.test(url) ? " report_time" : "";
+    return `${name}${slug ? ` [${slug}]` : ""}${id ? ` id=${id}` : ""}${tasks !== null ? ` tasks=${tasks}` : ""}${routeHint}${url ? ` url=${url}` : ""}`;
+  }).join(" | ");
+  return `${preview}${items.length < total ? ` (+${total - items.length} more)` : ""}`;
 }
 var convertPaymentsForCurrency2, convertProjectsForCurrency, getDisplayCurrency, detectNewTaskProjects2, filterExcludedProjects2, summarizeProjects2, mergePaymentsWithFundsHistory2, pickFundsHistoryFields2, retainNextWithdrawalAt3, maybeAutoAcceptNewTasks2, FUNDS_HISTORY_OBSERVATIONS_PATH;
 var init_sync = __esm({
@@ -4868,7 +4919,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.6.11",
+      version: "0.6.12",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

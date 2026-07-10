@@ -51,9 +51,15 @@ export async function doSync(
     const projectSummary = summarizeProjects(projects);
     const newTaskEvents = initialSyncCompleted ? detectNewTaskProjects(previousProjects, projects) : [];
     logger.debug(`Project scrape completed in ${Date.now() - projectStartedAt}ms`);
+    logger.debug(
+      `Project filter summary: included=${projects.length}, excluded=${excludedProjects.length}, total_tasks=${projectSummary.total_tasks}`
+    );
+    if (projects.length > 0) {
+      logger.debug(`Included projects: ${describeProjectList(projects, 5)}`);
+    }
     if (excludedProjects.length > 0) {
       logger.info(`Filtered ${excludedProjects.length} excluded project${excludedProjects.length === 1 ? '' : 's'} from project totals`);
-      logger.debug(`Excluded projects: ${excludedProjects.map((project: any) => project.name).join(' | ')}`);
+      logger.debug(`Excluded projects: ${describeProjectList(excludedProjects, 5)}`);
     }
 
     logger.info(
@@ -94,6 +100,9 @@ export async function doSync(
     bridge.publishTaskStatus(result.taskStatus, completedAt);
 
     for (const event of newTaskEvents) {
+      logger.debug(
+        `New task delta: slug=${event.slug}, id=${event.id || ''}, previous=${event.previous_tasks}, current=${event.current_tasks}, added=${event.added_tasks}${event.url ? `, url=${event.url}` : ''}`
+      );
       logger.info(`New DataAnnotation task detected: "${event.name}" (+${event.added_tasks}, total ${event.current_tasks})${event.url ? ` ${event.url}` : ''}`);
     }
 
@@ -170,4 +179,28 @@ export async function doSync(
       newTaskEvents: [],
     };
   }
+}
+
+function describeProjectList(projects: any, limit = 5): string {
+  const items = Array.isArray(projects) ? projects.slice(0, limit) : [];
+  if (items.length === 0) {
+    return '[]';
+  }
+
+  const total = Array.isArray(projects) ? projects.length : items.length;
+
+  const preview = items
+    .map((project: any) => {
+      const name = String(project?.name || project?.workerSubtitle || 'Unknown project').trim();
+      const slug = String(project?.slug || '').trim();
+      const id = String(project?.id || '').trim();
+      const tasks = Number.isFinite(Number(project?.tasks)) ? Number(project.tasks) : null;
+      const url = String(project?.url || '').trim();
+      const routeHint = /\/report_time(?:\?|$)/.test(url) ? ' report_time' : '';
+
+      return `${name}${slug ? ` [${slug}]` : ''}${id ? ` id=${id}` : ''}${tasks !== null ? ` tasks=${tasks}` : ''}${routeHint}${url ? ` url=${url}` : ''}`;
+    })
+    .join(' | ');
+
+  return `${preview}${items.length < total ? ` (+${total - items.length} more)` : ''}`;
 }

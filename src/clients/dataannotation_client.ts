@@ -44,9 +44,16 @@ class DataAnnotationClient {
       this.logger.debug('Opening DataAnnotation projects page');
       const loginState = await this._ensureAuthenticated(page);
       const props = await this._readWorkerProjectsProps(page);
+      this.logger.debug(
+        `Raw project payload counts: projects=${countItems(props?.dashboardMerchTargeting?.projects)}, easyProjects=${countItems(props?.dashboardMerchTargeting?.easyProjects)}, reportableProjectsInfo=${countItems(props?.reportableProjectsInfo)}, inProgressTasksInfo=${countItems(props?.inProgressTasksInfo)}`
+      );
+      if (this.logger.debug) {
+        this.logger.debug(`Raw project payload preview: ${describeProjectList('projects', props?.dashboardMerchTargeting?.projects)}${describeProjectList('easyProjects', props?.dashboardMerchTargeting?.easyProjects)}${describeProjectList('reportableProjectsInfo', props?.reportableProjectsInfo)}`);
+      }
       const projects = extractProjects(props);
       const taskStatus = extractTaskStatus(props, page.url());
       this.logger.debug(`Scraped ${projects.length} DataAnnotation projects`);
+      this.logger.debug(`Normalized projects: ${describeProjectList('selected', projects)}`);
 
       return {
         authenticated: true,
@@ -602,6 +609,30 @@ class DataAnnotationClient {
   async _newPage() {
     return this.browserSession.newPage();
   }
+}
+
+function countItems(value) {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function describeProjectList(label, list, limit = 3) {
+  const items = Array.isArray(list) ? list.slice(0, limit) : [];
+  if (items.length === 0) {
+    return `${label}=[]`;
+  }
+
+  const preview = items
+    .map((project) => {
+      const name = String(project?.name || project?.workerSubtitle || 'Unknown project').trim();
+      const id = String(project?.id || project?.slug || '').trim();
+      const tasks = String(project?.availableTasksFor ?? project?.tasks ?? '').trim();
+      const url = String(project?.url || '').trim();
+      const routeHint = url.includes('/report_time') ? ' report_time' : '';
+      return `${name}${id ? ` [${id}]` : ''}${tasks ? ` tasks=${tasks}` : ''}${routeHint}`;
+    })
+    .join(' | ');
+
+  return `${label}=${preview}${countItems(list) > limit ? ` (+${countItems(list) - limit} more)` : ''}; `;
 }
 
 function sleep(ms) {
