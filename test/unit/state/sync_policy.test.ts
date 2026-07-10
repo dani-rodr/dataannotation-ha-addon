@@ -153,12 +153,14 @@ test('retainNextWithdrawalAt keeps a future withdrawal timestamp while funds are
     {
       next_withdrawal_at: '2026-07-10T19:16:00.000Z',
       next_withdrawal_text: 'Next withdrawal: July 10, 2026 at 7:16 PM GMT+0',
+      next_withdrawal_source: 'direct',
     },
     new Date('2026-07-08T09:00:00.000Z')
   );
 
   assert.equal(retained.next_withdrawal_at, '2026-07-10T19:16:00.000Z');
   assert.equal(retained.next_withdrawal_text, 'Next withdrawal: July 10, 2026 at 7:16 PM GMT+0');
+  assert.equal(retained.next_withdrawal_source, 'direct');
   assert.equal(retained.next_withdrawal_amount_cents, 12500);
   assert.equal(retained.next_withdrawal_amount, 125);
   assert.equal(retained.next_withdrawal_amount_formatted, '$125.00');
@@ -199,6 +201,11 @@ test('retainNextWithdrawalAt keeps a known future withdrawal timestamp after a n
       next_withdrawal_at: null,
       next_withdrawal_source: 'fallback',
       next_withdrawal_text: null,
+      next_payout_entries: [
+        { status: 'pending', amount_cents: 1900788, estimated_payout_at: '2026-07-11T16:00:00.000Z' },
+        { status: 'pending', amount_cents: 4024746, estimated_payout_at: '2026-07-11T16:00:00.000Z' },
+        { status: 'pending', amount_cents: 3108982, estimated_payout_at: '2026-07-14T16:00:00.000Z' },
+      ],
     },
     {
       next_withdrawal_at: '2026-07-13T11:17:10.000Z',
@@ -209,6 +216,29 @@ test('retainNextWithdrawalAt keeps a known future withdrawal timestamp after a n
 
   assert.equal(retained.next_withdrawal_at, '2026-07-13T11:17:10.000Z');
   assert.equal(retained.next_withdrawal_text, 'Next withdrawal: July 13, 2026 at 7:17 PM GMT+8');
+  assert.equal(retained.next_withdrawal_amount_cents, 5925534);
+  assert.equal(retained.next_withdrawal_amount, 59255.34);
+  assert.equal(retained.next_withdrawal_amount_formatted, '$59,255.34');
+});
+
+test('retainNextWithdrawalAt lets a fresh direct timestamp replace persisted state', () => {
+  const retained = retainNextWithdrawalAt(
+    {
+      next_withdrawal_at: '2026-07-14T11:17:10.000Z',
+      next_withdrawal_text: 'Next withdrawal: July 14, 2026 at 7:17 PM GMT+8',
+      next_withdrawal_source: 'direct',
+    },
+    {
+      next_withdrawal_at: '2026-07-13T11:17:10.000Z',
+      next_withdrawal_text: 'Next withdrawal: July 13, 2026 at 7:17 PM GMT+8',
+      next_withdrawal_source: 'estimated',
+    },
+    new Date('2026-07-10T12:00:00.000Z')
+  );
+
+  assert.equal(retained.next_withdrawal_at, '2026-07-14T11:17:10.000Z');
+  assert.equal(retained.next_withdrawal_text, 'Next withdrawal: July 14, 2026 at 7:17 PM GMT+8');
+  assert.equal(retained.next_withdrawal_source, 'direct');
 });
 
 test('retainNextWithdrawalAt backfills last payout amount from previous available funds after withdrawal', () => {

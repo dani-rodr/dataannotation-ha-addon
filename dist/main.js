@@ -1510,8 +1510,8 @@ var require_task_status = __commonJS({
 var require_funds_history_observations = __commonJS({
   "src/state/funds_history_observations.ts"(exports2, module2) {
     "use strict";
-    var path5 = require("node:path");
-    var fs6 = require("node:fs");
+    var path6 = require("node:path");
+    var fs7 = require("node:fs");
     var DAY_MS = 24 * 60 * 60 * 1e3;
     var DEFAULT_OBSERVATIONS = {
       version: 1,
@@ -1519,11 +1519,11 @@ var require_funds_history_observations = __commonJS({
       updated_at: null
     };
     function loadFundsHistoryObservations(filePath) {
-      if (!filePath || !fs6.existsSync(filePath)) {
+      if (!filePath || !fs7.existsSync(filePath)) {
         return cloneObservations(DEFAULT_OBSERVATIONS);
       }
       try {
-        return normalizeObservations(JSON.parse(fs6.readFileSync(filePath, "utf8")));
+        return normalizeObservations(JSON.parse(fs7.readFileSync(filePath, "utf8")));
       } catch {
         return cloneObservations(DEFAULT_OBSERVATIONS);
       }
@@ -1533,8 +1533,8 @@ var require_funds_history_observations = __commonJS({
         return;
       }
       const normalized = normalizeObservations(observations);
-      fs6.mkdirSync(path5.dirname(filePath), { recursive: true });
-      fs6.writeFileSync(filePath, JSON.stringify(normalized, null, 2));
+      fs7.mkdirSync(path6.dirname(filePath), { recursive: true });
+      fs7.writeFileSync(filePath, JSON.stringify(normalized, null, 2));
     }
     function applyFundsHistoryObservations(entries, observations = null, now = /* @__PURE__ */ new Date()) {
       const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
@@ -1638,11 +1638,11 @@ var require_funds_history_observations = __commonJS({
     }
     function buildFundsHistoryEntryFingerprint(entry) {
       const parts = [
-        normalizeText(entry?.entry_date || ""),
-        normalizeText(entry?.project || ""),
-        normalizeText(entry?.kind || ""),
-        normalizeText(entry?.amount || ""),
-        normalizeText(entry?.duration || "")
+        normalizeText2(entry?.entry_date || ""),
+        normalizeText2(entry?.project || ""),
+        normalizeText2(entry?.kind || ""),
+        normalizeText2(entry?.amount || ""),
+        normalizeText2(entry?.duration || "")
       ];
       if (parts.every((part) => !part)) {
         return null;
@@ -1691,7 +1691,7 @@ var require_funds_history_observations = __commonJS({
       if (!entry || typeof entry !== "object") {
         return null;
       }
-      const normalizedFingerprint = normalizeText(entry.fingerprint || fingerprint);
+      const normalizedFingerprint = normalizeText2(entry.fingerprint || fingerprint);
       if (!normalizedFingerprint) {
         return null;
       }
@@ -1811,7 +1811,7 @@ var require_funds_history_observations = __commonJS({
     function cloneObservations(value) {
       return normalizeObservations(JSON.parse(JSON.stringify(value)));
     }
-    function normalizeText(value) {
+    function normalizeText2(value) {
       if (value === void 0 || value === null) {
         return "";
       }
@@ -1888,7 +1888,7 @@ var require_funds_history = __commonJS({
       let currentProject = null;
       let currentMonthDate = null;
       for (const rowText of Array.isArray(rows) ? rows : []) {
-        const text = normalizeText(rowText);
+        const text = normalizeText2(rowText);
         if (!text) {
           continue;
         }
@@ -2231,7 +2231,7 @@ var require_funds_history = __commonJS({
         return count;
       }, kind);
     }
-    function normalizeText(value) {
+    function normalizeText2(value) {
       return String(value || "").trim().replace(/\s+/g, " ");
     }
     function normalizeDate2(value) {
@@ -2374,10 +2374,10 @@ var require_payments = __commonJS({
       const nextWithdrawalSource = resolveNextWithdrawalSource({
         nextEligibleAt: pageProps?.paymentStatus?.nextEligibleAt,
         nextWithdrawalText,
+        lastPayoutAt: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
         availableAmountCents,
         canWithdraw,
-        nextPayoutAt: next_payout_at,
-        nextPayoutDays: next_payout_days
+        now
       });
       const nextWithdrawalAt = normalizeNextWithdrawalAt({
         nextEligibleAt: pageProps?.paymentStatus?.nextEligibleAt,
@@ -2452,7 +2452,7 @@ var require_payments = __commonJS({
       return { cents, label };
     }
     function normalizeWithdrawalButton(buttonText, buttonDisabled) {
-      const text = normalizeText(buttonText);
+      const text = normalizeText2(buttonText);
       if (!text) {
         return {
           present: false,
@@ -2542,16 +2542,22 @@ var require_payments = __commonJS({
         return addMinutes(current, 5).toISOString();
       }
       if (availableAmount > 0) {
-        const estimated = estimateNextWithdrawalAt(lastPayoutAt, current);
-        return estimated || nextLocalMidnight(current, 3);
+        const estimated2 = estimateNextWithdrawalAt(lastPayoutAt, current);
+        return estimated2 || nextLocalMidnight(current, 3);
+      }
+      const estimated = estimateFutureWithdrawalAt(lastPayoutAt, current);
+      if (estimated) {
+        return estimated;
       }
       return null;
     }
     function resolveNextWithdrawalSource({
       nextEligibleAt,
       nextWithdrawalText,
+      lastPayoutAt,
       availableAmountCents = 0,
-      canWithdraw = false
+      canWithdraw = false,
+      now = /* @__PURE__ */ new Date()
     }) {
       if (normalizeIsoDate(nextEligibleAt) || parseNextWithdrawalText(nextWithdrawalText)) {
         return "direct";
@@ -2560,7 +2566,16 @@ var require_payments = __commonJS({
       if (availableAmount > 0) {
         return canWithdraw ? "button" : "estimated";
       }
+      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      if (estimateFutureWithdrawalAt(lastPayoutAt, current)) {
+        return "estimated";
+      }
       return null;
+    }
+    function estimateFutureWithdrawalAt(lastPayoutAt, now) {
+      const estimated = estimateNextWithdrawalAt(lastPayoutAt, now);
+      const estimatedDate = normalizeDate2(estimated);
+      return estimatedDate && estimatedDate > now ? estimated : null;
     }
     function estimateNextWithdrawalAt(lastPayoutAt, now = /* @__PURE__ */ new Date()) {
       const lastPayout = normalizeDate2(lastPayoutAt);
@@ -2792,13 +2807,13 @@ var require_payments = __commonJS({
       if (!button) {
         return null;
       }
-      const text = normalizeText(button.text || button.ariaLabel || button.title);
+      const text = normalizeText2(button.text || button.ariaLabel || button.title);
       return {
         text,
         disabled: Boolean(button.disabled),
-        ariaDisabled: normalizeText(button.ariaDisabled || ""),
-        formAction: normalizeText(button.formAction || ""),
-        formMethod: normalizeText(button.formMethod || "")
+        ariaDisabled: normalizeText2(button.ariaDisabled || ""),
+        formAction: normalizeText2(button.formAction || ""),
+        formMethod: normalizeText2(button.formMethod || "")
       };
     }
     function isWithdrawalCandidate(button, availableAmountCents = null) {
@@ -2818,7 +2833,7 @@ var require_payments = __commonJS({
       return matchesForm && matchesCurrentText;
     }
     var WITHDRAW_BUTTON_SUBMIT_PATTERN = /^Get paid \$[\d,]+(?:\.\d{2})?$/i;
-    function normalizeText(value) {
+    function normalizeText2(value) {
       return String(value || "").trim().replace(/\s+/g, " ");
     }
     module2.exports = {
@@ -2839,7 +2854,7 @@ var require_payments = __commonJS({
 var require_browser_session = __commonJS({
   "src/clients/browser_session.ts"(exports2, module2) {
     "use strict";
-    var fs6 = require("node:fs");
+    var fs7 = require("node:fs");
     var puppeteer = require("puppeteer-core");
     var DataAnnotationBrowserSession = class {
       constructor(options) {
@@ -2868,7 +2883,7 @@ var require_browser_session = __commonJS({
           return this.browser;
         }
         if (this.profileDir) {
-          fs6.mkdirSync(this.profileDir, { recursive: true });
+          fs7.mkdirSync(this.profileDir, { recursive: true });
         }
         if (!this.executablePath) {
           throw new Error("Chromium executable not found in expected locations");
@@ -2899,7 +2914,7 @@ var require_browser_session = __commonJS({
         process.env.GOOGLE_CHROME_BIN
       ].filter(Boolean);
       for (const candidate of envCandidates) {
-        if (fs6.existsSync(candidate)) {
+        if (fs7.existsSync(candidate)) {
           return candidate;
         }
       }
@@ -2910,7 +2925,7 @@ var require_browser_session = __commonJS({
         "/usr/bin/google-chrome-stable"
       ];
       for (const candidate of candidates) {
-        if (fs6.existsSync(candidate)) {
+        if (fs7.existsSync(candidate)) {
           return candidate;
         }
       }
@@ -2927,7 +2942,7 @@ var require_browser_session = __commonJS({
 var require_dataannotation_client = __commonJS({
   "src/clients/dataannotation_client.ts"(exports2, module2) {
     "use strict";
-    var fs6 = require("fs");
+    var fs7 = require("fs");
     var { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require_project_claim();
     var { extractProjects: extractProjects2 } = (init_projects(), __toCommonJS(projects_exports));
     var { extractTaskStatus } = require_task_status();
@@ -3433,15 +3448,15 @@ var require_dataannotation_client = __commonJS({
       }
       async _findWithdrawalButton(page, availableAmountCents = null) {
         const buttons = await page.evaluate(() => {
-          const normalizeText = (value) => String(value || "").trim().replace(/\s+/g, " ");
+          const normalizeText2 = (value) => String(value || "").trim().replace(/\s+/g, " ");
           return Array.from(document.querySelectorAll("button")).map((node) => ({
-            text: normalizeText(node.innerText || node.textContent || ""),
+            text: normalizeText2(node.innerText || node.textContent || ""),
             disabled: Boolean(node.disabled),
-            ariaLabel: normalizeText(node.getAttribute("aria-label") || ""),
-            title: normalizeText(node.getAttribute("title") || ""),
-            ariaDisabled: normalizeText(node.getAttribute("aria-disabled") || ""),
-            formAction: normalizeText(node.form?.getAttribute("action") || ""),
-            formMethod: normalizeText(node.form?.getAttribute("method") || "")
+            ariaLabel: normalizeText2(node.getAttribute("aria-label") || ""),
+            title: normalizeText2(node.getAttribute("title") || ""),
+            ariaDisabled: normalizeText2(node.getAttribute("aria-disabled") || ""),
+            formAction: normalizeText2(node.form?.getAttribute("action") || ""),
+            formMethod: normalizeText2(node.form?.getAttribute("method") || "")
           }));
         });
         const withdrawButton = chooseWithdrawalButton(buttons, availableAmountCents);
@@ -3677,19 +3692,19 @@ var init_auto_accept_state = __esm({
 var require_currency_conversion = __commonJS({
   "src/state/currency_conversion.ts"(exports2, module2) {
     "use strict";
-    var path5 = require("node:path");
-    var fs6 = require("node:fs");
+    var path6 = require("node:path");
+    var fs7 = require("node:fs");
     var { formatPublicPayoutEntries } = require_funds_history();
     var CURRENCY_BASE = "USD";
     var CURRENCY_QUOTE = "PHP";
     var DEFAULT_CONVERT_TO_PHP = false;
     var FRANKFURTER_RATE_URL = "https://api.frankfurter.dev/v2/rate/USD/PHP";
     function loadCurrencyState(filePath) {
-      if (!filePath || !fs6.existsSync(filePath)) {
+      if (!filePath || !fs7.existsSync(filePath)) {
         return defaultCurrencyState();
       }
       try {
-        const payload = JSON.parse(fs6.readFileSync(filePath, "utf8"));
+        const payload = JSON.parse(fs7.readFileSync(filePath, "utf8"));
         return normalizeCurrencyState(payload);
       } catch {
         return defaultCurrencyState();
@@ -3699,8 +3714,8 @@ var require_currency_conversion = __commonJS({
       if (!filePath) {
         return;
       }
-      fs6.mkdirSync(path5.dirname(filePath), { recursive: true });
-      fs6.writeFileSync(filePath, JSON.stringify(normalizeCurrencyState(state), null, 2));
+      fs7.mkdirSync(path6.dirname(filePath), { recursive: true });
+      fs7.writeFileSync(filePath, JSON.stringify(normalizeCurrencyState(state), null, 2));
     }
     function defaultCurrencyState() {
       return {
@@ -3718,9 +3733,9 @@ var require_currency_conversion = __commonJS({
         ...base,
         convert_to_php: normalizeBoolean(payload.convert_to_php ?? payload.convertToPhp ?? payload.enabled ?? payload.value ?? payload.state),
         usd_php_rate: normalizeRate(payload.usd_php_rate ?? payload.usdPhpRate ?? payload.rate),
-        usd_php_rate_date: normalizeText(payload.usd_php_rate_date ?? payload.usdPhpRateDate ?? payload.date),
+        usd_php_rate_date: normalizeText2(payload.usd_php_rate_date ?? payload.usdPhpRateDate ?? payload.date),
         usd_php_rate_fetched_at: normalizeIsoDate(payload.usd_php_rate_fetched_at ?? payload.usdPhpRateFetchedAt ?? payload.fetched_at),
-        usd_php_rate_source: normalizeText(payload.usd_php_rate_source ?? payload.usdPhpRateSource ?? payload.source)
+        usd_php_rate_source: normalizeText2(payload.usd_php_rate_source ?? payload.usdPhpRateSource ?? payload.source)
       };
     }
     function shouldRefreshCurrencyRate(state, now = /* @__PURE__ */ new Date()) {
@@ -3769,10 +3784,10 @@ var require_currency_conversion = __commonJS({
         throw new Error("Frankfurter rate response missing numeric rate");
       }
       return {
-        base: normalizeText(payload?.base) || CURRENCY_BASE,
-        quote: normalizeText(payload?.quote) || CURRENCY_QUOTE,
+        base: normalizeText2(payload?.base) || CURRENCY_BASE,
+        quote: normalizeText2(payload?.quote) || CURRENCY_QUOTE,
         rate,
-        date: normalizeText(payload?.date) || null,
+        date: normalizeText2(payload?.date) || null,
         source: "frankfurter",
         fetched_at: (/* @__PURE__ */ new Date()).toISOString()
       };
@@ -3915,7 +3930,7 @@ var require_currency_conversion = __commonJS({
       const normalized = normalizeRate(rate);
       return Number.isFinite(normalized) && normalized > 0 ? normalized : 1;
     }
-    function normalizeText(value) {
+    function normalizeText2(value) {
       if (value === void 0 || value === null) {
         return null;
       }
@@ -4061,6 +4076,70 @@ var init_fast_polling_state = __esm({
   }
 });
 
+// src/state/next_withdrawal_state.ts
+var next_withdrawal_state_exports = {};
+__export(next_withdrawal_state_exports, {
+  loadNextWithdrawalState: () => loadNextWithdrawalState,
+  normalizeNextWithdrawalState: () => normalizeNextWithdrawalState,
+  saveNextWithdrawalState: () => saveNextWithdrawalState
+});
+function loadNextWithdrawalState(filePath) {
+  if (!filePath || !import_fs5.default.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    return normalizeNextWithdrawalState(JSON.parse(import_fs5.default.readFileSync(filePath, "utf8")));
+  } catch {
+    return null;
+  }
+}
+function saveNextWithdrawalState(filePath, payments) {
+  if (!filePath) {
+    return;
+  }
+  const state = normalizeNextWithdrawalState(payments);
+  const payload = state || {
+    next_withdrawal_at: null,
+    next_withdrawal_text: null,
+    next_withdrawal_source: null
+  };
+  import_fs5.default.mkdirSync(import_path4.default.dirname(filePath), { recursive: true });
+  import_fs5.default.writeFileSync(filePath, JSON.stringify({
+    ...payload,
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  }, null, 2));
+}
+function normalizeNextWithdrawalState(value) {
+  const payload = value && typeof value === "object" ? value : null;
+  if (!payload?.next_withdrawal_at) {
+    return null;
+  }
+  const date = new Date(payload.next_withdrawal_at);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return {
+    next_withdrawal_at: date.toISOString(),
+    next_withdrawal_text: normalizeText(payload.next_withdrawal_text),
+    next_withdrawal_source: normalizeText(payload.next_withdrawal_source)
+  };
+}
+function normalizeText(value) {
+  if (value === null || value === void 0) {
+    return null;
+  }
+  const text = String(value).trim();
+  return text || null;
+}
+var import_fs5, import_path4;
+var init_next_withdrawal_state = __esm({
+  "src/state/next_withdrawal_state.ts"() {
+    "use strict";
+    import_fs5 = __toESM(require("fs"));
+    import_path4 = __toESM(require("path"));
+  }
+});
+
 // src/state/withdraw_lock_state.ts
 var withdraw_lock_state_exports = {};
 __export(withdraw_lock_state_exports, {
@@ -4070,11 +4149,11 @@ __export(withdraw_lock_state_exports, {
   saveWithdrawLockState: () => saveWithdrawLockState
 });
 function loadWithdrawLockState(filePath) {
-  if (!filePath || !import_fs5.default.existsSync(filePath)) {
+  if (!filePath || !import_fs6.default.existsSync(filePath)) {
     return DEFAULT_WITHDRAW_LOCKED;
   }
   try {
-    const payload = JSON.parse(import_fs5.default.readFileSync(filePath, "utf8"));
+    const payload = JSON.parse(import_fs6.default.readFileSync(filePath, "utf8"));
     return normalizeWithdrawLockState(payload?.locked ?? payload?.withdrawLocked ?? payload?.value ?? payload?.state);
   } catch {
     return DEFAULT_WITHDRAW_LOCKED;
@@ -4084,8 +4163,8 @@ function saveWithdrawLockState(filePath, locked) {
   if (!filePath) {
     return;
   }
-  import_fs5.default.mkdirSync(import_path4.default.dirname(filePath), { recursive: true });
-  import_fs5.default.writeFileSync(
+  import_fs6.default.mkdirSync(import_path5.default.dirname(filePath), { recursive: true });
+  import_fs6.default.writeFileSync(
     filePath,
     JSON.stringify(
       {
@@ -4115,12 +4194,12 @@ function normalizeWithdrawLockState(value) {
   }
   return DEFAULT_WITHDRAW_LOCKED;
 }
-var import_fs5, import_path4, DEFAULT_WITHDRAW_LOCKED;
+var import_fs6, import_path5, DEFAULT_WITHDRAW_LOCKED;
 var init_withdraw_lock_state = __esm({
   "src/state/withdraw_lock_state.ts"() {
     "use strict";
-    import_fs5 = __toESM(require("fs"));
-    import_path4 = __toESM(require("path"));
+    import_fs6 = __toESM(require("fs"));
+    import_path5 = __toESM(require("path"));
     DEFAULT_WITHDRAW_LOCKED = true;
   }
 });
@@ -4188,9 +4267,8 @@ function retainNextWithdrawalAt(currentPayments, previousPayments, now = /* @__P
   const currentTime = parseDate(now) || /* @__PURE__ */ new Date();
   if (previousNextWithdrawalAt && previousNextWithdrawalAt > currentTime && current.next_withdrawal_source !== "direct") {
     current.next_withdrawal_at = previousPayments?.next_withdrawal_at ?? null;
-    if (previousPayments?.next_withdrawal_text) {
-      current.next_withdrawal_text = previousPayments.next_withdrawal_text;
-    }
+    current.next_withdrawal_text = previousPayments?.next_withdrawal_text ?? null;
+    current.next_withdrawal_source = previousPayments?.next_withdrawal_source ?? null;
   }
   retainLastPayoutAmount(current, previousPayments);
   Object.assign(current, buildWithdrawalAmountSnapshot(current, current.next_withdrawal_at || null, now));
@@ -4790,6 +4868,7 @@ var require_runtime_state = __commonJS({
       lastSuccessfulTotalTaskCount = 0;
       lastSuccessfulProjects = null;
       lastSuccessfulPayments = null;
+      persistedNextWithdrawalState = null;
       lastFundsHistorySnapshot = null;
       lastInProgressTask = null;
       lastAutoAcceptAttemptSignature = null;
@@ -4826,6 +4905,7 @@ var require_dataannotation_app = __commonJS({
       shouldRefreshCurrencyRate
     } = require_currency_conversion();
     var { loadFastPollingState: loadFastPollingState2, saveFastPollingState: saveFastPollingState2 } = (init_fast_polling_state(), __toCommonJS(fast_polling_state_exports));
+    var { loadNextWithdrawalState: loadNextWithdrawalState2, saveNextWithdrawalState: saveNextWithdrawalState2 } = (init_next_withdrawal_state(), __toCommonJS(next_withdrawal_state_exports));
     var { loadWithdrawLockState: loadWithdrawLockState2, saveWithdrawLockState: saveWithdrawLockState2 } = (init_withdraw_lock_state(), __toCommonJS(withdraw_lock_state_exports));
     var { shouldIncludeFundsHistory: shouldIncludeFundsHistory2 } = (init_sync_policy(), __toCommonJS(sync_policy_exports));
     var { doSync: doSync2, getActivePollCron: getActivePollCron2, republishCurrencyViews: republishCurrencyViews2 } = (init_sync(), __toCommonJS(sync_exports));
@@ -4845,6 +4925,7 @@ var require_dataannotation_app = __commonJS({
     var FAST_POLLING_STATE_PATH = "/data/fast-polling-state.json";
     var AUTO_ACCEPT_STATE_PATH2 = "/data/auto-accept-state.json";
     var CURRENCY_STATE_PATH = "/data/currency-state.json";
+    var NEXT_WITHDRAWAL_STATE_PATH = "/data/next-withdrawal-state.json";
     var DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES = 2;
     var DataAnnotationApp2 = class {
       config;
@@ -4907,6 +4988,7 @@ var require_dataannotation_app = __commonJS({
         this.state.fastPollingEnabled = loadFastPollingState2(FAST_POLLING_STATE_PATH);
         this.state.autoAcceptEnabled = loadAutoAcceptState2(AUTO_ACCEPT_STATE_PATH2);
         this.state.currencyState = loadCurrencyState(CURRENCY_STATE_PATH);
+        this.state.persistedNextWithdrawalState = loadNextWithdrawalState2(NEXT_WITHDRAWAL_STATE_PATH);
       }
       async _connectAndPublishStartupState() {
         const { config, state, bridge } = this;
@@ -5027,6 +5109,10 @@ var require_dataannotation_app = __commonJS({
         });
         bridge.scanRequested.value = false;
         logger.debug(`Sync mode: manual=${manualSyncRequested}, payments=true, fundsHistory=${includeFundsHistory}, fastPolling=${state.fastPollingEnabled}`);
+        const previousPayments = {
+          ...state.persistedNextWithdrawalState || {},
+          ...state.lastSuccessfulPayments || {}
+        };
         const syncResult = await doSync2(
           this.client,
           bridge,
@@ -5036,7 +5122,7 @@ var require_dataannotation_app = __commonJS({
           state.lastSuccessfulTotalTaskCount,
           state.hasCompletedInitialSync,
           state.lastSuccessfulProjects,
-          state.lastSuccessfulPayments,
+          previousPayments,
           {
             enabled: state.autoAcceptEnabled,
             claimProjectsLocked: state.claimProjectsLocked,
@@ -5066,6 +5152,13 @@ var require_dataannotation_app = __commonJS({
         state.lastSuccessfulTotalTaskCount = syncResult.lastSuccessfulTotalTaskCount;
         state.lastSuccessfulProjects = syncResult.projects || state.lastSuccessfulProjects;
         state.lastSuccessfulPayments = syncResult.payments || state.lastSuccessfulPayments;
+        if (syncResult.payments) {
+          try {
+            saveNextWithdrawalState2(NEXT_WITHDRAWAL_STATE_PATH, syncResult.payments);
+          } catch (error) {
+            logger.warning(`Failed to persist next withdrawal state: ${error.message}`);
+          }
+        }
         if (syncResult.fundsHistorySnapshot) {
           state.lastFundsHistorySnapshot = syncResult.fundsHistorySnapshot;
         }
@@ -5115,7 +5208,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.6.14",
+      version: "0.6.16",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

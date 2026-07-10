@@ -72,9 +72,8 @@ export function retainNextWithdrawalAt(currentPayments: PaymentSnapshot | null |
 
   if (previousNextWithdrawalAt && previousNextWithdrawalAt > currentTime && current.next_withdrawal_source !== 'direct') {
     current.next_withdrawal_at = previousPayments?.next_withdrawal_at ?? null;
-    if (previousPayments?.next_withdrawal_text) {
-      current.next_withdrawal_text = previousPayments.next_withdrawal_text;
-    }
+    current.next_withdrawal_text = previousPayments?.next_withdrawal_text ?? null;
+    current.next_withdrawal_source = previousPayments?.next_withdrawal_source ?? null;
   }
 
   retainLastPayoutAmount(current, previousPayments);

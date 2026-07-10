@@ -13,6 +13,7 @@ const {
   shouldRefreshCurrencyRate,
 } = require('../state/currency_conversion.ts');
 const { loadFastPollingState, saveFastPollingState } = require('../state/fast_polling_state.ts');
+const { loadNextWithdrawalState, saveNextWithdrawalState } = require('../state/next_withdrawal_state.ts');
 const { loadWithdrawLockState, saveWithdrawLockState } = require('../state/withdraw_lock_state.ts');
 const { shouldIncludeFundsHistory } = require('../state/sync_policy.ts');
 const { doSync, getActivePollCron, republishCurrencyViews } = require('./sync.ts');
@@ -34,6 +35,7 @@ const CLAIM_PROJECTS_LOCK_STATE_PATH = '/data/claim-projects-lock-state.json';
 const FAST_POLLING_STATE_PATH = '/data/fast-polling-state.json';
 const AUTO_ACCEPT_STATE_PATH = '/data/auto-accept-state.json';
 const CURRENCY_STATE_PATH = '/data/currency-state.json';
+const NEXT_WITHDRAWAL_STATE_PATH = '/data/next-withdrawal-state.json';
 const DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES = 2;
 
 class DataAnnotationApp {
@@ -100,6 +102,7 @@ class DataAnnotationApp {
     this.state.fastPollingEnabled = loadFastPollingState(FAST_POLLING_STATE_PATH);
     this.state.autoAcceptEnabled = loadAutoAcceptState(AUTO_ACCEPT_STATE_PATH);
     this.state.currencyState = loadCurrencyState(CURRENCY_STATE_PATH);
+    this.state.persistedNextWithdrawalState = loadNextWithdrawalState(NEXT_WITHDRAWAL_STATE_PATH);
   }
 
   async _connectAndPublishStartupState() {
@@ -235,6 +238,10 @@ class DataAnnotationApp {
     bridge.scanRequested.value = false;
     logger.debug(`Sync mode: manual=${manualSyncRequested}, payments=true, fundsHistory=${includeFundsHistory}, fastPolling=${state.fastPollingEnabled}`);
 
+    const previousPayments = {
+      ...(state.persistedNextWithdrawalState || {}),
+      ...(state.lastSuccessfulPayments || {}),
+    };
     const syncResult = await doSync(
       this.client,
       bridge,
@@ -244,7 +251,7 @@ class DataAnnotationApp {
       state.lastSuccessfulTotalTaskCount,
       state.hasCompletedInitialSync,
       state.lastSuccessfulProjects,
-      state.lastSuccessfulPayments,
+      previousPayments,
       {
         enabled: state.autoAcceptEnabled,
         claimProjectsLocked: state.claimProjectsLocked,
@@ -279,6 +286,13 @@ class DataAnnotationApp {
     state.lastSuccessfulTotalTaskCount = syncResult.lastSuccessfulTotalTaskCount;
     state.lastSuccessfulProjects = syncResult.projects || state.lastSuccessfulProjects;
     state.lastSuccessfulPayments = syncResult.payments || state.lastSuccessfulPayments;
+    if (syncResult.payments) {
+      try {
+        saveNextWithdrawalState(NEXT_WITHDRAWAL_STATE_PATH, syncResult.payments);
+      } catch (error: any) {
+        logger.warning(`Failed to persist next withdrawal state: ${error.message}`);
+      }
+    }
     if (syncResult.fundsHistorySnapshot) {
       state.lastFundsHistorySnapshot = syncResult.fundsHistorySnapshot;
     }

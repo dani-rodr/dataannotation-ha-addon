@@ -41,6 +41,7 @@ export interface PaymentSnapshot {
   withdraw_button_disabled?: boolean | null;
   next_withdrawal_at?: string | null;
   next_withdrawal_text?: string | null;
+  next_withdrawal_source?: string | null;
   next_withdrawal_amount_cents?: number | null;
   next_withdrawal_amount?: unknown;
   next_withdrawal_amount_formatted?: string | null;

@@ -9,6 +9,7 @@ class RuntimeState {
   lastSuccessfulTotalTaskCount = 0;
   lastSuccessfulProjects = null;
   lastSuccessfulPayments = null;
+  persistedNextWithdrawalState = null;
   lastFundsHistorySnapshot = null;
   lastInProgressTask = null;
   lastAutoAcceptAttemptSignature = null;

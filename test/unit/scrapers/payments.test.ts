@@ -109,7 +109,7 @@ test('extractPaymentsSnapshot marks withdrawable funds as available', () => {
   assert.equal(snapshot.next_withdrawal_at, '2026-06-26T14:10:02.298Z');
 });
 
-test('extractPaymentsSnapshot does not guess next withdrawal from next payout when funds are zero', () => {
+test('extractPaymentsSnapshot estimates next withdrawal from last payout instead of next payout', () => {
   const now = new Date('2026-06-26T14:05:02.298Z');
   const nextPayoutAt = localMidnightIsoFrom(now, 1);
   const nextPayoutAtHuman = new Intl.DateTimeFormat('en-US', {
@@ -162,8 +162,8 @@ test('extractPaymentsSnapshot does not guess next withdrawal from next payout wh
 
   assert.equal(snapshot.next_payout_at, nextPayoutAt);
   assert.equal(snapshot.next_payout_at_human, nextPayoutAtHuman);
-  assert.equal(snapshot.next_withdrawal_at, null);
-  assert.equal(snapshot.next_withdrawal_source, null);
+  assert.equal(snapshot.next_withdrawal_at, '2026-06-27T14:05:02.298Z');
+  assert.equal(snapshot.next_withdrawal_source, 'estimated');
   assert.equal(snapshot.next_withdrawal_amount_cents, 0);
   assert.equal(snapshot.next_withdrawal_amount, 0);
   assert.equal(snapshot.next_withdrawal_amount_formatted, '$0.00');
@@ -188,6 +188,36 @@ test('extractPaymentsSnapshot does not guess next withdrawal from next payout wh
     },
   ]);
   assert.deepEqual(snapshot.pending_payout_entries_public, snapshot.next_payout_entries_public);
+});
+
+test('extractPaymentsSnapshot rebuilds the post-payout withdrawal timestamp and amount', () => {
+  const snapshot = extractPaymentsSnapshot({
+    pageProps: {
+      paymentStatus: {
+        type: 'cooldown',
+        nextEligibleAt: null,
+        amountInCents: 0,
+      },
+      lastPayoutAt: '2026-07-10T11:17:10.000Z',
+    },
+    earningsSummary: {},
+    buttonText: '$0.00 available',
+    buttonDisabled: true,
+    nextWithdrawalText: '',
+    next_payout_at: '2026-07-11T16:00:00.000Z',
+    pending_payout_entries: [
+      { status: 'pending', amount_cents: 1900788, estimated_payout_at: '2026-07-11T16:00:00.000Z' },
+      { status: 'pending', amount_cents: 4024746, estimated_payout_at: '2026-07-11T16:00:00.000Z' },
+      { status: 'pending', amount_cents: 3108982, estimated_payout_at: '2026-07-14T16:00:00.000Z' },
+    ],
+    now: new Date('2026-07-10T12:00:00.000Z'),
+  });
+
+  assert.equal(snapshot.next_withdrawal_at, '2026-07-13T11:17:10.000Z');
+  assert.equal(snapshot.next_withdrawal_source, 'estimated');
+  assert.equal(snapshot.next_withdrawal_amount_cents, 5925534);
+  assert.equal(snapshot.next_withdrawal_amount, 59255.34);
+  assert.equal(snapshot.next_withdrawal_amount_formatted, '$59,255.34');
 });
 
 test('extractPaymentsSnapshot sorts payout entries and computes withdrawable amount', () => {
@@ -268,7 +298,7 @@ test('estimateNextWithdrawalAt clamps to now when the three day window has passe
   assert.equal(estimated, '2026-06-25T14:05:02.298Z');
 });
 
-test('extractPaymentsSnapshot falls back to a three day estimate when no future payout is known', () => {
+test('extractPaymentsSnapshot leaves next withdrawal unknown when last payout cooldown has passed', () => {
   const now = new Date('2026-06-26T14:05:02.298Z');
   const snapshot = extractPaymentsSnapshot({
     pageProps: {
@@ -303,7 +333,7 @@ test('extractPaymentsSnapshot falls back to a three day estimate when no future 
   assert.equal(snapshot.next_withdrawal_source, null);
 });
 
-test('extractPaymentsSnapshot falls back to three days from now when no future payout is known', () => {
+test('extractPaymentsSnapshot does not move an expired cooldown forward', () => {
   const now = new Date('2026-06-25T14:05:02.298Z');
   const snapshot = extractPaymentsSnapshot({
     pageProps: {

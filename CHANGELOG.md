@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.16
+
+- Persist the last known future Next Withdrawal timestamp across restarts and reconstruct it from the latest payout cooldown when needed.
+
 ## 0.6.15
 
 - Preserve a known future Next Withdrawal timestamp across non-direct refreshes instead of overwriting it with next payout guesses.
