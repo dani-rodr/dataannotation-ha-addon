@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.13
+
+- Add last payout amount attributes to the Last Payout entity.
+
 ## 0.6.12
 
 - Add richer debug logging for project scrapes, source buckets, and task deltas to help diagnose intermittent false positives.
