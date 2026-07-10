@@ -162,6 +162,7 @@ function convertPaymentsInternal(payments: any, displayCurrency: any, rate: any)
   }
 
   converted.next_payout_amount = convertMoneyValue(converted.next_payout_amount, rate, displayCurrency);
+  converted.next_withdrawal_amount = convertMoneyValue(converted.next_withdrawal_amount, rate, displayCurrency);
 
   converted.available_amount_cents = convertCents(converted.available_amount_cents, rate);
   converted.total_earnings_cents = convertCents(converted.total_earnings_cents, rate);
@@ -169,6 +170,7 @@ function convertPaymentsInternal(payments: any, displayCurrency: any, rate: any)
   converted.this_month_cents = convertCents(converted.this_month_cents, rate);
   converted.best_month_cents = convertCents(converted.best_month_cents, rate);
   converted.pending_approval_cents = convertCents(converted.pending_approval_cents, rate);
+  converted.next_withdrawal_amount_cents = convertCents(converted.next_withdrawal_amount_cents, rate);
 
   converted.available_amount_formatted = convertMoneyText(converted.available_amount_formatted, rate, displayCurrency);
   converted.total_earnings_formatted = convertMoneyText(converted.total_earnings_formatted, rate, displayCurrency);
@@ -176,6 +178,7 @@ function convertPaymentsInternal(payments: any, displayCurrency: any, rate: any)
   converted.this_month_formatted = convertMoneyText(converted.this_month_formatted, rate, displayCurrency);
   converted.best_month_formatted = convertMoneyText(converted.best_month_formatted, rate, displayCurrency);
   converted.pending_approval_formatted = convertMoneyText(converted.pending_approval_formatted, rate, displayCurrency);
+  converted.next_withdrawal_amount_formatted = convertMoneyText(converted.next_withdrawal_amount_formatted, rate, displayCurrency);
   converted.button_text = convertButtonText(converted.button_text, rate, displayCurrency);
   converted.withdraw_button_text = convertButtonText(converted.withdraw_button_text, rate, displayCurrency);
 

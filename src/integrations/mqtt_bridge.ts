@@ -444,6 +444,9 @@ class DataAnnotationMqttBridge {
           unique_id: `${this.topicPrefix}_next_withdrawal`,
           state_topic: this._topic('payments/summary'),
           value_template: "{{ value_json.next_withdrawal_at if value_json.next_withdrawal_at else 'unknown' }}",
+          json_attributes_topic: this._topic('payments/summary'),
+          json_attributes_template:
+            "{{ {'next_withdrawal_amount': value_json.next_withdrawal_amount, 'next_withdrawal_amount_cents': value_json.next_withdrawal_amount_cents, 'next_withdrawal_amount_formatted': value_json.next_withdrawal_amount_formatted} | tojson }}",
           force_update: true,
           availability_topic: this._topic('availability'),
           payload_available: 'online',
@@ -463,7 +466,7 @@ class DataAnnotationMqttBridge {
           value_template: "{{ value_json.next_payout_at if value_json.next_payout_at else 'unknown' }}",
           json_attributes_topic: this._topic('payments/summary'),
           json_attributes_template:
-            "{{ {'next_payout_at_human': value_json.next_payout_at_human, 'next_payout_entries': value_json.next_payout_entries_public, 'next_payout_entries_count': value_json.next_payout_entries_count, 'next_payout_amount': value_json.next_payout_amount, 'next_payout_source': value_json.next_payout_source, 'next_payout_confidence': value_json.next_payout_confidence} | tojson }}",
+            "{{ {'next_payout_at_human': value_json.next_payout_at_human, 'next_payout_entries': value_json.next_payout_entries_public, 'next_payout_entries_count': value_json.next_payout_entries_count, 'next_payout_amount': value_json.next_payout_amount, 'next_payout_source': value_json.next_payout_source, 'next_payout_confidence': value_json.next_payout_confidence, 'next_withdrawal_at': value_json.next_withdrawal_at} | tojson }}",
           force_update: true,
           availability_topic: this._topic('availability'),
           payload_available: 'online',
@@ -555,7 +558,7 @@ class DataAnnotationMqttBridge {
           value_template: '{{ value_json.pending_approval }}',
           json_attributes_topic: this._topic('payments/summary'),
           json_attributes_template:
-            "{{ {'pending_payout_entries': value_json.pending_payout_entries_public} | tojson }}",
+            "{{ {'pending_payout_entries': value_json.pending_payout_entries_public, 'next_withdrawal_at': value_json.next_withdrawal_at} | tojson }}",
           unit_of_measurement: currencyUnit,
           force_update: true,
           availability_topic: this._topic('availability'),

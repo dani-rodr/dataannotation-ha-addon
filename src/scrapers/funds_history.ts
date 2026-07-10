@@ -104,7 +104,7 @@ function summarizeFundsHistoryEntries(entries: any, now = new Date()) {
 }
 
 function formatPublicPayoutEntries(entries: any) {
-  return (Array.isArray(entries) ? entries : []).map((entry) => formatPublicPayoutEntry(entry));
+  return sortPayoutEntries(entries).map((entry) => formatPublicPayoutEntry(entry));
 }
 
 function formatPublicPayoutEntry(entry: any) {
@@ -200,6 +200,34 @@ function parseMonthSummaryDate(text: string, now = new Date()) {
   const current = normalizeDate(now) || new Date();
   const year = inferYearForMonth(monthIndex, current);
   return new Date(year, monthIndex, Number(match[2]), 0, 0, 0, 0);
+}
+
+function sortPayoutEntries(entries: any) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => {
+      const leftValue = String(left.entry?.estimated_payout_at || '');
+      const rightValue = String(right.entry?.estimated_payout_at || '');
+
+      if (!leftValue && !rightValue) {
+        return left.index - right.index;
+      }
+
+      if (!leftValue) {
+        return 1;
+      }
+
+      if (!rightValue) {
+        return -1;
+      }
+
+      if (leftValue === rightValue) {
+        return left.index - right.index;
+      }
+
+      return leftValue.localeCompare(rightValue);
+    })
+    .map((item) => item.entry);
 }
 
 function inferYearForMonth(monthIndex: number, now: Date) {

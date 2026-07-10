@@ -130,6 +130,11 @@ test('retainNextWithdrawalAt keeps a future withdrawal timestamp while funds are
   const retained = retainNextWithdrawalAt(
     {
       can_withdraw: true,
+      available_amount_cents: 10000,
+      next_payout_entries: [
+        { status: 'pending', amount_cents: 2500, estimated_payout_at: '2026-07-09T00:00:00.000Z' },
+        { status: 'pending', amount_cents: 5000, estimated_payout_at: '2026-07-11T00:00:00.000Z' },
+      ],
       next_withdrawal_at: '2026-07-08T10:00:00.000Z',
       next_withdrawal_text: 'Next withdrawal: July 8, 2026 at 10:00 AM GMT+0',
     },
@@ -142,12 +147,19 @@ test('retainNextWithdrawalAt keeps a future withdrawal timestamp while funds are
 
   assert.equal(retained.next_withdrawal_at, '2026-07-10T19:16:00.000Z');
   assert.equal(retained.next_withdrawal_text, 'Next withdrawal: July 10, 2026 at 7:16 PM GMT+0');
+  assert.equal(retained.next_withdrawal_amount_cents, 12500);
+  assert.equal(retained.next_withdrawal_amount, 125);
+  assert.equal(retained.next_withdrawal_amount_formatted, '$125.00');
 });
 
 test('retainNextWithdrawalAt clears stale withdrawal timestamps while funds are available', () => {
   const retained = retainNextWithdrawalAt(
     {
       can_withdraw: true,
+      available_amount_cents: 10000,
+      next_payout_entries: [
+        { status: 'pending', amount_cents: 2500, estimated_payout_at: '2026-07-07T00:00:00.000Z' },
+      ],
       next_withdrawal_at: '2026-07-08T10:00:00.000Z',
       next_withdrawal_text: 'Next withdrawal: July 8, 2026 at 10:00 AM GMT+0',
     },
@@ -160,4 +172,7 @@ test('retainNextWithdrawalAt clears stale withdrawal timestamps while funds are 
 
   assert.equal(retained.next_withdrawal_at, null);
   assert.equal(retained.next_withdrawal_text, null);
+  assert.equal(retained.next_withdrawal_amount_cents, 10000);
+  assert.equal(retained.next_withdrawal_amount, 100);
+  assert.equal(retained.next_withdrawal_amount_formatted, '$100.00');
 });

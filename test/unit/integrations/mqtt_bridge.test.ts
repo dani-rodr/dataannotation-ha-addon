@@ -83,10 +83,12 @@ test('configuration and diagnostic entities are categorized for the device page'
     assert.equal(parse('homeassistant/sensor/dataannotation_this_month/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_best_month/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_last_payout/config').entity_category, 'diagnostic');
+    assert.equal(parse('homeassistant/sensor/dataannotation_next_withdrawal/config').json_attributes_topic, 'dataannotation/payments/summary');
+    assert.equal(parse('homeassistant/sensor/dataannotation_next_withdrawal/config').json_attributes_template, "{{ {'next_withdrawal_amount': value_json.next_withdrawal_amount, 'next_withdrawal_amount_cents': value_json.next_withdrawal_amount_cents, 'next_withdrawal_amount_formatted': value_json.next_withdrawal_amount_formatted} | tojson }}");
     assert.equal(parse('homeassistant/sensor/dataannotation_pending_approval/config').json_attributes_topic, 'dataannotation/payments/summary');
-    assert.equal(parse('homeassistant/sensor/dataannotation_pending_approval/config').json_attributes_template, "{{ {'pending_payout_entries': value_json.pending_payout_entries_public} | tojson }}");
+    assert.equal(parse('homeassistant/sensor/dataannotation_pending_approval/config').json_attributes_template, "{{ {'pending_payout_entries': value_json.pending_payout_entries_public, 'next_withdrawal_at': value_json.next_withdrawal_at} | tojson }}");
     assert.equal(parse('homeassistant/sensor/dataannotation_next_payout/config').json_attributes_topic, 'dataannotation/payments/summary');
-    assert.equal(parse('homeassistant/sensor/dataannotation_next_payout/config').json_attributes_template, "{{ {'next_payout_at_human': value_json.next_payout_at_human, 'next_payout_entries': value_json.next_payout_entries_public, 'next_payout_entries_count': value_json.next_payout_entries_count, 'next_payout_amount': value_json.next_payout_amount, 'next_payout_source': value_json.next_payout_source, 'next_payout_confidence': value_json.next_payout_confidence} | tojson }}");
+    assert.equal(parse('homeassistant/sensor/dataannotation_next_payout/config').json_attributes_template, "{{ {'next_payout_at_human': value_json.next_payout_at_human, 'next_payout_entries': value_json.next_payout_entries_public, 'next_payout_entries_count': value_json.next_payout_entries_count, 'next_payout_amount': value_json.next_payout_amount, 'next_payout_source': value_json.next_payout_source, 'next_payout_confidence': value_json.next_payout_confidence, 'next_withdrawal_at': value_json.next_withdrawal_at} | tojson }}");
     assert.equal(parse('homeassistant/button/dataannotation_rebuild_discovery/config').entity_category, 'config');
   } finally {
     Module._load = originalLoad;

@@ -1,5 +1,6 @@
 // @ts-nocheck
 const { formatPublicPayoutEntries, scrapeFundsHistory } = require('./funds_history.ts');
+const { buildWithdrawalAmountSnapshot } = require('../state/withdrawal_amount.ts');
 
 function extractPaymentsSnapshot({
   pageProps,
@@ -35,6 +36,12 @@ function extractPaymentsSnapshot({
     nextPayoutDays: next_payout_days,
     now,
   });
+  const withdrawalAmount = buildWithdrawalAmountSnapshot({
+    available_amount_cents: availableAmountCents,
+    available_amount: centsToNumber(availableAmountCents),
+    next_payout_entries: nextPayoutEntries,
+    pending_payout_entries,
+  }, nextWithdrawalAt, now);
 
   return {
     available_amount_cents: availableAmountCents,
@@ -49,6 +56,7 @@ function extractPaymentsSnapshot({
     withdraw_button_disabled: normalizedWithdrawButton.present ? normalizedWithdrawButton.disabled : null,
     next_withdrawal_at: nextWithdrawalAt,
     next_withdrawal_text: nextWithdrawalText || null,
+    ...withdrawalAmount,
     payment_status: pageProps?.paymentStatus?.type || null,
     total_earnings_cents: totalEarningsCents,
     total_earnings: centsToNumber(totalEarningsCents),

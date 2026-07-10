@@ -163,6 +163,9 @@ test('extractPaymentsSnapshot uses the next payout timestamp when funds are zero
   assert.equal(snapshot.next_payout_at, nextPayoutAt);
   assert.equal(snapshot.next_payout_at_human, nextPayoutAtHuman);
   assert.equal(snapshot.next_withdrawal_at, nextPayoutAt);
+  assert.equal(snapshot.next_withdrawal_amount_cents, 0);
+  assert.equal(snapshot.next_withdrawal_amount, 0);
+  assert.equal(snapshot.next_withdrawal_amount_formatted, '$0.00');
   assert.equal(snapshot.next_payout_entries_count, 1);
   assert.equal(snapshot.next_payout_entries[0].project, 'Example Project');
   assert.equal(snapshot.next_payout_entries[0].kind, 'hourly');
@@ -184,6 +187,73 @@ test('extractPaymentsSnapshot uses the next payout timestamp when funds are zero
     },
   ]);
   assert.deepEqual(snapshot.pending_payout_entries_public, snapshot.next_payout_entries_public);
+});
+
+test('extractPaymentsSnapshot sorts payout entries and computes withdrawable amount', () => {
+  const now = new Date('2026-06-26T14:05:02.298Z');
+  const earlier = localMidnightIsoFrom(now, 1);
+  const later = localMidnightIsoFrom(now, 2);
+  const snapshot = extractPaymentsSnapshot({
+    pageProps: {
+      totalLifetimeEarnings: 60000,
+      unapprovedAmount: 1234,
+      paymentStatus: {
+        type: 'cooldown',
+        nextEligibleAt: null,
+        amountInCents: 0,
+      },
+      unpaidPendingAmountInCents: 0,
+      lastPayoutAt: '2026-06-24T14:05:02.298Z',
+      showFundsHistoryTable: true,
+    },
+    earningsSummary: {
+      totalPaidOut: 0,
+      currentMonthEarnings: 60000,
+      bestMonth: {
+        month: '2026-06',
+        withdrawnInCents: 60000,
+        earnedInCents: 0,
+        pendingInCents: 0,
+      },
+    },
+    buttonText: '$0.00 available',
+    buttonDisabled: true,
+    next_payout_days: 2,
+    next_payout_at: earlier,
+    next_payout_entries_count: 2,
+    pending_payout_entries: [
+      {
+        project: 'Later Project',
+        kind: 'task',
+        status: 'pending',
+        amount: '$20.00',
+        amount_cents: 2000,
+        estimated_payout_at: later,
+        estimate_source: 'row_date_fallback',
+        estimate_confidence: 'low',
+      },
+      {
+        project: 'Earlier Project',
+        kind: 'hourly',
+        status: 'pending',
+        amount: '$12.34',
+        amount_cents: 1234,
+        estimated_payout_at: earlier,
+        estimate_source: 'row_date_fallback',
+        estimate_confidence: 'low',
+      },
+    ],
+    nextWithdrawalText: '',
+    now,
+  });
+
+  assert.equal(snapshot.next_withdrawal_at, earlier);
+  assert.equal(snapshot.next_withdrawal_amount_cents, 1234);
+  assert.equal(snapshot.next_withdrawal_amount, 12.34);
+  assert.equal(snapshot.next_withdrawal_amount_formatted, '$12.34');
+  assert.deepEqual(snapshot.next_payout_entries.map((entry) => entry.project), ['Earlier Project', 'Later Project']);
+  assert.deepEqual(snapshot.next_payout_entries_public.map((entry) => entry.project), ['Earlier Project', 'Later Project']);
+  assert.deepEqual(snapshot.pending_payout_entries_public.map((entry) => entry.project), ['Earlier Project', 'Later Project']);
 });
 
 test('estimateNextWithdrawalAt uses last payout plus three days while still in the future', () => {

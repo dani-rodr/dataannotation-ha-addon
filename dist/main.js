@@ -981,6 +981,8 @@ var require_mqtt_bridge = __commonJS({
               unique_id: `${this.topicPrefix}_next_withdrawal`,
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.next_withdrawal_at if value_json.next_withdrawal_at else 'unknown' }}",
+              json_attributes_topic: this._topic("payments/summary"),
+              json_attributes_template: "{{ {'next_withdrawal_amount': value_json.next_withdrawal_amount, 'next_withdrawal_amount_cents': value_json.next_withdrawal_amount_cents, 'next_withdrawal_amount_formatted': value_json.next_withdrawal_amount_formatted} | tojson }}",
               force_update: true,
               availability_topic: this._topic("availability"),
               payload_available: "online",
@@ -999,7 +1001,7 @@ var require_mqtt_bridge = __commonJS({
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.next_payout_at if value_json.next_payout_at else 'unknown' }}",
               json_attributes_topic: this._topic("payments/summary"),
-              json_attributes_template: "{{ {'next_payout_at_human': value_json.next_payout_at_human, 'next_payout_entries': value_json.next_payout_entries_public, 'next_payout_entries_count': value_json.next_payout_entries_count, 'next_payout_amount': value_json.next_payout_amount, 'next_payout_source': value_json.next_payout_source, 'next_payout_confidence': value_json.next_payout_confidence} | tojson }}",
+              json_attributes_template: "{{ {'next_payout_at_human': value_json.next_payout_at_human, 'next_payout_entries': value_json.next_payout_entries_public, 'next_payout_entries_count': value_json.next_payout_entries_count, 'next_payout_amount': value_json.next_payout_amount, 'next_payout_source': value_json.next_payout_source, 'next_payout_confidence': value_json.next_payout_confidence, 'next_withdrawal_at': value_json.next_withdrawal_at} | tojson }}",
               force_update: true,
               availability_topic: this._topic("availability"),
               payload_available: "online",
@@ -1090,7 +1092,7 @@ var require_mqtt_bridge = __commonJS({
               state_topic: this._topic("payments/summary"),
               value_template: "{{ value_json.pending_approval }}",
               json_attributes_topic: this._topic("payments/summary"),
-              json_attributes_template: "{{ {'pending_payout_entries': value_json.pending_payout_entries_public} | tojson }}",
+              json_attributes_template: "{{ {'pending_payout_entries': value_json.pending_payout_entries_public, 'next_withdrawal_at': value_json.next_withdrawal_at} | tojson }}",
               unit_of_measurement: currencyUnit,
               force_update: true,
               availability_topic: this._topic("availability"),
@@ -1916,7 +1918,7 @@ var require_funds_history = __commonJS({
       };
     }
     function formatPublicPayoutEntries(entries) {
-      return (Array.isArray(entries) ? entries : []).map((entry) => formatPublicPayoutEntry(entry));
+      return sortPayoutEntries(entries).map((entry) => formatPublicPayoutEntry(entry));
     }
     function formatPublicPayoutEntry(entry) {
       return {
@@ -1985,6 +1987,25 @@ var require_funds_history = __commonJS({
       const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
       const year = inferYearForMonth(monthIndex, current);
       return new Date(year, monthIndex, Number(match[2]), 0, 0, 0, 0);
+    }
+    function sortPayoutEntries(entries) {
+      return (Array.isArray(entries) ? entries : []).map((entry, index) => ({ entry, index })).sort((left, right) => {
+        const leftValue = String(left.entry?.estimated_payout_at || "");
+        const rightValue = String(right.entry?.estimated_payout_at || "");
+        if (!leftValue && !rightValue) {
+          return left.index - right.index;
+        }
+        if (!leftValue) {
+          return 1;
+        }
+        if (!rightValue) {
+          return -1;
+        }
+        if (leftValue === rightValue) {
+          return left.index - right.index;
+        }
+        return leftValue.localeCompare(rightValue);
+      }).map((item) => item.entry);
     }
     function inferYearForMonth(monthIndex, now) {
       let year = now.getFullYear();
@@ -2211,11 +2232,76 @@ var require_funds_history = __commonJS({
   }
 });
 
+// src/state/withdrawal_amount.ts
+var require_withdrawal_amount = __commonJS({
+  "src/state/withdrawal_amount.ts"(exports2, module2) {
+    "use strict";
+    function buildWithdrawalAmountSnapshot2(payments, nextWithdrawalAt, now = /* @__PURE__ */ new Date()) {
+      const availableAmountCents = toCents(payments?.available_amount_cents, payments?.available_amount);
+      const cutoff = parseDate4(nextWithdrawalAt);
+      if (!cutoff || cutoff <= normalizeDate2(now)) {
+        return formatWithdrawalAmount(availableAmountCents);
+      }
+      const entries = Array.isArray(payments?.next_payout_entries) ? payments.next_payout_entries : Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : [];
+      const pendingAmountCents = entries.reduce((sum, entry) => {
+        if (!entry || entry.status !== "pending") {
+          return sum;
+        }
+        const payoutAt = parseDate4(entry.estimated_payout_at);
+        if (!payoutAt || payoutAt > cutoff) {
+          return sum;
+        }
+        return sum + toCents(entry.amount_cents, entry.amount);
+      }, 0);
+      return formatWithdrawalAmount(availableAmountCents + pendingAmountCents);
+    }
+    function formatWithdrawalAmount(cents) {
+      return {
+        next_withdrawal_amount_cents: cents,
+        next_withdrawal_amount: cents / 100,
+        next_withdrawal_amount_formatted: formatCents(cents)
+      };
+    }
+    function formatCents(value) {
+      return `$${new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format((Number(value) || 0) / 100)}`;
+    }
+    function toCents(centsValue, amountValue) {
+      const cents = Number(centsValue);
+      if (Number.isFinite(cents)) {
+        return cents;
+      }
+      const amount = Number(amountValue);
+      if (Number.isFinite(amount)) {
+        return Math.round(amount * 100);
+      }
+      return 0;
+    }
+    function parseDate4(value) {
+      if (!value) {
+        return null;
+      }
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    function normalizeDate2(value) {
+      const date = parseDate4(value);
+      return date || /* @__PURE__ */ new Date(0);
+    }
+    module2.exports = {
+      buildWithdrawalAmountSnapshot: buildWithdrawalAmountSnapshot2
+    };
+  }
+});
+
 // src/scrapers/payments.ts
 var require_payments = __commonJS({
   "src/scrapers/payments.ts"(exports2, module2) {
     "use strict";
     var { formatPublicPayoutEntries, scrapeFundsHistory } = require_funds_history();
+    var { buildWithdrawalAmountSnapshot: buildWithdrawalAmountSnapshot2 } = require_withdrawal_amount();
     function extractPaymentsSnapshot({
       pageProps,
       earningsSummary,
@@ -2250,6 +2336,12 @@ var require_payments = __commonJS({
         nextPayoutDays: next_payout_days,
         now
       });
+      const withdrawalAmount = buildWithdrawalAmountSnapshot2({
+        available_amount_cents: availableAmountCents,
+        available_amount: centsToNumber(availableAmountCents),
+        next_payout_entries: nextPayoutEntries,
+        pending_payout_entries
+      }, nextWithdrawalAt, now);
       return {
         available_amount_cents: availableAmountCents,
         available_amount: centsToNumber(availableAmountCents),
@@ -2263,6 +2355,7 @@ var require_payments = __commonJS({
         withdraw_button_disabled: normalizedWithdrawButton.present ? normalizedWithdrawButton.disabled : null,
         next_withdrawal_at: nextWithdrawalAt,
         next_withdrawal_text: nextWithdrawalText || null,
+        ...withdrawalAmount,
         payment_status: pageProps?.paymentStatus?.type || null,
         total_earnings_cents: totalEarningsCents,
         total_earnings: centsToNumber(totalEarningsCents),
@@ -3657,18 +3750,21 @@ var require_currency_conversion = __commonJS({
         converted[field] = convertMoneyNumber(converted[field], rate);
       }
       converted.next_payout_amount = convertMoneyValue(converted.next_payout_amount, rate, displayCurrency);
+      converted.next_withdrawal_amount = convertMoneyValue(converted.next_withdrawal_amount, rate, displayCurrency);
       converted.available_amount_cents = convertCents(converted.available_amount_cents, rate);
       converted.total_earnings_cents = convertCents(converted.total_earnings_cents, rate);
       converted.total_paid_out_cents = convertCents(converted.total_paid_out_cents, rate);
       converted.this_month_cents = convertCents(converted.this_month_cents, rate);
       converted.best_month_cents = convertCents(converted.best_month_cents, rate);
       converted.pending_approval_cents = convertCents(converted.pending_approval_cents, rate);
+      converted.next_withdrawal_amount_cents = convertCents(converted.next_withdrawal_amount_cents, rate);
       converted.available_amount_formatted = convertMoneyText(converted.available_amount_formatted, rate, displayCurrency);
       converted.total_earnings_formatted = convertMoneyText(converted.total_earnings_formatted, rate, displayCurrency);
       converted.total_paid_out_formatted = convertMoneyText(converted.total_paid_out_formatted, rate, displayCurrency);
       converted.this_month_formatted = convertMoneyText(converted.this_month_formatted, rate, displayCurrency);
       converted.best_month_formatted = convertMoneyText(converted.best_month_formatted, rate, displayCurrency);
       converted.pending_approval_formatted = convertMoneyText(converted.pending_approval_formatted, rate, displayCurrency);
+      converted.next_withdrawal_amount_formatted = convertMoneyText(converted.next_withdrawal_amount_formatted, rate, displayCurrency);
       converted.button_text = convertButtonText(converted.button_text, rate, displayCurrency);
       converted.withdraw_button_text = convertButtonText(converted.withdraw_button_text, rate, displayCurrency);
       converted.next_payout_entries = convertPayoutEntries(converted.next_payout_entries, rate, displayCurrency);
@@ -4016,20 +4112,20 @@ function mergePaymentsWithFundsHistory(payments, fundsHistorySnapshot) {
 }
 function retainNextWithdrawalAt(currentPayments, previousPayments, now = /* @__PURE__ */ new Date()) {
   const current = { ...currentPayments || {} };
-  if (!current.can_withdraw) {
-    return current;
-  }
-  const previousNextWithdrawalAt = parseDate(previousPayments?.next_withdrawal_at);
-  const currentTime = parseDate(now) || /* @__PURE__ */ new Date();
-  if (previousNextWithdrawalAt && previousNextWithdrawalAt > currentTime) {
-    current.next_withdrawal_at = previousPayments?.next_withdrawal_at ?? null;
-    if (previousPayments?.next_withdrawal_text) {
-      current.next_withdrawal_text = previousPayments.next_withdrawal_text;
+  if (current.can_withdraw) {
+    const previousNextWithdrawalAt = parseDate(previousPayments?.next_withdrawal_at);
+    const currentTime = parseDate(now) || /* @__PURE__ */ new Date();
+    if (previousNextWithdrawalAt && previousNextWithdrawalAt > currentTime) {
+      current.next_withdrawal_at = previousPayments?.next_withdrawal_at ?? null;
+      if (previousPayments?.next_withdrawal_text) {
+        current.next_withdrawal_text = previousPayments.next_withdrawal_text;
+      }
+    } else {
+      current.next_withdrawal_at = null;
+      current.next_withdrawal_text = null;
     }
-  } else {
-    current.next_withdrawal_at = null;
-    current.next_withdrawal_text = null;
   }
+  Object.assign(current, buildWithdrawalAmountSnapshot(current, current.next_withdrawal_at || null, now));
   return current;
 }
 function parseDate(value) {
@@ -4039,9 +4135,11 @@ function parseDate(value) {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
+var buildWithdrawalAmountSnapshot;
 var init_sync_policy = __esm({
   "src/state/sync_policy.ts"() {
     "use strict";
+    ({ buildWithdrawalAmountSnapshot } = require_withdrawal_amount());
   }
 });
 
