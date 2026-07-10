@@ -134,6 +134,9 @@ class DataAnnotationClient {
       await sleep(2000);
 
       const refreshedPayments = await scrapePayments(page).catch(() => payments);
+      refreshedPayments.last_payout_amount_cents = payments.available_amount_cents;
+      refreshedPayments.last_payout_amount = payments.available_amount;
+      refreshedPayments.last_payout_amount_formatted = payments.available_amount_formatted;
       this.logger.debug(
         `Withdrawal refresh snapshot: available=${refreshedPayments.available_amount_formatted}, canWithdraw=${refreshedPayments.can_withdraw}`
       );

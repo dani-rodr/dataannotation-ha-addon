@@ -3038,6 +3038,9 @@ var require_dataannotation_client = __commonJS({
           this.logger.debug("Waiting for withdrawal navigation to settle");
           await sleep(2e3);
           const refreshedPayments = await scrapePayments(page).catch(() => payments);
+          refreshedPayments.last_payout_amount_cents = payments.available_amount_cents;
+          refreshedPayments.last_payout_amount = payments.available_amount;
+          refreshedPayments.last_payout_amount_formatted = payments.available_amount_formatted;
           this.logger.debug(
             `Withdrawal refresh snapshot: available=${refreshedPayments.available_amount_formatted}, canWithdraw=${refreshedPayments.can_withdraw}`
           );
@@ -4179,14 +4182,7 @@ function retainNextWithdrawalAt(currentPayments, previousPayments, now = /* @__P
       current.next_withdrawal_text = null;
     }
   }
-  if (current.last_payout_amount_cents === null || current.last_payout_amount_cents === void 0 || current.last_payout_amount === null || current.last_payout_amount === void 0) {
-    const delta = computeLastPayoutAmountDelta(current, previousPayments);
-    if (delta !== null) {
-      current.last_payout_amount_cents = delta;
-      current.last_payout_amount = delta / 100;
-      current.last_payout_amount_formatted = formatCents(delta);
-    }
-  }
+  retainLastPayoutAmount(current, previousPayments);
   Object.assign(current, buildWithdrawalAmountSnapshot(current, current.next_withdrawal_at || null, now));
   return current;
 }
@@ -4197,22 +4193,18 @@ function parseDate(value) {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
-function computeLastPayoutAmountDelta(currentPayments, previousPayments) {
-  const currentLastPayoutAt = parseDate(currentPayments?.last_payout_at);
-  const previousLastPayoutAt = parseDate(previousPayments?.last_payout_at);
-  if (!currentLastPayoutAt) {
-    return null;
+function retainLastPayoutAmount(currentPayments, previousPayments) {
+  if (currentPayments.last_payout_amount_cents !== null && currentPayments.last_payout_amount_cents !== void 0 && currentPayments.last_payout_amount !== null && currentPayments.last_payout_amount !== void 0) {
+    return;
   }
-  if (previousLastPayoutAt && currentLastPayoutAt <= previousLastPayoutAt) {
-    return null;
+  const previousAvailableAmountCents = normalizeCents(previousPayments?.available_amount_cents, previousPayments?.available_amount);
+  const currentAvailableAmountCents = normalizeCents(currentPayments.available_amount_cents, currentPayments.available_amount);
+  if (previousAvailableAmountCents === null || previousAvailableAmountCents <= 0 || currentAvailableAmountCents !== null && currentAvailableAmountCents > 0) {
+    return;
   }
-  const currentTotal = normalizeCents(currentPayments?.total_paid_out_cents, currentPayments?.total_paid_out);
-  const previousTotal = normalizeCents(previousPayments?.total_paid_out_cents, previousPayments?.total_paid_out);
-  if (currentTotal === null || previousTotal === null) {
-    return null;
-  }
-  const delta = currentTotal - previousTotal;
-  return delta > 0 ? delta : null;
+  currentPayments.last_payout_amount_cents = previousAvailableAmountCents;
+  currentPayments.last_payout_amount = previousAvailableAmountCents / 100;
+  currentPayments.last_payout_amount_formatted = formatCents(previousAvailableAmountCents);
 }
 function normalizeCents(centsValue, amountValue) {
   const cents = Number(centsValue);
@@ -5113,7 +5105,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.6.13",
+      version: "0.6.14",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

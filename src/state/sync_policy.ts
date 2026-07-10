@@ -81,14 +81,7 @@ export function retainNextWithdrawalAt(currentPayments: PaymentSnapshot | null |
     }
   }
 
-  if (current.last_payout_amount_cents === null || current.last_payout_amount_cents === undefined || current.last_payout_amount === null || current.last_payout_amount === undefined) {
-    const delta = computeLastPayoutAmountDelta(current, previousPayments);
-    if (delta !== null) {
-      current.last_payout_amount_cents = delta;
-      current.last_payout_amount = delta / 100;
-      current.last_payout_amount_formatted = formatCents(delta);
-    }
-  }
+  retainLastPayoutAmount(current, previousPayments);
 
   Object.assign(current, buildWithdrawalAmountSnapshot(current, current.next_withdrawal_at || null, now));
   return current;
@@ -103,25 +96,20 @@ function parseDate(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function computeLastPayoutAmountDelta(currentPayments: PaymentSnapshot | null | undefined, previousPayments: PaymentSnapshot | null | undefined): number | null {
-  const currentLastPayoutAt = parseDate(currentPayments?.last_payout_at);
-  const previousLastPayoutAt = parseDate(previousPayments?.last_payout_at);
-  if (!currentLastPayoutAt) {
-    return null;
+function retainLastPayoutAmount(currentPayments: PaymentSnapshot, previousPayments: PaymentSnapshot | null | undefined) {
+  if (currentPayments.last_payout_amount_cents !== null && currentPayments.last_payout_amount_cents !== undefined && currentPayments.last_payout_amount !== null && currentPayments.last_payout_amount !== undefined) {
+    return;
   }
 
-  if (previousLastPayoutAt && currentLastPayoutAt <= previousLastPayoutAt) {
-    return null;
+  const previousAvailableAmountCents = normalizeCents(previousPayments?.available_amount_cents, previousPayments?.available_amount);
+  const currentAvailableAmountCents = normalizeCents(currentPayments.available_amount_cents, currentPayments.available_amount);
+  if (previousAvailableAmountCents === null || previousAvailableAmountCents <= 0 || (currentAvailableAmountCents !== null && currentAvailableAmountCents > 0)) {
+    return;
   }
 
-  const currentTotal = normalizeCents(currentPayments?.total_paid_out_cents, currentPayments?.total_paid_out);
-  const previousTotal = normalizeCents(previousPayments?.total_paid_out_cents, previousPayments?.total_paid_out);
-  if (currentTotal === null || previousTotal === null) {
-    return null;
-  }
-
-  const delta = currentTotal - previousTotal;
-  return delta > 0 ? delta : null;
+  currentPayments.last_payout_amount_cents = previousAvailableAmountCents;
+  currentPayments.last_payout_amount = previousAvailableAmountCents / 100;
+  currentPayments.last_payout_amount_formatted = formatCents(previousAvailableAmountCents);
 }
 
 function normalizeCents(centsValue: unknown, amountValue: unknown): number | null {
