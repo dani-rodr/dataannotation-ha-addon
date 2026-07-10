@@ -84,6 +84,10 @@ function summarizeFundsHistoryEntries(entries: any, now = new Date()) {
   const pendingEntries = Array.isArray(entries)
     ? entries.filter((entry) => entry.status === 'pending')
     : [];
+  const paidEntries = Array.isArray(entries)
+    ? entries.filter((entry) => entry.status === 'paid')
+    : [];
+  const lastPayoutSummary = summarizeLastPayoutEntries(paidEntries);
 
   const nextPayoutDays = pendingEntries.length > 0
     ? Math.min(...pendingEntries.map((entry) => entry.days_until_available))
@@ -100,6 +104,9 @@ function summarizeFundsHistoryEntries(entries: any, now = new Date()) {
     next_payout_at: nextPayoutAt,
     next_payout_entries_count: pendingEntries.length,
     pending_payout_entries: pendingEntries,
+    last_payout_amount_cents: lastPayoutSummary.amount_cents,
+    last_payout_amount: lastPayoutSummary.amount,
+    last_payout_amount_formatted: lastPayoutSummary.amount_formatted,
   };
 }
 
@@ -228,6 +235,54 @@ function sortPayoutEntries(entries: any) {
       return leftValue.localeCompare(rightValue);
     })
     .map((item) => item.entry);
+}
+
+function summarizeLastPayoutEntries(entries: any) {
+  const grouped = new Map<number, number>();
+
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const key = normalizePayoutGroupKey(entry);
+    if (key === null) {
+      continue;
+    }
+
+    const cents = Number.isFinite(Number(entry?.amount_cents))
+      ? Number(entry?.amount_cents)
+      : amountToCents(entry?.amount);
+    grouped.set(key, (grouped.get(key) || 0) + cents);
+  }
+
+  if (grouped.size === 0) {
+    return {
+      amount_cents: null,
+      amount: null,
+      amount_formatted: null,
+    };
+  }
+
+  const latestKey = Math.max(...grouped.keys());
+  const amountCents = grouped.get(latestKey) || 0;
+  return {
+    amount_cents: amountCents,
+    amount: centsToNumber(amountCents),
+    amount_formatted: formatCents(amountCents),
+  };
+}
+
+function normalizePayoutGroupKey(entry: any) {
+  const entryDate = normalizeDate(entry?.entry_date) || normalizeDate(entry?.estimated_payout_at);
+  return entryDate ? entryDate.getTime() : null;
+}
+
+function centsToNumber(value: any) {
+  return numberOrZero(value) / 100;
+}
+
+function formatCents(value: any) {
+  return `$${new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numberOrZero(value) / 100)}`;
 }
 
 function inferYearForMonth(monthIndex: number, now: Date) {

@@ -577,6 +577,9 @@ class DataAnnotationMqttBridge {
           entity_category: 'diagnostic',
           state_topic: this._topic('payments/summary'),
           value_template: '{{ value_json.last_payout_at if value_json.last_payout_at else "unknown" }}',
+          json_attributes_topic: this._topic('payments/summary'),
+          json_attributes_template:
+            "{{ {'last_payout_amount': value_json.last_payout_amount, 'last_payout_amount_cents': value_json.last_payout_amount_cents, 'last_payout_amount_formatted': value_json.last_payout_amount_formatted} | tojson }}",
           force_update: true,
           availability_topic: this._topic('availability'),
           payload_available: 'online',

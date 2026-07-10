@@ -1111,6 +1111,8 @@ var require_mqtt_bridge = __commonJS({
               entity_category: "diagnostic",
               state_topic: this._topic("payments/summary"),
               value_template: '{{ value_json.last_payout_at if value_json.last_payout_at else "unknown" }}',
+              json_attributes_topic: this._topic("payments/summary"),
+              json_attributes_template: "{{ {'last_payout_amount': value_json.last_payout_amount, 'last_payout_amount_cents': value_json.last_payout_amount_cents, 'last_payout_amount_formatted': value_json.last_payout_amount_formatted} | tojson }}",
               force_update: true,
               availability_topic: this._topic("availability"),
               payload_available: "online",
@@ -1908,13 +1910,18 @@ var require_funds_history = __commonJS({
     }
     function summarizeFundsHistoryEntries(entries, now = /* @__PURE__ */ new Date()) {
       const pendingEntries = Array.isArray(entries) ? entries.filter((entry) => entry.status === "pending") : [];
+      const paidEntries = Array.isArray(entries) ? entries.filter((entry) => entry.status === "paid") : [];
+      const lastPayoutSummary = summarizeLastPayoutEntries(paidEntries);
       const nextPayoutDays = pendingEntries.length > 0 ? Math.min(...pendingEntries.map((entry) => entry.days_until_available)) : 0;
       const nextPayoutAt = pendingEntries.length > 0 ? pendingEntries.map((entry) => normalizeIsoDate(entry.estimated_payout_at) || computeNextPayoutAt(entry, now)).filter(Boolean).sort()[0] || null : null;
       return {
         next_payout_days: nextPayoutDays,
         next_payout_at: nextPayoutAt,
         next_payout_entries_count: pendingEntries.length,
-        pending_payout_entries: pendingEntries
+        pending_payout_entries: pendingEntries,
+        last_payout_amount_cents: lastPayoutSummary.amount_cents,
+        last_payout_amount: lastPayoutSummary.amount,
+        last_payout_amount_formatted: lastPayoutSummary.amount_formatted
       };
     }
     function formatPublicPayoutEntries(entries) {
@@ -2006,6 +2013,44 @@ var require_funds_history = __commonJS({
         }
         return leftValue.localeCompare(rightValue);
       }).map((item) => item.entry);
+    }
+    function summarizeLastPayoutEntries(entries) {
+      const grouped = /* @__PURE__ */ new Map();
+      for (const entry of Array.isArray(entries) ? entries : []) {
+        const key = normalizePayoutGroupKey(entry);
+        if (key === null) {
+          continue;
+        }
+        const cents = Number.isFinite(Number(entry?.amount_cents)) ? Number(entry?.amount_cents) : amountToCents(entry?.amount);
+        grouped.set(key, (grouped.get(key) || 0) + cents);
+      }
+      if (grouped.size === 0) {
+        return {
+          amount_cents: null,
+          amount: null,
+          amount_formatted: null
+        };
+      }
+      const latestKey = Math.max(...grouped.keys());
+      const amountCents = grouped.get(latestKey) || 0;
+      return {
+        amount_cents: amountCents,
+        amount: centsToNumber(amountCents),
+        amount_formatted: formatCents(amountCents)
+      };
+    }
+    function normalizePayoutGroupKey(entry) {
+      const entryDate = normalizeDate2(entry?.entry_date) || normalizeDate2(entry?.estimated_payout_at);
+      return entryDate ? entryDate.getTime() : null;
+    }
+    function centsToNumber(value) {
+      return numberOrZero3(value) / 100;
+    }
+    function formatCents(value) {
+      return `$${new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(numberOrZero3(value) / 100)}`;
     }
     function inferYearForMonth(monthIndex, now) {
       let year = now.getFullYear();
@@ -3751,6 +3796,7 @@ var require_currency_conversion = __commonJS({
       }
       converted.next_payout_amount = convertMoneyValue(converted.next_payout_amount, rate, displayCurrency);
       converted.next_withdrawal_amount = convertMoneyValue(converted.next_withdrawal_amount, rate, displayCurrency);
+      converted.last_payout_amount = convertMoneyValue(converted.last_payout_amount, rate, displayCurrency);
       converted.available_amount_cents = convertCents(converted.available_amount_cents, rate);
       converted.total_earnings_cents = convertCents(converted.total_earnings_cents, rate);
       converted.total_paid_out_cents = convertCents(converted.total_paid_out_cents, rate);
@@ -3758,6 +3804,7 @@ var require_currency_conversion = __commonJS({
       converted.best_month_cents = convertCents(converted.best_month_cents, rate);
       converted.pending_approval_cents = convertCents(converted.pending_approval_cents, rate);
       converted.next_withdrawal_amount_cents = convertCents(converted.next_withdrawal_amount_cents, rate);
+      converted.last_payout_amount_cents = convertCents(converted.last_payout_amount_cents, rate);
       converted.available_amount_formatted = convertMoneyText(converted.available_amount_formatted, rate, displayCurrency);
       converted.total_earnings_formatted = convertMoneyText(converted.total_earnings_formatted, rate, displayCurrency);
       converted.total_paid_out_formatted = convertMoneyText(converted.total_paid_out_formatted, rate, displayCurrency);
@@ -3765,6 +3812,7 @@ var require_currency_conversion = __commonJS({
       converted.best_month_formatted = convertMoneyText(converted.best_month_formatted, rate, displayCurrency);
       converted.pending_approval_formatted = convertMoneyText(converted.pending_approval_formatted, rate, displayCurrency);
       converted.next_withdrawal_amount_formatted = convertMoneyText(converted.next_withdrawal_amount_formatted, rate, displayCurrency);
+      converted.last_payout_amount_formatted = convertMoneyText(converted.last_payout_amount_formatted, rate, displayCurrency);
       converted.button_text = convertButtonText(converted.button_text, rate, displayCurrency);
       converted.withdraw_button_text = convertButtonText(converted.withdraw_button_text, rate, displayCurrency);
       converted.next_payout_entries = convertPayoutEntries(converted.next_payout_entries, rate, displayCurrency);
@@ -4101,7 +4149,10 @@ function pickFundsHistoryFields(payments) {
     next_payout_amount: payments?.next_payout_amount ?? null,
     next_payout_source: payments?.next_payout_source ?? null,
     next_payout_confidence: payments?.next_payout_confidence ?? null,
-    pending_payout_entries: Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : []
+    pending_payout_entries: Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : [],
+    last_payout_amount_cents: payments?.last_payout_amount_cents ?? null,
+    last_payout_amount: payments?.last_payout_amount ?? null,
+    last_payout_amount_formatted: payments?.last_payout_amount_formatted ?? null
   };
 }
 function mergePaymentsWithFundsHistory(payments, fundsHistorySnapshot) {

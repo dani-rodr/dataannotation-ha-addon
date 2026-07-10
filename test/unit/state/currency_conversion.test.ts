@@ -103,6 +103,9 @@ test('convertPaymentsForCurrency converts monetary summary fields into PHP', () 
       pending_approval: 1832.43,
       pending_approval_cents: 183243,
       pending_approval_formatted: '$1,832.43',
+      last_payout_amount: 12.34,
+      last_payout_amount_cents: 1234,
+      last_payout_amount_formatted: '$12.34',
       next_withdrawal_amount: 12.34,
       next_withdrawal_amount_cents: 1234,
       next_withdrawal_amount_formatted: '$12.34',
@@ -123,6 +126,9 @@ test('convertPaymentsForCurrency converts monetary summary fields into PHP', () 
   assert.equal(payments.total_earnings, 137460.84);
   assert.equal(payments.total_paid_out, 24819.53);
   assert.equal(payments.this_month_formatted, 'PHP 137,460.84');
+  assert.equal(payments.last_payout_amount, 758.55);
+  assert.equal(payments.last_payout_amount_cents, 75855);
+  assert.equal(payments.last_payout_amount_formatted, 'PHP 758.55');
   assert.equal(payments.next_withdrawal_amount, 758.55);
   assert.equal(payments.next_withdrawal_amount_cents, 75855);
   assert.equal(payments.next_withdrawal_amount_formatted, 'PHP 758.55');
@@ -158,6 +164,9 @@ test('convertPaymentsForCurrency leaves monetary summary fields unchanged in USD
       pending_approval: 1832.43,
       pending_approval_cents: 183243,
       pending_approval_formatted: '$1,832.43',
+      last_payout_amount: 12.34,
+      last_payout_amount_cents: 1234,
+      last_payout_amount_formatted: '$12.34',
       next_withdrawal_amount: 12.34,
       next_withdrawal_amount_cents: 1234,
       next_withdrawal_amount_formatted: '$12.34',
@@ -179,6 +188,9 @@ test('convertPaymentsForCurrency leaves monetary summary fields unchanged in USD
   assert.equal(payments.total_earnings, 2236.19);
   assert.equal(payments.total_paid_out, 403.76);
   assert.equal(payments.this_month_formatted, '$2,236.19');
+  assert.equal(payments.last_payout_amount, 12.34);
+  assert.equal(payments.last_payout_amount_cents, 1234);
+  assert.equal(payments.last_payout_amount_formatted, '$12.34');
   assert.equal(payments.next_withdrawal_amount, 12.34);
   assert.equal(payments.next_withdrawal_amount_cents, 1234);
   assert.equal(payments.next_withdrawal_amount_formatted, '$12.34');
@@ -197,6 +209,8 @@ test('convertPaymentsForCurrency converts formatted next payout amounts into PHP
   const payments = convertPaymentsForCurrency(
     {
       next_payout_amount: '$12.34',
+      last_payout_amount: '$12.34',
+      last_payout_amount_formatted: '$12.34',
       next_withdrawal_amount: '$12.34',
       next_withdrawal_amount_formatted: '$12.34',
     },
@@ -207,6 +221,8 @@ test('convertPaymentsForCurrency converts formatted next payout amounts into PHP
   );
 
   assert.equal(payments.next_payout_amount, 'PHP 758.55');
+  assert.equal(payments.last_payout_amount, 'PHP 758.55');
+  assert.equal(payments.last_payout_amount_formatted, 'PHP 758.55');
   assert.equal(payments.next_withdrawal_amount, 'PHP 758.55');
   assert.equal(payments.next_withdrawal_amount_formatted, 'PHP 758.55');
 });

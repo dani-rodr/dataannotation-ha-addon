@@ -77,6 +77,9 @@ test('pickFundsHistoryFields preserves the last history snapshot', () => {
     next_payout_source: 'funds_history',
     next_payout_confidence: 'high',
     pending_payout_entries: [{ project: 'Example' }],
+    last_payout_amount_cents: 1234,
+    last_payout_amount: 12.34,
+    last_payout_amount_formatted: '$12.34',
   });
 
   assert.deepEqual(fields, {
@@ -89,6 +92,9 @@ test('pickFundsHistoryFields preserves the last history snapshot', () => {
     next_payout_source: 'funds_history',
     next_payout_confidence: 'high',
     pending_payout_entries: [{ project: 'Example' }],
+    last_payout_amount_cents: 1234,
+    last_payout_amount: 12.34,
+    last_payout_amount_formatted: '$12.34',
   });
 });
 
@@ -112,6 +118,9 @@ test('mergePaymentsWithFundsHistory keeps current summary and prior history fiel
       next_payout_amount: 12.34,
       next_payout_source: 'funds_history',
       next_payout_confidence: 'high',
+      last_payout_amount_cents: 1234,
+      last_payout_amount: 12.34,
+      last_payout_amount_formatted: '$12.34',
     }
   );
 
@@ -124,6 +133,9 @@ test('mergePaymentsWithFundsHistory keeps current summary and prior history fiel
   assert.equal(merged.next_payout_amount, 12.34);
   assert.equal(merged.next_payout_source, 'funds_history');
   assert.equal(merged.next_payout_confidence, 'high');
+  assert.equal(merged.last_payout_amount_cents, 1234);
+  assert.equal(merged.last_payout_amount, 12.34);
+  assert.equal(merged.last_payout_amount_formatted, '$12.34');
 });
 
 test('retainNextWithdrawalAt keeps a future withdrawal timestamp while funds are available', () => {

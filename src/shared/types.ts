@@ -44,6 +44,9 @@ export interface PaymentSnapshot {
   next_withdrawal_amount_cents?: number | null;
   next_withdrawal_amount?: unknown;
   next_withdrawal_amount_formatted?: string | null;
+  last_payout_amount_cents?: number | null;
+  last_payout_amount?: unknown;
+  last_payout_amount_formatted?: string | null;
   next_payout_days?: number | null;
   next_payout_at?: string | null;
   next_payout_at_human?: string | null;

@@ -135,6 +135,36 @@ test('summarizeFundsHistoryEntries returns the earliest next payout day', () => 
   assert.equal(summary.next_payout_at, localMidnightIsoFrom(now, 3));
 });
 
+test('summarizeFundsHistoryEntries returns the latest paid batch amount', () => {
+  const summary = summarizeFundsHistoryEntries([
+    {
+      status: 'paid',
+      amount: '$1.50',
+      amount_cents: 150,
+      entry_date: '2026-06-24T00:00:00.000Z',
+      estimated_payout_at: '2026-06-24T00:00:00.000Z',
+    },
+    {
+      status: 'paid',
+      amount: '$2.00',
+      amount_cents: 200,
+      entry_date: '2026-06-24T00:00:00.000Z',
+      estimated_payout_at: '2026-06-24T00:00:00.000Z',
+    },
+    {
+      status: 'paid',
+      amount: '$0.75',
+      amount_cents: 75,
+      entry_date: '2026-06-23T00:00:00.000Z',
+      estimated_payout_at: '2026-06-23T00:00:00.000Z',
+    },
+  ]);
+
+  assert.equal(summary.last_payout_amount_cents, 350);
+  assert.equal(summary.last_payout_amount, 3.5);
+  assert.equal(summary.last_payout_amount_formatted, '$3.50');
+});
+
 test('parseFundsHistoryEntries anchors next payout to the row date', () => {
   const rows = [
     'Jun 20',

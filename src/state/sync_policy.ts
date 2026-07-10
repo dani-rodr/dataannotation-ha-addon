@@ -41,7 +41,7 @@ export function shouldIncludeFundsHistory({
   return Number.isFinite(nextFundsHistoryAt) ? now >= nextFundsHistoryAt : true;
 }
 
-export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefined): Pick<PaymentSnapshot, 'next_payout_days' | 'next_payout_at' | 'next_payout_entries_count' | 'next_payout_at_human' | 'next_payout_entries' | 'next_payout_amount' | 'next_payout_source' | 'next_payout_confidence' | 'pending_payout_entries'> {
+export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefined): Pick<PaymentSnapshot, 'next_payout_days' | 'next_payout_at' | 'next_payout_entries_count' | 'next_payout_at_human' | 'next_payout_entries' | 'next_payout_amount' | 'next_payout_source' | 'next_payout_confidence' | 'pending_payout_entries' | 'last_payout_amount_cents' | 'last_payout_amount' | 'last_payout_amount_formatted'> {
   return {
     next_payout_days: payments?.next_payout_days ?? 0,
     next_payout_at: payments?.next_payout_at ?? null,
@@ -52,6 +52,9 @@ export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefi
     next_payout_source: payments?.next_payout_source ?? null,
     next_payout_confidence: payments?.next_payout_confidence ?? null,
     pending_payout_entries: Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : [],
+    last_payout_amount_cents: payments?.last_payout_amount_cents ?? null,
+    last_payout_amount: payments?.last_payout_amount ?? null,
+    last_payout_amount_formatted: payments?.last_payout_amount_formatted ?? null,
   };
 }
 
