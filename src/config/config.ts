@@ -20,6 +20,16 @@ type Config = {
   excluded_project_patterns: string[] | string;
   mqtt_topic_prefix: string;
   log_level: string;
+  wallet_write_enabled: boolean;
+  wallet_token: string;
+  wallet_data_annotation_account_name: string;
+  wallet_gotyme_account_name: string;
+  wallet_income_category_name: string;
+  wallet_fee_category_name: string;
+  wallet_paypal_fee_rate: number;
+  wallet_paypal_fee_min_usd: number;
+  wallet_paypal_fee_max_usd: number;
+  wallet_settlement_adjustment: number;
   browser_profile_dir?: string;
   mqtt_host?: string | null;
   mqtt_port?: number;
@@ -45,6 +55,16 @@ const DEFAULT_CONFIG: Config = {
   excluded_project_patterns: [],
   mqtt_topic_prefix: 'dataannotation',
   log_level: 'info',
+  wallet_write_enabled: false,
+  wallet_token: '',
+  wallet_data_annotation_account_name: 'Data Annotation',
+  wallet_gotyme_account_name: 'GoTyme',
+  wallet_income_category_name: 'Income',
+  wallet_fee_category_name: 'Charges, Fees',
+  wallet_paypal_fee_rate: 0.01,
+  wallet_paypal_fee_min_usd: 0.25,
+  wallet_paypal_fee_max_usd: 10.0,
+  wallet_settlement_adjustment: 0.99856,
 };
 
 export async function readConfig(): Promise<Config> {
@@ -62,7 +82,7 @@ export async function readConfig(): Promise<Config> {
     config.fast_poll_cron = stringOrDefault(options.fast_poll_cron, config.fast_poll_cron);
     config.funds_history_cron = stringOrDefault(options.funds_history_cron, config.funds_history_cron);
     if (options.funds_history_after_task_delay_minutes !== undefined) {
-      config.funds_history_after_task_delay_minutes = numberOrDefault(
+      config.funds_history_after_task_delay_minutes = integerOrDefault(
         options.funds_history_after_task_delay_minutes,
         config.funds_history_after_task_delay_minutes,
         0,
@@ -72,6 +92,18 @@ export async function readConfig(): Promise<Config> {
     config.excluded_project_patterns = stringOrDefault(options.excluded_project_patterns ?? options.excluded_projects, '');
     config.mqtt_topic_prefix = stringOrDefault(options.mqtt_topic_prefix, config.mqtt_topic_prefix);
     config.log_level = stringOrDefault(options.log_level, config.log_level);
+    if (options.wallet_write_enabled !== undefined) {
+      config.wallet_write_enabled = booleanOrDefault(options.wallet_write_enabled, config.wallet_write_enabled);
+    }
+    config.wallet_token = stringOrDefault(options.wallet_token, config.wallet_token);
+    config.wallet_data_annotation_account_name = stringOrDefault(options.wallet_data_annotation_account_name, config.wallet_data_annotation_account_name);
+    config.wallet_gotyme_account_name = stringOrDefault(options.wallet_gotyme_account_name, config.wallet_gotyme_account_name);
+    config.wallet_income_category_name = stringOrDefault(options.wallet_income_category_name, config.wallet_income_category_name);
+    config.wallet_fee_category_name = stringOrDefault(options.wallet_fee_category_name, config.wallet_fee_category_name);
+    config.wallet_paypal_fee_rate = decimalOrDefault(options.wallet_paypal_fee_rate, config.wallet_paypal_fee_rate, 0, 1);
+    config.wallet_paypal_fee_min_usd = decimalOrDefault(options.wallet_paypal_fee_min_usd, config.wallet_paypal_fee_min_usd, 0, Number.MAX_SAFE_INTEGER);
+    config.wallet_paypal_fee_max_usd = decimalOrDefault(options.wallet_paypal_fee_max_usd, config.wallet_paypal_fee_max_usd, 0, Number.MAX_SAFE_INTEGER);
+    config.wallet_settlement_adjustment = decimalOrDefault(options.wallet_settlement_adjustment, config.wallet_settlement_adjustment, 0, 1);
   }
 
   if (process.env.EMAIL || process.env.DATAANNOTATION_EMAIL) {
@@ -98,6 +130,9 @@ export async function readConfig(): Promise<Config> {
   if (process.env.EXCLUDED_PROJECT_PATTERNS) {
     config.excluded_project_patterns = process.env.EXCLUDED_PROJECT_PATTERNS;
   }
+  if (process.env.WALLET_TOKEN) {
+    config.wallet_token = process.env.WALLET_TOKEN;
+  }
 
   config.profile = stringOrDefault(config.profile, DEFAULT_CONFIG.profile);
   config.email = stringOrDefault(config.email, '');
@@ -109,10 +144,19 @@ export async function readConfig(): Promise<Config> {
   config.funds_history_cron = normalizePollingCron(config.funds_history_cron, DEFAULT_FUNDS_HISTORY_CRON);
   config.excluded_project_patterns = parseExcludedProjectPatterns(config.excluded_project_patterns);
   config.browser_profile_dir = '/data/chrome-profile';
+  config.wallet_data_annotation_account_name = stringOrDefault(config.wallet_data_annotation_account_name, DEFAULT_CONFIG.wallet_data_annotation_account_name);
+  config.wallet_gotyme_account_name = stringOrDefault(config.wallet_gotyme_account_name, DEFAULT_CONFIG.wallet_gotyme_account_name);
+  config.wallet_income_category_name = stringOrDefault(config.wallet_income_category_name, DEFAULT_CONFIG.wallet_income_category_name);
+  config.wallet_fee_category_name = stringOrDefault(config.wallet_fee_category_name, DEFAULT_CONFIG.wallet_fee_category_name);
+  config.wallet_paypal_fee_rate = decimalOrDefault(config.wallet_paypal_fee_rate, DEFAULT_CONFIG.wallet_paypal_fee_rate, 0, 1);
+  config.wallet_paypal_fee_min_usd = decimalOrDefault(config.wallet_paypal_fee_min_usd, DEFAULT_CONFIG.wallet_paypal_fee_min_usd, 0, Number.MAX_SAFE_INTEGER);
+  config.wallet_paypal_fee_max_usd = decimalOrDefault(config.wallet_paypal_fee_max_usd, DEFAULT_CONFIG.wallet_paypal_fee_max_usd, 0, Number.MAX_SAFE_INTEGER);
+  config.wallet_settlement_adjustment = decimalOrDefault(config.wallet_settlement_adjustment, DEFAULT_CONFIG.wallet_settlement_adjustment, 0, 1);
+  config.wallet_token = stringOrDefault(config.wallet_token, DEFAULT_CONFIG.wallet_token);
   Object.assign(config, await getMqttFromSupervisor());
 
   config.mqtt_host = stringOrDefault(process.env.MQTT_HOST || config.mqtt_host, '');
-  config.mqtt_port = numberOrDefault(process.env.MQTT_PORT || config.mqtt_port, 1883, 1, 65535);
+  config.mqtt_port = integerOrDefault(process.env.MQTT_PORT || config.mqtt_port, 1883, 1, 65535);
   config.mqtt_username = stringOrDefault(process.env.MQTT_USERNAME || config.mqtt_username, '');
   config.mqtt_password = stringOrDefault(process.env.MQTT_PASSWORD || config.mqtt_password, '');
 
@@ -122,6 +166,10 @@ export async function readConfig(): Promise<Config> {
 
   if (!config.password) {
     throw new Error("Configuration value 'password' is required");
+  }
+
+  if (config.wallet_write_enabled && !config.wallet_token) {
+    throw new Error("Configuration value 'wallet_token' is required when wallet_write_enabled is true");
   }
 
   if (!config.mqtt_host) {
@@ -159,7 +207,7 @@ function stringOrDefault(value: unknown, fallback: string): string {
   return text || fallback;
 }
 
-function numberOrDefault(value: unknown, fallback: number, min: number, max: number): number {
+function integerOrDefault(value: unknown, fallback: number, min: number, max: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
@@ -167,6 +215,35 @@ function numberOrDefault(value: unknown, fallback: number, min: number, max: num
 
   const rounded = Math.trunc(parsed);
   return Math.min(max, Math.max(min, rounded));
+}
+
+function decimalOrDefault(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function booleanOrDefault(value: unknown, fallback: boolean): boolean {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
 }
 
 async function getMqttFromSupervisor(): Promise<MqttSupervisorConfig> {

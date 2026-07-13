@@ -1,5 +1,5 @@
 name: Data Annotation
-version: "0.6.16"
+version: "0.7.0"
 slug: dataannotation-projects
 description: Scrapes DataAnnotation worker projects and publishes count and per-project entities to Home Assistant via MQTT auto-discovery.
 url: "https://github.com/dani-rodr/dataannotation-ha-addon"
@@ -22,6 +22,16 @@ options:
   excluded_project_patterns: ""
   mqtt_topic_prefix: dataannotation
   log_level: info
+  wallet_write_enabled: false
+  wallet_token: ""
+  wallet_data_annotation_account_name: Data Annotation
+  wallet_gotyme_account_name: GoTyme
+  wallet_income_category_name: Income
+  wallet_fee_category_name: Charges, Fees
+  wallet_paypal_fee_rate: 0.01
+  wallet_paypal_fee_min_usd: 0.25
+  wallet_paypal_fee_max_usd: 10.0
+  wallet_settlement_adjustment: 0.99856
 schema:
   profile: str
   email: str
@@ -33,3 +43,13 @@ schema:
   excluded_project_patterns: str
   mqtt_topic_prefix: str
   log_level: list(debug|info|warning|error)
+  wallet_write_enabled: bool
+  wallet_token: password
+  wallet_data_annotation_account_name: str
+  wallet_gotyme_account_name: str
+  wallet_income_category_name: str
+  wallet_fee_category_name: str
+  wallet_paypal_fee_rate: float(0,1)
+  wallet_paypal_fee_min_usd: float(0,1000)
+  wallet_paypal_fee_max_usd: float(0,1000)
+  wallet_settlement_adjustment: float(0,1)

@@ -245,7 +245,7 @@ async function readConfig() {
     config.fast_poll_cron = stringOrDefault(options.fast_poll_cron, config.fast_poll_cron);
     config.funds_history_cron = stringOrDefault(options.funds_history_cron, config.funds_history_cron);
     if (options.funds_history_after_task_delay_minutes !== void 0) {
-      config.funds_history_after_task_delay_minutes = numberOrDefault(
+      config.funds_history_after_task_delay_minutes = integerOrDefault(
         options.funds_history_after_task_delay_minutes,
         config.funds_history_after_task_delay_minutes,
         0,
@@ -255,6 +255,18 @@ async function readConfig() {
     config.excluded_project_patterns = stringOrDefault(options.excluded_project_patterns ?? options.excluded_projects, "");
     config.mqtt_topic_prefix = stringOrDefault(options.mqtt_topic_prefix, config.mqtt_topic_prefix);
     config.log_level = stringOrDefault(options.log_level, config.log_level);
+    if (options.wallet_write_enabled !== void 0) {
+      config.wallet_write_enabled = booleanOrDefault(options.wallet_write_enabled, config.wallet_write_enabled);
+    }
+    config.wallet_token = stringOrDefault(options.wallet_token, config.wallet_token);
+    config.wallet_data_annotation_account_name = stringOrDefault(options.wallet_data_annotation_account_name, config.wallet_data_annotation_account_name);
+    config.wallet_gotyme_account_name = stringOrDefault(options.wallet_gotyme_account_name, config.wallet_gotyme_account_name);
+    config.wallet_income_category_name = stringOrDefault(options.wallet_income_category_name, config.wallet_income_category_name);
+    config.wallet_fee_category_name = stringOrDefault(options.wallet_fee_category_name, config.wallet_fee_category_name);
+    config.wallet_paypal_fee_rate = decimalOrDefault(options.wallet_paypal_fee_rate, config.wallet_paypal_fee_rate, 0, 1);
+    config.wallet_paypal_fee_min_usd = decimalOrDefault(options.wallet_paypal_fee_min_usd, config.wallet_paypal_fee_min_usd, 0, Number.MAX_SAFE_INTEGER);
+    config.wallet_paypal_fee_max_usd = decimalOrDefault(options.wallet_paypal_fee_max_usd, config.wallet_paypal_fee_max_usd, 0, Number.MAX_SAFE_INTEGER);
+    config.wallet_settlement_adjustment = decimalOrDefault(options.wallet_settlement_adjustment, config.wallet_settlement_adjustment, 0, 1);
   }
   if (process.env.EMAIL || process.env.DATAANNOTATION_EMAIL) {
     config.email = process.env.EMAIL || process.env.DATAANNOTATION_EMAIL || config.email;
@@ -280,6 +292,9 @@ async function readConfig() {
   if (process.env.EXCLUDED_PROJECT_PATTERNS) {
     config.excluded_project_patterns = process.env.EXCLUDED_PROJECT_PATTERNS;
   }
+  if (process.env.WALLET_TOKEN) {
+    config.wallet_token = process.env.WALLET_TOKEN;
+  }
   config.profile = stringOrDefault(config.profile, DEFAULT_CONFIG.profile);
   config.email = stringOrDefault(config.email, "");
   config.password = stringOrDefault(config.password, "");
@@ -290,9 +305,18 @@ async function readConfig() {
   config.funds_history_cron = normalizePollingCron(config.funds_history_cron, DEFAULT_FUNDS_HISTORY_CRON);
   config.excluded_project_patterns = parseExcludedProjectPatterns(config.excluded_project_patterns);
   config.browser_profile_dir = "/data/chrome-profile";
+  config.wallet_data_annotation_account_name = stringOrDefault(config.wallet_data_annotation_account_name, DEFAULT_CONFIG.wallet_data_annotation_account_name);
+  config.wallet_gotyme_account_name = stringOrDefault(config.wallet_gotyme_account_name, DEFAULT_CONFIG.wallet_gotyme_account_name);
+  config.wallet_income_category_name = stringOrDefault(config.wallet_income_category_name, DEFAULT_CONFIG.wallet_income_category_name);
+  config.wallet_fee_category_name = stringOrDefault(config.wallet_fee_category_name, DEFAULT_CONFIG.wallet_fee_category_name);
+  config.wallet_paypal_fee_rate = decimalOrDefault(config.wallet_paypal_fee_rate, DEFAULT_CONFIG.wallet_paypal_fee_rate, 0, 1);
+  config.wallet_paypal_fee_min_usd = decimalOrDefault(config.wallet_paypal_fee_min_usd, DEFAULT_CONFIG.wallet_paypal_fee_min_usd, 0, Number.MAX_SAFE_INTEGER);
+  config.wallet_paypal_fee_max_usd = decimalOrDefault(config.wallet_paypal_fee_max_usd, DEFAULT_CONFIG.wallet_paypal_fee_max_usd, 0, Number.MAX_SAFE_INTEGER);
+  config.wallet_settlement_adjustment = decimalOrDefault(config.wallet_settlement_adjustment, DEFAULT_CONFIG.wallet_settlement_adjustment, 0, 1);
+  config.wallet_token = stringOrDefault(config.wallet_token, DEFAULT_CONFIG.wallet_token);
   Object.assign(config, await getMqttFromSupervisor());
   config.mqtt_host = stringOrDefault(process.env.MQTT_HOST || config.mqtt_host, "");
-  config.mqtt_port = numberOrDefault(process.env.MQTT_PORT || config.mqtt_port, 1883, 1, 65535);
+  config.mqtt_port = integerOrDefault(process.env.MQTT_PORT || config.mqtt_port, 1883, 1, 65535);
   config.mqtt_username = stringOrDefault(process.env.MQTT_USERNAME || config.mqtt_username, "");
   config.mqtt_password = stringOrDefault(process.env.MQTT_PASSWORD || config.mqtt_password, "");
   if (!config.email) {
@@ -300,6 +324,9 @@ async function readConfig() {
   }
   if (!config.password) {
     throw new Error("Configuration value 'password' is required");
+  }
+  if (config.wallet_write_enabled && !config.wallet_token) {
+    throw new Error("Configuration value 'wallet_token' is required when wallet_write_enabled is true");
   }
   if (!config.mqtt_host) {
     throw new Error("No MQTT broker configured. Install Mosquitto or expose MQTT_HOST variables.");
@@ -326,13 +353,36 @@ function stringOrDefault(value, fallback) {
   const text = String(value).trim();
   return text || fallback;
 }
-function numberOrDefault(value, fallback, min, max) {
+function integerOrDefault(value, fallback, min, max) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
   }
   const rounded = Math.trunc(parsed);
   return Math.min(max, Math.max(min, rounded));
+}
+function decimalOrDefault(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, parsed));
+}
+function booleanOrDefault(value, fallback) {
+  if (value === void 0 || value === null) {
+    return fallback;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
 }
 async function getMqttFromSupervisor() {
   const fallback = {
@@ -404,7 +454,17 @@ var init_config = __esm({
       funds_history_after_task_delay_minutes: 2,
       excluded_project_patterns: [],
       mqtt_topic_prefix: "dataannotation",
-      log_level: "info"
+      log_level: "info",
+      wallet_write_enabled: false,
+      wallet_token: "",
+      wallet_data_annotation_account_name: "Data Annotation",
+      wallet_gotyme_account_name: "GoTyme",
+      wallet_income_category_name: "Income",
+      wallet_fee_category_name: "Charges, Fees",
+      wallet_paypal_fee_rate: 0.01,
+      wallet_paypal_fee_min_usd: 0.25,
+      wallet_paypal_fee_max_usd: 10,
+      wallet_settlement_adjustment: 0.99856
     };
   }
 });
@@ -4853,6 +4913,1104 @@ var init_sync = __esm({
   }
 });
 
+// src/state/wallet_sync_state.ts
+var require_wallet_sync_state = __commonJS({
+  "src/state/wallet_sync_state.ts"(exports2, module2) {
+    "use strict";
+    var fs7 = require("node:fs");
+    var path6 = require("node:path");
+    var DEFAULT_WALLET_SYNC_STATE = {
+      version: 2,
+      created_at: null,
+      updated_at: null,
+      first_sync_completed_at: null,
+      wallet_api_retry_after_at: null,
+      wallet_api_failure_count: 0,
+      wallet_api_last_error: null,
+      last_seen_last_payout_at: null,
+      last_seen_available_amount_cents: null,
+      last_seen_available_amount: null,
+      imported_funds_entries: {},
+      withdrawal_events: {}
+    };
+    function loadWalletSyncState(filePath) {
+      if (!filePath || !fs7.existsSync(filePath)) {
+        return cloneWalletSyncState(DEFAULT_WALLET_SYNC_STATE);
+      }
+      try {
+        return normalizeWalletSyncState(JSON.parse(fs7.readFileSync(filePath, "utf8")));
+      } catch {
+        return cloneWalletSyncState(DEFAULT_WALLET_SYNC_STATE);
+      }
+    }
+    function saveWalletSyncState(filePath, state) {
+      if (!filePath) {
+        return;
+      }
+      const normalized = normalizeWalletSyncState(state);
+      fs7.mkdirSync(path6.dirname(filePath), { recursive: true });
+      const tempPath = `${filePath}.tmp`;
+      fs7.writeFileSync(tempPath, JSON.stringify(normalized, null, 2));
+      fs7.renameSync(tempPath, filePath);
+    }
+    function normalizeWalletSyncState(value) {
+      const payload = value && typeof value === "object" ? value : {};
+      const version2 = normalizeNumber(payload.version) || 2;
+      return {
+        version: version2,
+        created_at: normalizeIsoDate(payload.created_at) || null,
+        updated_at: normalizeIsoDate(payload.updated_at) || null,
+        first_sync_completed_at: normalizeIsoDate(payload.first_sync_completed_at) || null,
+        wallet_api_retry_after_at: normalizeIsoDate(payload.wallet_api_retry_after_at) || null,
+        wallet_api_failure_count: normalizeNumber(payload.wallet_api_failure_count) || 0,
+        wallet_api_last_error: normalizeText2(payload.wallet_api_last_error),
+        last_seen_last_payout_at: normalizeIsoDate(payload.last_seen_last_payout_at) || null,
+        last_seen_available_amount_cents: normalizeNumber(payload.last_seen_available_amount_cents),
+        last_seen_available_amount: normalizeNumber(payload.last_seen_available_amount),
+        imported_funds_entries: normalizeEntryMap(payload.imported_funds_entries),
+        withdrawal_events: normalizeEntryMap(payload.withdrawal_events)
+      };
+    }
+    function normalizeEntryMap(value) {
+      const entries = value && typeof value === "object" ? value : {};
+      const normalized = {};
+      for (const [key, entry] of Object.entries(entries)) {
+        const normalizedEntry = normalizeLedgerEntry(key, entry);
+        if (normalizedEntry) {
+          normalized[key] = normalizedEntry;
+        }
+      }
+      return normalized;
+    }
+    function normalizeLedgerEntry(key, value) {
+      if (!value || typeof value !== "object") {
+        return null;
+      }
+      const feeRecordId = normalizeText2(value.fee_record_id) || normalizeText2(value.record_id);
+      const transferRecordId = normalizeText2(value.transfer_record_id) || normalizeText2(value.mirror_record_id);
+      return {
+        key: String(value.key || key || "").trim(),
+        note_marker: normalizeText2(value.note_marker),
+        source_marker: normalizeText2(value.source_marker),
+        fee_record_id: feeRecordId,
+        transfer_record_id: transferRecordId,
+        record_id: feeRecordId,
+        mirror_record_id: transferRecordId,
+        source_fingerprint: normalizeText2(value.source_fingerprint),
+        source_type: normalizeText2(value.source_type),
+        source_amount_usd_cents: normalizeNumber(value.source_amount_usd_cents),
+        source_amount_php_cents: normalizeNumber(value.source_amount_php_cents),
+        source_fee_usd_cents: normalizeNumber(value.source_fee_usd_cents),
+        source_fee_php_cents: normalizeNumber(value.source_fee_php_cents),
+        source_net_usd_cents: normalizeNumber(value.source_net_usd_cents),
+        source_net_php_cents: normalizeNumber(value.source_net_php_cents),
+        source_rate: normalizeNumber(value.source_rate),
+        created_at: normalizeIsoDate(value.created_at) || null,
+        completed_at: normalizeIsoDate(value.completed_at) || null,
+        last_attempt_at: normalizeIsoDate(value.last_attempt_at) || null,
+        attempt_count: normalizeNumber(value.attempt_count) || 0,
+        last_error: normalizeText2(value.last_error)
+      };
+    }
+    function cloneWalletSyncState(value) {
+      return normalizeWalletSyncState(JSON.parse(JSON.stringify(value)));
+    }
+    function normalizeIsoDate(value) {
+      const date = normalizeDate2(value);
+      return date ? date.toISOString() : null;
+    }
+    function normalizeDate2(value) {
+      if (!value) {
+        return null;
+      }
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    function normalizeText2(value) {
+      if (value === void 0 || value === null) {
+        return null;
+      }
+      const text = String(value).trim();
+      return text || null;
+    }
+    function normalizeNumber(value) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    module2.exports = {
+      DEFAULT_WALLET_SYNC_STATE,
+      loadWalletSyncState,
+      saveWalletSyncState,
+      normalizeWalletSyncState
+    };
+  }
+});
+
+// src/clients/wallet_api_client.ts
+var require_wallet_api_client = __commonJS({
+  "src/clients/wallet_api_client.ts"(exports2, module2) {
+    "use strict";
+    var { URL } = require("node:url");
+    var WALLET_BASE_URL = "https://rest.budgetbakers.com/wallet/v1/api";
+    var DEFAULT_TIMEOUT_MS = 3e4;
+    var DEFAULT_MAX_PAGES = 50;
+    var WalletApiError = class extends Error {
+      constructor(message, details = {}) {
+        super(message);
+        this.name = "WalletApiError";
+        this.details = details;
+        this.status = details.status || null;
+        this.retryAfterSeconds = details.retryAfterSeconds || null;
+        this.rateLimitRemaining = details.rateLimitRemaining || null;
+        this.rateLimitLimit = details.rateLimitLimit || null;
+      }
+    };
+    var WalletApiClient = class {
+      constructor(token) {
+        this.token = token;
+        this.baseUrl = WALLET_BASE_URL;
+      }
+      async fetchAccounts() {
+        return this._collect("accounts", "accounts");
+      }
+      async fetchCategories() {
+        return this._collect("categories", "categories");
+      }
+      async fetchRecords(query = {}) {
+        return this._collect("records", "records", query);
+      }
+      async findRecordsByNote({ accountId, noteMarker, paymentType = null, categoryId = null, startRecordDate = null, endRecordDate = null }) {
+        const query = {
+          accountId,
+          note: `contains.${noteMarker}`,
+          limit: 20
+        };
+        if (paymentType) {
+          query.paymentType = paymentType;
+        }
+        if (categoryId) {
+          query.categoryId = categoryId;
+        }
+        if (startRecordDate) {
+          query.recordDate = `gte.${startRecordDate}`;
+        }
+        if (endRecordDate) {
+          query.recordDate = query.recordDate ? [query.recordDate, `lt.${endRecordDate}`] : `lt.${endRecordDate}`;
+        }
+        const records = await this.fetchRecords(query);
+        const normalizedMarker = normalizeText2(noteMarker);
+        return Array.isArray(records) ? records.filter((record) => normalizeText2(record?.note).includes(normalizedMarker)) : [];
+      }
+      async createRecords(records, returnData = true) {
+        const response = await this._request("POST", "/records", {
+          query: { returnData: returnData ? "true" : "false" },
+          body: Array.isArray(records) ? records : [records]
+        });
+        return response.data;
+      }
+      async deleteRecords(ids) {
+        const recordIds = Array.isArray(ids) ? ids.map((value) => String(value).trim()).filter(Boolean) : [];
+        if (recordIds.length === 0) {
+          throw new WalletApiError("Wallet API deleteRecords requires at least one record id");
+        }
+        if (recordIds.length > 10) {
+          throw new WalletApiError("Wallet API deleteRecords supports at most 10 record ids per request");
+        }
+        const response = await this._request("DELETE", "/records", {
+          body: { ids: recordIds }
+        });
+        return response.data;
+      }
+      async _collect(resource, collectionKey, query = {}, maxPages = DEFAULT_MAX_PAGES) {
+        const items = [];
+        let offset = 0;
+        const seenOffsets = /* @__PURE__ */ new Set();
+        let pageCount = 0;
+        while (true) {
+          if (seenOffsets.has(offset) || pageCount >= maxPages) {
+            break;
+          }
+          seenOffsets.add(offset);
+          pageCount += 1;
+          const payload = await this._request("GET", `/${resource}`, {
+            query: {
+              limit: 200,
+              offset,
+              agentHints: "true",
+              ...query
+            }
+          });
+          const pageItems = Array.isArray(payload.data?.[collectionKey]) ? payload.data[collectionKey] : [];
+          items.push(...pageItems);
+          const nextOffset = payload.data?.nextOffset;
+          if (nextOffset === void 0 || nextOffset === null) {
+            break;
+          }
+          offset = Number(nextOffset);
+          if (!Number.isFinite(offset)) {
+            break;
+          }
+        }
+        return items;
+      }
+      async _request(method, resource, { query = {}, body = null } = {}) {
+        const url = new URL(`${this.baseUrl}${resource}`);
+        for (const [key, value] of Object.entries(query || {})) {
+          if (value === void 0 || value === null || value === "") {
+            continue;
+          }
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              if (item !== void 0 && item !== null && item !== "") {
+                url.searchParams.append(key, String(item));
+              }
+            }
+            continue;
+          }
+          url.searchParams.set(key, String(value));
+        }
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+        try {
+          const response = await fetch(url, {
+            method,
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+              Accept: "application/json",
+              ...body ? { "Content-Type": "application/json" } : {}
+            },
+            body: body ? JSON.stringify(body) : void 0,
+            signal: controller.signal
+          });
+          const text = await response.text();
+          let data = null;
+          if (text) {
+            try {
+              data = JSON.parse(text);
+            } catch {
+              data = text;
+            }
+          }
+          if (!response.ok && response.status !== 207) {
+            throw new WalletApiError(`Wallet API ${method} ${resource} failed with ${response.status}`, {
+              status: response.status,
+              body: data || text || null,
+              retryAfterSeconds: parseRetryAfter(response.headers.get("retry-after")),
+              rateLimitRemaining: toInt(response.headers.get("x-ratelimit-remaining")),
+              rateLimitLimit: toInt(response.headers.get("x-ratelimit-limit"))
+            });
+          }
+          return {
+            status: response.status,
+            data,
+            headers: response.headers
+          };
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+    };
+    function normalizeText2(value) {
+      return String(value || "").trim().toLowerCase();
+    }
+    function parseRetryAfter(value) {
+      if (!value) {
+        return null;
+      }
+      const seconds = Number(value);
+      if (Number.isFinite(seconds) && seconds >= 0) {
+        return Math.round(seconds);
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return null;
+      }
+      return Math.max(0, Math.round((date.getTime() - Date.now()) / 1e3));
+    }
+    function toInt(value) {
+      if (value === null || value === void 0) {
+        return null;
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+    }
+    module2.exports = {
+      WALLET_BASE_URL,
+      WalletApiClient,
+      WalletApiError
+    };
+  }
+});
+
+// src/wallet/wallet_sync.ts
+var require_wallet_sync = __commonJS({
+  "src/wallet/wallet_sync.ts"(exports2, module2) {
+    "use strict";
+    var crypto2 = require("node:crypto");
+    var { fetchUsdToPhpRate, saveCurrencyState, shouldRefreshCurrencyRate } = require_currency_conversion();
+    var { loadWalletSyncState, saveWalletSyncState } = require_wallet_sync_state();
+    var { WalletApiClient } = require_wallet_api_client();
+    var DEFAULT_STATE_PATH = "/data/wallet-sync-state.json";
+    var WALLET_CURRENCY = "PHP";
+    var NOTE_PREFIX = "DAWALLET";
+    var DEFAULT_BATCH_SIZE = 25;
+    var WalletSync = class {
+      constructor(config, logger) {
+        this.config = config;
+        this.logger = logger;
+        this.statePath = DEFAULT_STATE_PATH;
+        this.client = config.wallet_token ? new WalletApiClient(config.wallet_token) : null;
+        this.referenceData = null;
+      }
+      isEnabled() {
+        return Boolean(this.config.wallet_write_enabled && this.config.wallet_token);
+      }
+      async processSync({ payments, fundsHistorySnapshot, includeFundsHistory, currencyState, now = /* @__PURE__ */ new Date() }) {
+        if (!this.isEnabled()) {
+          return { enabled: false, changed: false };
+        }
+        if (!payments) {
+          return { enabled: true, changed: false };
+        }
+        let state = loadWalletSyncState(this.statePath);
+        if (isFutureIsoDate(state.wallet_api_retry_after_at, now)) {
+          return { enabled: true, changed: false, reason: "wallet_backoff" };
+        }
+        try {
+          const referenceData = await this._ensureReferenceData();
+          if (!referenceData) {
+            return { enabled: true, changed: false, reason: "wallet_reference_data_unavailable" };
+          }
+          const fx = await this._resolveSettlementRate(currencyState, now);
+          if (!fx) {
+            this.logger.warning("Wallet sync skipped because no USD/PHP rate is available");
+            return { enabled: true, changed: false, reason: "fx_unavailable" };
+          }
+          let changed = false;
+          if (includeFundsHistory) {
+            const imported = await this._importNewIncomeEntries({
+              state,
+              referenceData,
+              payments,
+              fundsHistorySnapshot,
+              fx,
+              now
+            });
+            changed = changed || imported;
+          }
+          const withdrawalProcessed = await this._processWithdrawalIfNeeded({
+            state,
+            referenceData,
+            payments,
+            fx,
+            now
+          });
+          changed = changed || withdrawalProcessed;
+          state.last_seen_available_amount_cents = normalizeCents2(payments.available_amount_cents, payments.available_amount);
+          state.last_seen_available_amount = normalizeMoney(payments.available_amount);
+          state.updated_at = now.toISOString();
+          clearWalletApiBackoff(state);
+          saveWalletSyncState(this.statePath, state);
+          return { enabled: true, changed };
+        } catch (error) {
+          applyWalletApiBackoff(state, error, now);
+          if (state) {
+            state.updated_at = now.toISOString();
+            saveWalletSyncState(this.statePath, state);
+          }
+          this.logger.warning(`Wallet sync skipped: ${error.message}`);
+          return { enabled: true, changed: false, error: error.message };
+        }
+      }
+      async _ensureReferenceData() {
+        if (this.referenceData) {
+          return this.referenceData;
+        }
+        const accounts = await this.client.fetchAccounts();
+        const categories = await this.client.fetchCategories();
+        const dataAnnotationAccount = resolveAccountByName(accounts, this.config.wallet_data_annotation_account_name);
+        const gotymeAccount = resolveAccountByName(accounts, this.config.wallet_gotyme_account_name);
+        const incomeCategory = resolveCategoryByName(categories, this.config.wallet_income_category_name);
+        const feeCategory = resolveCategoryByName(categories, this.config.wallet_fee_category_name);
+        if (!dataAnnotationAccount || !gotymeAccount || !incomeCategory || !feeCategory) {
+          const missing = [];
+          if (!dataAnnotationAccount) missing.push(`account:${this.config.wallet_data_annotation_account_name}`);
+          if (!gotymeAccount) missing.push(`account:${this.config.wallet_gotyme_account_name}`);
+          if (!incomeCategory) missing.push(`category:${this.config.wallet_income_category_name}`);
+          if (!feeCategory) missing.push(`category:${this.config.wallet_fee_category_name}`);
+          throw new Error(`Wallet reference data not resolved: ${missing.join(", ")}`);
+        }
+        if (normalizeText2(dataAnnotationAccount.currencyCode) !== WALLET_CURRENCY) {
+          throw new Error(`Wallet account '${dataAnnotationAccount.name}' must be PHP`);
+        }
+        if (normalizeText2(gotymeAccount.currencyCode) !== WALLET_CURRENCY) {
+          throw new Error(`Wallet account '${gotymeAccount.name}' must be PHP`);
+        }
+        this.referenceData = {
+          dataAnnotationAccount,
+          gotymeAccount,
+          incomeCategory,
+          feeCategory
+        };
+        return this.referenceData;
+      }
+      async _resolveSettlementRate(currencyState, now) {
+        let state = currencyState || {};
+        if (!Number.isFinite(Number(state.usd_php_rate)) || shouldRefreshCurrencyRate(state, now)) {
+          const fxRate = await fetchUsdToPhpRate();
+          state.usd_php_rate = fxRate.rate;
+          state.usd_php_rate_date = fxRate.date;
+          state.usd_php_rate_fetched_at = fxRate.fetched_at;
+          state.usd_php_rate_source = fxRate.source;
+          saveCurrencyState("/data/currency-state.json", state);
+        }
+        const rate = Number(state.usd_php_rate);
+        if (!Number.isFinite(rate) || rate <= 0) {
+          return null;
+        }
+        return {
+          referenceRate: rate,
+          settlementRate: roundToSix(rate * normalizeNumber(this.config.wallet_settlement_adjustment, 0.99856)),
+          feeRate: normalizeNumber(this.config.wallet_paypal_fee_rate, 0.01),
+          feeMinUsd: normalizeNumber(this.config.wallet_paypal_fee_min_usd, 0.25),
+          feeMaxUsd: normalizeNumber(this.config.wallet_paypal_fee_max_usd, 10)
+        };
+      }
+      async _importNewIncomeEntries({ state, referenceData, fundsHistorySnapshot, fx, now }) {
+        const entries = Array.isArray(fundsHistorySnapshot?.pending_payout_entries) ? fundsHistorySnapshot.pending_payout_entries : [];
+        let changed = false;
+        const seenFingerprintCounts = {};
+        const pendingCreates = [];
+        for (const entry of entries) {
+          if (!entry || entry.status !== "pending") {
+            continue;
+          }
+          const sourceFingerprint = normalizeText2(entry.fingerprint) || buildFallbackFingerprint(entry);
+          if (!sourceFingerprint) {
+            continue;
+          }
+          seenFingerprintCounts[sourceFingerprint] = (seenFingerprintCounts[sourceFingerprint] || 0) + 1;
+          const marker = buildIncomeMarker(sourceFingerprint, seenFingerprintCounts[sourceFingerprint]);
+          const existing = state.imported_funds_entries[marker] || null;
+          if (existing?.record_id) {
+            continue;
+          }
+          const existingRecords = await this.client.findRecordsByNote({
+            accountId: referenceData.dataAnnotationAccount.id,
+            noteMarker: marker
+          });
+          if (existingRecords.length > 0) {
+            state.imported_funds_entries[marker] = {
+              key: marker,
+              note_marker: marker,
+              source_marker: sourceFingerprint,
+              record_id: existingRecords[0].id || null,
+              source_type: "income",
+              source_fingerprint: sourceFingerprint,
+              source_amount_usd_cents: normalizeCents2(entry.amount_cents, entry.amount),
+              source_amount_php_cents: null,
+              source_fee_usd_cents: null,
+              source_fee_php_cents: null,
+              source_net_usd_cents: null,
+              source_net_php_cents: null,
+              source_rate: fx.referenceRate,
+              created_at: now.toISOString()
+            };
+            changed = true;
+            continue;
+          }
+          const usdCents = normalizeCents2(entry.amount_cents, entry.amount);
+          if (usdCents <= 0) {
+            continue;
+          }
+          const phpCents = roundToCents(usdCents / 100 * fx.settlementRate * 100);
+          const recordInput = buildIncomeRecord({
+            accountId: referenceData.dataAnnotationAccount.id,
+            categoryId: referenceData.incomeCategory.id,
+            noteMarker: marker,
+            sourceFingerprint,
+            entry,
+            usdCents,
+            phpCents,
+            fx,
+            now
+          });
+          pendingCreates.push({
+            marker,
+            sourceFingerprint,
+            usdCents,
+            phpCents,
+            recordInput
+          });
+        }
+        for (let index = 0; index < pendingCreates.length; index += DEFAULT_BATCH_SIZE) {
+          const batch = pendingCreates.slice(index, index + DEFAULT_BATCH_SIZE);
+          const createdMap = await this._createIncomeRecordBatch(batch, referenceData, fx, now, state);
+          changed = changed || createdMap.changed;
+        }
+        if (changed) {
+          saveWalletSyncState(this.statePath, state);
+        }
+        return changed;
+      }
+      async _createIncomeRecordBatch(batch, referenceData, fx, now, state) {
+        if (!Array.isArray(batch) || batch.length === 0) {
+          return { changed: false };
+        }
+        try {
+          const response = await this.client.createRecords(batch.map((item) => item.recordInput), true);
+          const results = Array.isArray(response?.results) ? response.results : Array.isArray(response) ? response : [];
+          let changed = false;
+          for (let index = 0; index < batch.length; index += 1) {
+            const item = batch[index];
+            const result = results[index] || results[0] || {};
+            if (result.success === false) {
+              const recovered = await this._recoverExistingRecord({
+                accountId: referenceData.dataAnnotationAccount.id,
+                noteMarker: item.marker,
+                paymentType: "web_payment",
+                categoryId: referenceData.incomeCategory.id
+              });
+              if (!recovered) {
+                continue;
+              }
+              state.imported_funds_entries[item.marker] = {
+                key: item.marker,
+                note_marker: item.marker,
+                source_marker: item.sourceFingerprint,
+                record_id: recovered.id || null,
+                source_type: "income",
+                source_fingerprint: item.sourceFingerprint,
+                source_amount_usd_cents: item.usdCents,
+                source_amount_php_cents: item.phpCents,
+                source_fee_usd_cents: null,
+                source_fee_php_cents: null,
+                source_net_usd_cents: null,
+                source_net_php_cents: null,
+                source_rate: fx.referenceRate,
+                created_at: now.toISOString()
+              };
+              changed = true;
+              continue;
+            }
+            const recordId = result.id || result.record?.id || null;
+            if (!recordId) {
+              continue;
+            }
+            state.imported_funds_entries[item.marker] = {
+              key: item.marker,
+              note_marker: item.marker,
+              source_marker: item.sourceFingerprint,
+              record_id: recordId,
+              source_type: "income",
+              source_fingerprint: item.sourceFingerprint,
+              source_amount_usd_cents: item.usdCents,
+              source_amount_php_cents: item.phpCents,
+              source_fee_usd_cents: null,
+              source_fee_php_cents: null,
+              source_net_usd_cents: null,
+              source_net_php_cents: null,
+              source_rate: fx.referenceRate,
+              created_at: now.toISOString()
+            };
+            changed = true;
+          }
+          return { changed };
+        } catch (error) {
+          this.logger.warning(`Wallet income batch create failed: ${error.message}`);
+          let changed = false;
+          for (const item of batch) {
+            const created = await this._createLedgerRecord(item.recordInput, {
+              accountId: referenceData.dataAnnotationAccount.id,
+              noteMarker: item.marker,
+              paymentType: "web_payment",
+              categoryId: referenceData.incomeCategory.id
+            });
+            if (!created?.recordId) {
+              continue;
+            }
+            state.imported_funds_entries[item.marker] = {
+              key: item.marker,
+              note_marker: item.marker,
+              source_marker: item.sourceFingerprint,
+              record_id: created.recordId,
+              source_type: "income",
+              source_fingerprint: item.sourceFingerprint,
+              source_amount_usd_cents: item.usdCents,
+              source_amount_php_cents: item.phpCents,
+              source_fee_usd_cents: null,
+              source_fee_php_cents: null,
+              source_net_usd_cents: null,
+              source_net_php_cents: null,
+              source_rate: fx.referenceRate,
+              created_at: now.toISOString()
+            };
+            changed = true;
+          }
+          return { changed };
+        }
+      }
+      async _processWithdrawalIfNeeded({ state, referenceData, payments, fx, now }) {
+        const currentPayoutAt = normalizeIsoDate(payments.last_payout_at);
+        if (!state.first_sync_completed_at) {
+          state.first_sync_completed_at = now.toISOString();
+          if (currentPayoutAt) {
+            state.last_seen_last_payout_at = currentPayoutAt;
+          }
+          saveWalletSyncState(this.statePath, state);
+          return false;
+        }
+        if (!currentPayoutAt) {
+          return false;
+        }
+        const previousPayoutAt = normalizeIsoDate(state.last_seen_last_payout_at);
+        const grossUsdCents = positiveCents(payments.last_payout_amount_cents, payments.last_payout_amount) || positiveCents(state.last_seen_available_amount_cents, state.last_seen_available_amount);
+        if (grossUsdCents <= 0) {
+          return false;
+        }
+        const withdrawalMarker = buildWithdrawalMarker({
+          payoutAt: currentPayoutAt,
+          grossUsdCents
+        });
+        const withdrawalState = state.withdrawal_events[withdrawalMarker] || normalizeWithdrawalState(withdrawalMarker);
+        if (previousPayoutAt && currentPayoutAt <= previousPayoutAt && withdrawalState.fee_record_id && withdrawalState.transfer_record_id) {
+          return false;
+        }
+        if (withdrawalState.fee_record_id && withdrawalState.transfer_record_id) {
+          return false;
+        }
+        const feeUsdCents = calculatePaypalFeeCents(grossUsdCents, fx);
+        const netUsdCents = Math.max(0, grossUsdCents - feeUsdCents);
+        const grossPhpCents = roundToCents(grossUsdCents / 100 * fx.settlementRate * 100);
+        const feePhpCents = roundToCents(feeUsdCents / 100 * fx.settlementRate * 100);
+        const netPhpCents = Math.max(0, grossPhpCents - feePhpCents);
+        const commonContext = {
+          payoutAt: currentPayoutAt,
+          grossUsdCents,
+          feeUsdCents,
+          netUsdCents,
+          grossPhpCents,
+          feePhpCents,
+          netPhpCents,
+          fx,
+          now,
+          withdrawalMarker
+        };
+        const feeMarker = `${withdrawalMarker}:fee`;
+        const transferMarker = `${withdrawalMarker}:transfer`;
+        const feeRecord = await this._createWithdrawalFeeRecord({
+          ...commonContext,
+          marker: feeMarker,
+          referenceData
+        }, state, referenceData);
+        if (feeRecord?.recordId) {
+          withdrawalState.fee_record_id = feeRecord.recordId;
+          withdrawalState.record_id = feeRecord.recordId;
+          withdrawalState.last_attempt_at = now.toISOString();
+          withdrawalState.attempt_count = (withdrawalState.attempt_count || 0) + 1;
+          state.withdrawal_events[withdrawalMarker] = withdrawalState;
+          saveWalletSyncState(this.statePath, state);
+        }
+        const transferRecord = await this._createWithdrawalTransferRecord({
+          ...commonContext,
+          marker: transferMarker,
+          referenceData
+        }, state, referenceData);
+        if (transferRecord?.recordId) {
+          withdrawalState.transfer_record_id = transferRecord.recordId;
+          withdrawalState.mirror_record_id = transferRecord.recordId;
+          withdrawalState.last_attempt_at = now.toISOString();
+          withdrawalState.attempt_count = (withdrawalState.attempt_count || 0) + 1;
+          state.withdrawal_events[withdrawalMarker] = withdrawalState;
+          saveWalletSyncState(this.statePath, state);
+        }
+        if (withdrawalState.fee_record_id && withdrawalState.transfer_record_id) {
+          state.withdrawal_events[withdrawalMarker] = {
+            ...withdrawalState,
+            key: withdrawalMarker,
+            note_marker: withdrawalMarker,
+            source_marker: withdrawalMarker,
+            source_type: "withdrawal",
+            source_amount_usd_cents: grossUsdCents,
+            source_amount_php_cents: grossPhpCents,
+            source_fee_usd_cents: feeUsdCents,
+            source_fee_php_cents: feePhpCents,
+            source_net_usd_cents: netUsdCents,
+            source_net_php_cents: netPhpCents,
+            source_rate: fx.referenceRate,
+            created_at: withdrawalState.created_at || now.toISOString(),
+            completed_at: now.toISOString()
+          };
+          state.last_seen_last_payout_at = currentPayoutAt;
+          state.first_sync_completed_at = state.first_sync_completed_at || now.toISOString();
+          saveWalletSyncState(this.statePath, state);
+          return true;
+        }
+        withdrawalState.key = withdrawalMarker;
+        withdrawalState.note_marker = withdrawalMarker;
+        withdrawalState.source_marker = withdrawalMarker;
+        withdrawalState.source_type = "withdrawal";
+        withdrawalState.source_amount_usd_cents = grossUsdCents;
+        withdrawalState.source_amount_php_cents = grossPhpCents;
+        withdrawalState.source_fee_usd_cents = feeUsdCents;
+        withdrawalState.source_fee_php_cents = feePhpCents;
+        withdrawalState.source_net_usd_cents = netUsdCents;
+        withdrawalState.source_net_php_cents = netPhpCents;
+        withdrawalState.source_rate = fx.referenceRate;
+        withdrawalState.created_at = withdrawalState.created_at || now.toISOString();
+        withdrawalState.last_attempt_at = now.toISOString();
+        withdrawalState.attempt_count = (withdrawalState.attempt_count || 0) + 1;
+        state.withdrawal_events[withdrawalMarker] = withdrawalState;
+        saveWalletSyncState(this.statePath, state);
+        return Boolean(feeRecord?.recordId || transferRecord?.recordId);
+      }
+      async _createWithdrawalFeeRecord(context, state, referenceData) {
+        const existing = state.withdrawal_events[context.withdrawalMarker];
+        if (existing?.fee_record_id) {
+          return { recordId: existing.fee_record_id };
+        }
+        const existingRecords = await this.client.findRecordsByNote({
+          accountId: referenceData.dataAnnotationAccount.id,
+          noteMarker: context.marker,
+          paymentType: "transfer",
+          categoryId: referenceData.feeCategory.id
+        });
+        if (existingRecords.length > 0) {
+          return { recordId: existingRecords[0].id || null };
+        }
+        const record = buildWithdrawalFeeRecord({
+          accountId: referenceData.dataAnnotationAccount.id,
+          categoryId: referenceData.feeCategory.id,
+          marker: context.marker,
+          ...context
+        });
+        return this._createLedgerRecord(record, {
+          accountId: referenceData.dataAnnotationAccount.id,
+          noteMarker: context.marker,
+          paymentType: "transfer"
+        });
+      }
+      async _createWithdrawalTransferRecord(context, state, referenceData) {
+        const existing = state.withdrawal_events[context.withdrawalMarker];
+        if (existing?.transfer_record_id) {
+          return { recordId: existing.transfer_record_id };
+        }
+        const existingRecords = await this.client.findRecordsByNote({
+          accountId: referenceData.dataAnnotationAccount.id,
+          noteMarker: context.marker,
+          paymentType: "transfer"
+        });
+        if (existingRecords.length > 0) {
+          return { recordId: existingRecords[0].id || null };
+        }
+        const record = buildWithdrawalTransferRecord({
+          accountId: referenceData.dataAnnotationAccount.id,
+          targetAccountId: referenceData.gotymeAccount.id,
+          marker: context.marker,
+          ...context
+        });
+        return this._createLedgerRecord(record, {
+          accountId: referenceData.dataAnnotationAccount.id,
+          noteMarker: context.marker,
+          paymentType: "transfer"
+        });
+      }
+      async _createLedgerRecord(record, searchOptions) {
+        const marker = searchOptions.noteMarker;
+        try {
+          const response = await this.client.createRecords([record], true);
+          const result = Array.isArray(response?.results) ? response.results[0] || {} : {};
+          if (result.success === false) {
+            const recovered = await this._recoverExistingRecord(searchOptions);
+            if (recovered) {
+              return { recordId: recovered.id || null, recovered: true };
+            }
+            throw new Error(`Wallet record rejected: ${result.error || "unknown error"}`);
+          }
+          return {
+            recordId: result.id || result.record?.id || null,
+            record: result.record || null
+          };
+        } catch (error) {
+          const recovered = await this._recoverExistingRecord(searchOptions);
+          if (recovered) {
+            return { recordId: recovered.id || null, recovered: true };
+          }
+          this.logger.warning(`Wallet record create failed for ${marker}: ${error.message}`);
+          return null;
+        }
+      }
+      async _recoverExistingRecord({ accountId, noteMarker, paymentType = null, categoryId = null }) {
+        const records = await this.client.findRecordsByNote({ accountId, noteMarker, paymentType, categoryId });
+        return records.length > 0 ? records[0] : null;
+      }
+      async _processWithdrawalFeeRecord(context, state, referenceData) {
+        return this._createWithdrawalFeeRecord(context, state, referenceData);
+      }
+    };
+    function buildIncomeRecord({ accountId, categoryId, noteMarker, sourceFingerprint, entry, usdCents, phpCents, fx, now }) {
+      const usdAmount = usdCents / 100;
+      const phpAmount = phpCents / 100;
+      const note = buildIncomeNote({
+        noteMarker,
+        sourceFingerprint,
+        usdAmount,
+        phpAmount,
+        fx,
+        entry
+      });
+      return {
+        accountId,
+        categoryId,
+        amount: { value: phpAmount, currencyCode: WALLET_CURRENCY },
+        recordDate: normalizeIsoDate(entry.first_seen_at) || now.toISOString(),
+        paymentType: "web_payment",
+        recordState: "cleared",
+        note,
+        counterParty: "Data Annotation"
+      };
+    }
+    function buildWithdrawalFeeRecord({ accountId, categoryId, marker, payoutAt, grossUsdCents, feeUsdCents, grossPhpCents, feePhpCents, fx, now }) {
+      return {
+        accountId,
+        categoryId,
+        amount: { value: -(feePhpCents / 100), currencyCode: WALLET_CURRENCY },
+        recordDate: payoutAt || now.toISOString(),
+        paymentType: "transfer",
+        recordState: "cleared",
+        note: buildWithdrawalNote({
+          marker,
+          kind: "fee",
+          grossUsdCents,
+          feeUsdCents,
+          grossPhpCents,
+          phpCents: feePhpCents,
+          netUsdCents: grossUsdCents - feeUsdCents,
+          netPhpCents: grossPhpCents - feePhpCents,
+          fx
+        }),
+        counterParty: "PayPal"
+      };
+    }
+    function buildWithdrawalTransferRecord({ accountId, targetAccountId, marker, payoutAt, grossUsdCents, feeUsdCents, netUsdCents, grossPhpCents, feePhpCents, netPhpCents, fx, now }) {
+      return {
+        accountId,
+        amount: { value: -(netPhpCents / 100), currencyCode: WALLET_CURRENCY },
+        recordDate: payoutAt || now.toISOString(),
+        paymentType: "transfer",
+        recordState: "cleared",
+        note: buildWithdrawalNote({
+          marker,
+          kind: "transfer",
+          grossUsdCents,
+          feeUsdCents,
+          grossPhpCents,
+          phpCents: netPhpCents,
+          netUsdCents,
+          netPhpCents,
+          fx
+        }),
+        counterParty: "GoTyme",
+        transfer: {
+          pairingMode: "new",
+          accountId: targetAccountId
+        }
+      };
+    }
+    function buildIncomeNote({ noteMarker, sourceFingerprint, usdAmount, phpAmount, fx, entry }) {
+      const project = truncateText(String(entry?.project || "DataAnnotation"), 40);
+      const amount = formatPhp(phpAmount);
+      const rate = formatRate(fx.settlementRate);
+      const value = [`${NOTE_PREFIX}|income|${noteMarker}`, `proj=${project}`, `usd=${formatUsd(usdAmount)}`, `php=${amount}`, `rate=${rate}`];
+      if (sourceFingerprint) {
+        value.push(`src=${truncateText(sourceFingerprint, 24)}`);
+      }
+      return truncateText(value.join(" "), 255);
+    }
+    function buildWithdrawalNote({ marker, kind, grossUsdCents, feeUsdCents, grossPhpCents, phpCents, netUsdCents, netPhpCents, fx }) {
+      return truncateText(
+        [
+          `${NOTE_PREFIX}|withdrawal|${kind}|${marker}`,
+          `gross=${formatUsd(grossUsdCents / 100)}`,
+          `fee=${formatUsd(feeUsdCents / 100)}`,
+          `net=${formatUsd(netUsdCents / 100)}`,
+          `php=${formatPhp(phpCents)}`,
+          `rate=${formatRate(fx.settlementRate)}`
+        ].join(" "),
+        255
+      );
+    }
+    function buildWithdrawalMarker({ payoutAt, grossUsdCents }) {
+      const raw = [payoutAt || "", String(grossUsdCents || 0)].join("|");
+      return `${NOTE_PREFIX}|wd|${hashText(raw)}`;
+    }
+    function buildIncomeMarker(sourceFingerprint, occurrence = 1) {
+      return `${NOTE_PREFIX}|inc|${hashText(sourceFingerprint)}#${Math.max(1, Math.trunc(Number(occurrence) || 1))}`;
+    }
+    function buildFallbackFingerprint(entry) {
+      return [
+        normalizeText2(entry?.entry_date),
+        normalizeText2(entry?.project),
+        normalizeText2(entry?.kind),
+        normalizeText2(entry?.amount),
+        normalizeText2(entry?.duration)
+      ].join("|");
+    }
+    function normalizeWithdrawalState(withdrawalMarker) {
+      return {
+        key: withdrawalMarker,
+        note_marker: withdrawalMarker,
+        source_marker: withdrawalMarker,
+        fee_record_id: null,
+        transfer_record_id: null,
+        record_id: null,
+        mirror_record_id: null,
+        source_type: "withdrawal",
+        source_amount_usd_cents: null,
+        source_amount_php_cents: null,
+        source_fee_usd_cents: null,
+        source_fee_php_cents: null,
+        source_net_usd_cents: null,
+        source_net_php_cents: null,
+        source_rate: null,
+        created_at: null,
+        completed_at: null,
+        last_attempt_at: null,
+        attempt_count: 0,
+        last_error: null
+      };
+    }
+    function applyWalletApiBackoff(state, error, now) {
+      if (!state || !error) {
+        return;
+      }
+      const retryAfterSeconds = Number(error.retryAfterSeconds || error.details?.retryAfterSeconds);
+      const failureCount = Math.max(1, (Number(state.wallet_api_failure_count) || 0) + 1);
+      const baseDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0 ? retryAfterSeconds * 1e3 : Math.min(60 * 60 * 1e3, 15e3 * 2 ** Math.min(6, failureCount - 1));
+      const backoffMs = Math.max(15e3, baseDelayMs);
+      state.wallet_api_failure_count = failureCount;
+      state.wallet_api_retry_after_at = new Date(now.getTime() + backoffMs).toISOString();
+      state.wallet_api_last_error = truncateText(String(error.message || "wallet api error"), 255);
+    }
+    function clearWalletApiBackoff(state) {
+      if (!state) {
+        return;
+      }
+      state.wallet_api_failure_count = 0;
+      state.wallet_api_retry_after_at = null;
+      state.wallet_api_last_error = null;
+    }
+    function isFutureIsoDate(value, now = /* @__PURE__ */ new Date()) {
+      const date = normalizeDate2(value);
+      return Boolean(date && date > now);
+    }
+    function hashText(value) {
+      return crypto2.createHash("sha1").update(String(value || "")).digest("hex").slice(0, 12);
+    }
+    function calculatePaypalFeeCents(grossUsdCents, fx) {
+      const grossUsd = grossUsdCents / 100;
+      const feeUsd = Math.min(Math.max(roundToCents(grossUsd * fx.feeRate) / 100, fx.feeMinUsd), fx.feeMaxUsd);
+      return Math.min(grossUsdCents, roundToCents(feeUsd * 100));
+    }
+    function normalizeText2(value) {
+      if (value === void 0 || value === null) {
+        return "";
+      }
+      return String(value).trim();
+    }
+    function normalizeIsoDate(value) {
+      const date = normalizeDate2(value);
+      return date ? date.toISOString() : null;
+    }
+    function normalizeDate2(value) {
+      if (!value) {
+        return null;
+      }
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    function normalizeCents2(centsValue, amountValue) {
+      const cents = Number(centsValue);
+      if (Number.isFinite(cents)) {
+        return Math.round(cents);
+      }
+      const amount = Number(amountValue);
+      if (Number.isFinite(amount)) {
+        return Math.round(amount * 100);
+      }
+      return null;
+    }
+    function normalizeMoney(value) {
+      const amount = Number(value);
+      return Number.isFinite(amount) ? amount : null;
+    }
+    function positiveCents(centsValue, amountValue) {
+      const cents = normalizeCents2(centsValue, amountValue);
+      return Number.isFinite(cents) && cents > 0 ? cents : 0;
+    }
+    function normalizeNumber(value, fallback) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+    function roundToCents(value) {
+      return Math.round(Number(value) || 0);
+    }
+    function roundToSix(value) {
+      return Math.round((Number(value) || 0) * 1e6) / 1e6;
+    }
+    function formatUsd(value) {
+      return `$${new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(Number(value) || 0)}`;
+    }
+    function formatPhp(value) {
+      return `PHP ${new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(Number(value) || 0)}`;
+    }
+    function formatRate(value) {
+      return new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 6
+      }).format(Number(value) || 0);
+    }
+    function truncateText(value, maxLength) {
+      const text = String(value || "");
+      if (text.length <= maxLength) {
+        return text;
+      }
+      return text.slice(0, Math.max(0, maxLength - 1)).trimEnd() + "\u2026";
+    }
+    function resolveAccountByName(accounts, name) {
+      const target = normalizeText2(name).toLowerCase();
+      const matches = Array.isArray(accounts) ? accounts.filter((account) => normalizeText2(account?.name).toLowerCase() === target) : [];
+      if (matches.length !== 1) {
+        return null;
+      }
+      return matches[0];
+    }
+    function resolveCategoryByName(categories, name) {
+      const target = normalizeText2(name).toLowerCase();
+      const matches = Array.isArray(categories) ? categories.filter((category) => normalizeText2(category?.name).toLowerCase() === target && category?.archived !== true) : [];
+      if (matches.length !== 1) {
+        return null;
+      }
+      return matches[0];
+    }
+    module2.exports = {
+      WalletSync,
+      buildIncomeMarker,
+      buildWithdrawalMarker,
+      calculatePaypalFeeCents,
+      formatPhp,
+      formatRate,
+      formatUsd
+    };
+  }
+});
+
 // src/app/runtime_state.ts
 var require_runtime_state = __commonJS({
   "src/app/runtime_state.ts"(exports2, module2) {
@@ -4911,6 +6069,7 @@ var require_dataannotation_app = __commonJS({
     var { doSync: doSync2, getActivePollCron: getActivePollCron2, republishCurrencyViews: republishCurrencyViews2 } = (init_sync(), __toCommonJS(sync_exports));
     var { handleClaimRequest: handleClaimRequest2, handleWithdrawRequest: handleWithdrawRequest2 } = (init_commands(), __toCommonJS(commands_exports));
     var { purgeRecorderEntities } = require_ha_notifications();
+    var { WalletSync } = require_wallet_sync();
     var { RuntimeState } = require_runtime_state();
     var CURRENCY_HISTORY_ENTITY_IDS = [
       "sensor.data_annotation_available_funds",
@@ -4935,6 +6094,7 @@ var require_dataannotation_app = __commonJS({
       logger;
       bridge;
       client;
+      walletSync;
       constructor(options) {
         const config = options.config;
         const version2 = options.version;
@@ -4959,6 +6119,7 @@ var require_dataannotation_app = __commonJS({
           profileDir: config.browser_profile_dir,
           logger: this.logger
         });
+        this.walletSync = new WalletSync(config, this.logger);
       }
       async start() {
         this.running = true;
@@ -5159,6 +6320,13 @@ var require_dataannotation_app = __commonJS({
             logger.warning(`Failed to persist next withdrawal state: ${error.message}`);
           }
         }
+        await this.walletSync.processSync({
+          payments: syncResult.payments,
+          fundsHistorySnapshot: syncResult.fundsHistorySnapshot,
+          includeFundsHistory: syncResult.includeFundsHistory,
+          currencyState: state.currencyState,
+          now: new Date(now)
+        });
         if (syncResult.fundsHistorySnapshot) {
           state.lastFundsHistorySnapshot = syncResult.fundsHistorySnapshot;
         }
@@ -5208,7 +6376,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.6.16",
+      version: "0.7.0",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",
@@ -5220,6 +6388,7 @@ var require_package = __commonJS({
         test: "node -r tsx/cjs --test test/unit/*.test.ts test/unit/*/*.test.ts",
         "test:integration:fixture": "node -r tsx/cjs --test test/integration/projects.fixture.test.ts",
         "test:integration:live": "node -r tsx/cjs --test test/integration/live.test.ts",
+        "test:wallet:live": "node -r tsx/cjs --test test/live/wallet_live_write.test.ts",
         "test:integration": "node -r tsx/cjs --test test/integration/*.test.ts",
         typecheck: "tsc -p tsconfig.json --noEmit"
       },

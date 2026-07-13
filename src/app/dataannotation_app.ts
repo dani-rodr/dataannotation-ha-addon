@@ -19,6 +19,7 @@ const { shouldIncludeFundsHistory } = require('../state/sync_policy.ts');
 const { doSync, getActivePollCron, republishCurrencyViews } = require('./sync.ts');
 const { handleClaimRequest, handleWithdrawRequest } = require('./commands.ts');
 const { purgeRecorderEntities } = require('../integrations/ha_notifications.ts');
+const { WalletSync } = require('../wallet/wallet_sync.ts');
 const { RuntimeState } = require('./runtime_state.ts');
 
 const CURRENCY_HISTORY_ENTITY_IDS = [
@@ -46,6 +47,7 @@ class DataAnnotationApp {
   logger: any;
   bridge: any;
   client: any;
+  walletSync: any;
 
   constructor(options: any) {
     const config = options.config;
@@ -71,6 +73,7 @@ class DataAnnotationApp {
       profileDir: config.browser_profile_dir,
       logger: this.logger,
     });
+    this.walletSync = new WalletSync(config, this.logger);
   }
 
   async start() {
@@ -293,6 +296,13 @@ class DataAnnotationApp {
         logger.warning(`Failed to persist next withdrawal state: ${error.message}`);
       }
     }
+    await this.walletSync.processSync({
+      payments: syncResult.payments,
+      fundsHistorySnapshot: syncResult.fundsHistorySnapshot,
+      includeFundsHistory: syncResult.includeFundsHistory,
+      currencyState: state.currencyState,
+      now: new Date(now),
+    });
     if (syncResult.fundsHistorySnapshot) {
       state.lastFundsHistorySnapshot = syncResult.fundsHistorySnapshot;
     }

@@ -108,3 +108,5 @@ Use the Home Assistant shortcut above to add the repository directly, or add thi
 - `npm test` runs the fast unit suite.
 - `npm run test:integration:fixture` checks the exact parsed project fixture.
 - `npm run test:integration:live` runs the live read-only browser scrape when credentials and a Chrome path are available.
+- `npm run test:wallet:live` runs the opt-in Wallet write/delete smoke test. Use `WALLET_TOKEN` plus `WALLET_LIVE_WRITE_ACCOUNT_ID`, or put `wallet-token` and `wallet-live-write-account-id` in `integration.local.json`, and set `WALLET_LIVE_WRITE_TEST=1` and `WALLET_LIVE_WRITE_CLEANUP=1`.
+- GitHub Actions can run the same test from `.github/workflows/wallet-live-write.yml` after setting the `wallet-live-write` environment with secret `WALLET_TOKEN` and variables `WALLET_LIVE_WRITE_ACCOUNT_ID`, `WALLET_LIVE_WRITE_TEST=1`, and `WALLET_LIVE_WRITE_CLEANUP=1`.
