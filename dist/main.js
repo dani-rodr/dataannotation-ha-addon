@@ -5395,6 +5395,20 @@ var require_wallet_sync = __commonJS({
           const marker = buildIncomeMarker(sourceFingerprint, seenFingerprintCounts[sourceFingerprint]);
           const existing = state.imported_funds_entries[marker] || null;
           if (existing?.record_id) {
+            const existingRecord = await this._recoverExistingRecord({
+              accountId: referenceData.dataAnnotationAccount.id,
+              noteMarker: marker,
+              paymentType: "web_payment",
+              categoryId: referenceData.incomeCategory.id
+            });
+            if (existingRecord) {
+              continue;
+            }
+            this.logger.warning(`Wallet income marker ${marker} was stored in sync state but no matching Wallet record was found; recreating it`);
+            delete state.imported_funds_entries[marker];
+            changed = true;
+          }
+          if (state.imported_funds_entries[marker]?.record_id) {
             continue;
           }
           const existingRecords = await this.client.findRecordsByNote({
@@ -5461,8 +5475,10 @@ var require_wallet_sync = __commonJS({
         }
         try {
           const response = await this.client.createRecords(batch.map((item) => item.recordInput), true);
+          const responseStatus = Number(response?.status || response?.statusCode || 0) || null;
           const results = Array.isArray(response?.results) ? response.results : Array.isArray(response) ? response : [];
           let changed = false;
+          const failures = [];
           for (let index = 0; index < batch.length; index += 1) {
             const item = batch[index];
             const result = results[index] || results[0] || {};
@@ -5474,6 +5490,7 @@ var require_wallet_sync = __commonJS({
                 categoryId: referenceData.incomeCategory.id
               });
               if (!recovered) {
+                failures.push(`${item.marker}: ${result.error || "rejected"}`);
                 continue;
               }
               state.imported_funds_entries[item.marker] = {
@@ -5497,6 +5514,33 @@ var require_wallet_sync = __commonJS({
             }
             const recordId = result.id || result.record?.id || null;
             if (!recordId) {
+              const recovered = await this._recoverExistingRecord({
+                accountId: referenceData.dataAnnotationAccount.id,
+                noteMarker: item.marker,
+                paymentType: "web_payment",
+                categoryId: referenceData.incomeCategory.id
+              });
+              if (recovered) {
+                state.imported_funds_entries[item.marker] = {
+                  key: item.marker,
+                  note_marker: item.marker,
+                  source_marker: item.sourceFingerprint,
+                  record_id: recovered.id || null,
+                  source_type: "income",
+                  source_fingerprint: item.sourceFingerprint,
+                  source_amount_usd_cents: item.usdCents,
+                  source_amount_php_cents: item.phpCents,
+                  source_fee_usd_cents: null,
+                  source_fee_php_cents: null,
+                  source_net_usd_cents: null,
+                  source_net_php_cents: null,
+                  source_rate: fx.referenceRate,
+                  created_at: now.toISOString()
+                };
+                changed = true;
+                continue;
+              }
+              failures.push(`${item.marker}: missing record id${responseStatus ? ` (status ${responseStatus})` : ""}`);
               continue;
             }
             state.imported_funds_entries[item.marker] = {
@@ -5517,8 +5561,17 @@ var require_wallet_sync = __commonJS({
             };
             changed = true;
           }
+          if (failures.length > 0) {
+            saveWalletSyncState(this.statePath, state);
+            const error = new Error(`Wallet income batch incomplete: ${failures.join("; ")}`);
+            error.partialBatch = true;
+            throw error;
+          }
           return { changed };
         } catch (error) {
+          if (error?.partialBatch) {
+            throw error;
+          }
           this.logger.warning(`Wallet income batch create failed: ${error.message}`);
           let changed = false;
           for (const item of batch) {
@@ -5721,6 +5774,7 @@ var require_wallet_sync = __commonJS({
         const marker = searchOptions.noteMarker;
         try {
           const response = await this.client.createRecords([record], true);
+          const responseStatus = Number(response?.status || response?.statusCode || 0) || null;
           const result = Array.isArray(response?.results) ? response.results[0] || {} : {};
           if (result.success === false) {
             const recovered = await this._recoverExistingRecord(searchOptions);
@@ -5729,8 +5783,16 @@ var require_wallet_sync = __commonJS({
             }
             throw new Error(`Wallet record rejected: ${result.error || "unknown error"}`);
           }
+          const recordId = result.id || result.record?.id || null;
+          if (!recordId) {
+            const recovered = await this._recoverExistingRecord(searchOptions);
+            if (recovered) {
+              return { recordId: recovered.id || null, recovered: true };
+            }
+            throw new Error(`Wallet record create returned no id${responseStatus ? ` (status ${responseStatus})` : ""}`);
+          }
           return {
-            recordId: result.id || result.record?.id || null,
+            recordId,
             record: result.record || null
           };
         } catch (error) {
@@ -6382,7 +6444,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.1",
+      version: "0.7.2",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

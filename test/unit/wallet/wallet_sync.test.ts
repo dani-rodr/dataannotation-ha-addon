@@ -42,6 +42,7 @@ function createWalletSync() {
 test('WalletSync imports new funds history entries once and dedupes on rerun', async () => {
   const { sync, dir } = createWalletSync();
   const createdRecords = [];
+  let findCallCount = 0;
 
   sync.client = {
     fetchAccounts: async () => [
@@ -52,7 +53,10 @@ test('WalletSync imports new funds history entries once and dedupes on rerun', a
       { id: 'income', name: 'Income', archived: false },
       { id: 'fees', name: 'Charges, Fees', archived: false },
     ],
-    findRecordsByNote: async () => [],
+    findRecordsByNote: async () => {
+      findCallCount += 1;
+      return findCallCount === 1 ? [] : [{ id: 'record-1' }];
+    },
     createRecords: async (records) => {
       createdRecords.push(records);
       return { results: records.map((record, index) => ({ success: true, id: `record-${index + 1}`, record })) };
@@ -109,6 +113,149 @@ test('WalletSync imports new funds history entries once and dedupes on rerun', a
 
     assert.equal(second.enabled, true);
     assert.equal(second.changed, false);
+    assert.equal(createdRecords.length, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WalletSync recreates a missing income record when sync state is stale', async () => {
+  const { sync, dir } = createWalletSync();
+  const createdRecords = [];
+
+  sync.client = {
+    fetchAccounts: async () => [
+      { id: 'da', name: 'Data Annotation', currencyCode: 'PHP' },
+      { id: 'gt', name: 'GoTyme', currencyCode: 'PHP' },
+    ],
+    fetchCategories: async () => [
+      { id: 'income', name: 'Income', archived: false },
+      { id: 'fees', name: 'Charges, Fees', archived: false },
+    ],
+    findRecordsByNote: async () => [],
+    createRecords: async (records) => {
+      createdRecords.push(records);
+      return { results: records.map((record, index) => ({ success: true, id: `record-${index + 1}`, record })) };
+    },
+  };
+
+  try {
+    const payments = {
+      pending_payout_entries: [
+        {
+          status: 'pending',
+          project: 'Labeling Task',
+          amount_cents: 1234,
+          first_seen_at: '2026-07-14T11:00:00.000Z',
+          fingerprint: 'fingerprint-123',
+        },
+      ],
+      last_payout_at: null,
+      available_amount_cents: 1234,
+      available_amount: 12.34,
+    };
+
+    const currencyState = {
+      convert_to_php: false,
+      usd_php_rate: 61.579,
+      usd_php_rate_date: '2026-07-14',
+      usd_php_rate_fetched_at: '2026-07-14T10:00:00.000Z',
+      usd_php_rate_source: 'frankfurter',
+    };
+
+    const first = await sync.processSync({
+      payments,
+      fundsHistorySnapshot: { pending_payout_entries: payments.pending_payout_entries },
+      includeFundsHistory: true,
+      currencyState,
+      now: new Date('2026-07-14T12:00:00.000Z'),
+    });
+
+    assert.equal(first.enabled, true);
+    assert.equal(first.changed, true);
+    assert.equal(createdRecords.length, 1);
+
+    sync.client.findRecordsByNote = async () => [];
+
+    const second = await sync.processSync({
+      payments,
+      fundsHistorySnapshot: { pending_payout_entries: payments.pending_payout_entries },
+      includeFundsHistory: true,
+      currencyState,
+      now: new Date('2026-07-14T12:05:00.000Z'),
+    });
+
+    assert.equal(second.enabled, true);
+    assert.equal(second.changed, true);
+    assert.equal(createdRecords.length, 2);
+
+    const state = JSON.parse(fs.readFileSync(sync.statePath, 'utf8'));
+    assert.equal(Object.keys(state.imported_funds_entries).length, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WalletSync marks a partial income batch as failed and backs off', async () => {
+  const { sync, dir } = createWalletSync();
+  const createdRecords = [];
+
+  sync.client = {
+    fetchAccounts: async () => [
+      { id: 'da', name: 'Data Annotation', currencyCode: 'PHP' },
+      { id: 'gt', name: 'GoTyme', currencyCode: 'PHP' },
+    ],
+    fetchCategories: async () => [
+      { id: 'income', name: 'Income', archived: false },
+      { id: 'fees', name: 'Charges, Fees', archived: false },
+    ],
+    findRecordsByNote: async () => [],
+    createRecords: async (records) => {
+      createdRecords.push(records);
+      return {
+        status: 207,
+        results: [
+          { success: true, id: 'record-1', record: records[0] },
+          { success: false, error: 'validation failed' },
+        ],
+      };
+    },
+  };
+
+  try {
+    const payments = {
+      pending_payout_entries: [
+        { status: 'pending', project: 'Labeling Task A', amount_cents: 1000, first_seen_at: '2026-07-14T11:00:00.000Z', fingerprint: 'fingerprint-a' },
+        { status: 'pending', project: 'Labeling Task B', amount_cents: 2000, first_seen_at: '2026-07-14T11:05:00.000Z', fingerprint: 'fingerprint-b' },
+      ],
+      last_payout_at: null,
+      available_amount_cents: 3000,
+      available_amount: 30,
+    };
+
+    const currencyState = {
+      convert_to_php: false,
+      usd_php_rate: 61.579,
+      usd_php_rate_date: '2026-07-14',
+      usd_php_rate_fetched_at: '2026-07-14T10:00:00.000Z',
+      usd_php_rate_source: 'frankfurter',
+    };
+
+    const result = await sync.processSync({
+      payments,
+      fundsHistorySnapshot: { pending_payout_entries: payments.pending_payout_entries },
+      includeFundsHistory: true,
+      currencyState,
+      now: new Date('2026-07-14T12:00:00.000Z'),
+    });
+
+    assert.equal(result.enabled, true);
+    assert.equal(result.changed, false);
+    assert.match(result.error, /Wallet income batch incomplete/);
+
+    const state = JSON.parse(fs.readFileSync(sync.statePath, 'utf8'));
+    assert.equal(Object.keys(state.imported_funds_entries).length, 1);
+    assert.ok(state.wallet_api_retry_after_at);
     assert.equal(createdRecords.length, 1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

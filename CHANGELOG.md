@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2
+
+- Fix Wallet sync so stale or partial income batches no longer skip Data Annotation imports silently.
+
 ## 0.7.1
 
 - Simplify Wallet live write to token-only auth and resolve the live account by name.
