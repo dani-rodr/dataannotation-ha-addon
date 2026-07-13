@@ -5340,11 +5340,13 @@ var require_wallet_sync = __commonJS({
           if (!feeCategory) missing.push(`category:${this.config.wallet_fee_category_name}`);
           throw new Error(`Wallet reference data not resolved: ${missing.join(", ")}`);
         }
-        if (normalizeText2(dataAnnotationAccount.currencyCode) !== WALLET_CURRENCY) {
-          throw new Error(`Wallet account '${dataAnnotationAccount.name}' must be PHP`);
+        const dataAnnotationCurrency = resolveAccountCurrencyCode(dataAnnotationAccount);
+        const gotymeCurrency = resolveAccountCurrencyCode(gotymeAccount);
+        if (dataAnnotationCurrency !== WALLET_CURRENCY) {
+          throw new Error(`Wallet account '${dataAnnotationAccount.name}' must be PHP (found: ${dataAnnotationCurrency || "unknown"})`);
         }
-        if (normalizeText2(gotymeAccount.currencyCode) !== WALLET_CURRENCY) {
-          throw new Error(`Wallet account '${gotymeAccount.name}' must be PHP`);
+        if (gotymeCurrency !== WALLET_CURRENCY) {
+          throw new Error(`Wallet account '${gotymeAccount.name}' must be PHP (found: ${gotymeCurrency || "unknown"})`);
         }
         this.referenceData = {
           dataAnnotationAccount,
@@ -5999,6 +6001,10 @@ var require_wallet_sync = __commonJS({
       }
       return matches[0];
     }
+    function resolveAccountCurrencyCode(account) {
+      const candidate = account?.currencyCode || account?.currency || account?.baseCurrency || account?.initialBalance?.currencyCode || account?.balance?.currencyCode || account?.currency?.code || account?.currency?.currencyCode || account?.currency?.isoCode || account?.currency?.currency_code || account?.currency?.shortCode || account?.currency?.name || account?.baseCurrency?.code || account?.baseCurrency?.currencyCode || account?.baseCurrency?.isoCode || account?.baseCurrency?.currency_code || account?.baseCurrency?.shortCode || account?.baseCurrency?.name;
+      return normalizeText2(candidate).toUpperCase();
+    }
     module2.exports = {
       WalletSync,
       buildIncomeMarker,
@@ -6376,7 +6382,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.0",
+      version: "0.7.1",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

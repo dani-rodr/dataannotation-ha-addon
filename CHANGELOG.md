@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.1
+
+- Simplify Wallet live write to token-only auth and resolve the live account by name.
+- Normalize Wallet account currency detection so nested currency shapes are accepted.
+- Expand the Wallet live write smoke test to validate Income, Charges, fees, and transfer records with exact notes.
+
+## 0.7.0
+
+- Add Wallet sync support for importing DataAnnotation income and tracking withdrawal fee/transfer records.
+- Add a dedicated opt-in Wallet live write test, recovery journal, and GitHub Actions workflow.
+- Fix Wallet config parsing, record payloads, recovery state, rate-limit handling, and record lookup paging.
+- Normalize Wallet account currency detection so the live account shape is accepted whether currency is exposed directly or nested.
+
 ## 0.6.16
 
 - Persist the last known future Next Withdrawal timestamp across restarts and reconstruct it from the latest payout cooldown when needed.

@@ -235,3 +235,46 @@ test('WalletSync persists a backoff when the Wallet API rate limits requests', a
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('WalletSync accepts Wallet account currency from nested account currency data', async () => {
+  const { sync, dir } = createWalletSync();
+
+  sync.client = {
+    fetchAccounts: async () => [
+      { id: 'da', name: 'Data Annotation', currency: { code: 'PHP' } },
+      { id: 'gt', name: 'GoTyme', currency: { code: 'PHP' } },
+    ],
+    fetchCategories: async () => [
+      { id: 'income', name: 'Income', archived: false },
+      { id: 'fees', name: 'Charges, Fees', archived: false },
+    ],
+    findRecordsByNote: async () => [],
+    createRecords: async () => ({ results: [] }),
+  };
+
+  try {
+    const result = await sync.processSync({
+      payments: {
+        pending_payout_entries: [],
+        last_payout_at: null,
+        available_amount_cents: 0,
+        available_amount: 0,
+      },
+      includeFundsHistory: false,
+      currencyState: {
+        convert_to_php: false,
+        usd_php_rate: 61.579,
+        usd_php_rate_date: '2026-07-14',
+        usd_php_rate_fetched_at: '2026-07-14T10:00:00.000Z',
+        usd_php_rate_source: 'frankfurter',
+      },
+      now: new Date('2026-07-14T12:00:00.000Z'),
+    });
+
+    assert.equal(result.enabled, true);
+    assert.equal(result.changed, false);
+    assert.equal(result.reason, undefined);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

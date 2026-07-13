@@ -111,12 +111,15 @@ class WalletSync {
       throw new Error(`Wallet reference data not resolved: ${missing.join(', ')}`);
     }
 
-    if (normalizeText(dataAnnotationAccount.currencyCode) !== WALLET_CURRENCY) {
-      throw new Error(`Wallet account '${dataAnnotationAccount.name}' must be PHP`);
+    const dataAnnotationCurrency = resolveAccountCurrencyCode(dataAnnotationAccount);
+    const gotymeCurrency = resolveAccountCurrencyCode(gotymeAccount);
+
+    if (dataAnnotationCurrency !== WALLET_CURRENCY) {
+      throw new Error(`Wallet account '${dataAnnotationAccount.name}' must be PHP (found: ${dataAnnotationCurrency || 'unknown'})`);
     }
 
-    if (normalizeText(gotymeAccount.currencyCode) !== WALLET_CURRENCY) {
-      throw new Error(`Wallet account '${gotymeAccount.name}' must be PHP`);
+    if (gotymeCurrency !== WALLET_CURRENCY) {
+      throw new Error(`Wallet account '${gotymeAccount.name}' must be PHP (found: ${gotymeCurrency || 'unknown'})`);
     }
 
     this.referenceData = {
@@ -886,6 +889,28 @@ function resolveCategoryByName(categories, name) {
   }
 
   return matches[0];
+}
+
+function resolveAccountCurrencyCode(account) {
+  const candidate = account?.currencyCode
+    || account?.currency
+    || account?.baseCurrency
+    || account?.initialBalance?.currencyCode
+    || account?.balance?.currencyCode
+    || account?.currency?.code
+    || account?.currency?.currencyCode
+    || account?.currency?.isoCode
+    || account?.currency?.currency_code
+    || account?.currency?.shortCode
+    || account?.currency?.name
+    || account?.baseCurrency?.code
+    || account?.baseCurrency?.currencyCode
+    || account?.baseCurrency?.isoCode
+    || account?.baseCurrency?.currency_code
+    || account?.baseCurrency?.shortCode
+    || account?.baseCurrency?.name;
+
+  return normalizeText(candidate).toUpperCase();
 }
 
 module.exports = {

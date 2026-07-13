@@ -9,9 +9,6 @@ jobs:
     environment: wallet-live-write
     env:
       WALLET_TOKEN: ${{ secrets.WALLET_TOKEN }}
-      WALLET_LIVE_WRITE_ACCOUNT_ID: ${{ vars.WALLET_LIVE_WRITE_ACCOUNT_ID }}
-      WALLET_LIVE_WRITE_TEST: ${{ vars.WALLET_LIVE_WRITE_TEST }}
-      WALLET_LIVE_WRITE_CLEANUP: ${{ vars.WALLET_LIVE_WRITE_CLEANUP }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
