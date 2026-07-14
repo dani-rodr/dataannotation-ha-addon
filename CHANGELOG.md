@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.3
+
+- Remove automatic Wallet withdrawal detection and create Wallet fee/transfer records only after a confirmed Data Annotation withdraw submission.
+- Fix PayPal fee calculation so a 1% fee without a minimum floor is applied correctly.
+
 ## 0.7.2
 
 - Fix Wallet sync so stale or partial income batches no longer skip Data Annotation imports silently.

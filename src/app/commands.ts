@@ -75,7 +75,7 @@ export async function maybeAutoAcceptNewTasks({
   return { enabled, lastAttemptSignature: nextAttemptSignature };
 }
 
-export async function handleWithdrawRequest(client: any, bridge: any, withdrawLocked: boolean, currencyState: any, lastSuccessfulPayments: any, logger: any) {
+export async function handleWithdrawRequest(client: any, walletSync: any, bridge: any, withdrawLocked: boolean, currencyState: any, lastSuccessfulPayments: any, logger: any) {
   logger.info('Processing withdraw request');
 
   if (withdrawLocked) {
@@ -120,6 +120,13 @@ export async function handleWithdrawRequest(client: any, bridge: any, withdrawLo
     logger.warning(`Withdrawal request was not submitted: ${result.status}`);
   } else {
     logger.info('Withdrawal request submitted successfully');
+    if (walletSync?.recordWithdrawalSubmission) {
+      await walletSync.recordWithdrawalSubmission({
+        payments,
+        currencyState,
+        now: new Date(),
+      });
+    }
   }
 
   bridge.publishPayments(publishedPayments);

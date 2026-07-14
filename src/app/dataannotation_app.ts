@@ -186,7 +186,7 @@ class DataAnnotationApp {
 
     if (bridge.withdrawRequested.value) {
       bridge.withdrawRequested.value = false;
-      await handleWithdrawRequest(this.client, bridge, state.withdrawLocked, state.currencyState, state.lastSuccessfulPayments, logger);
+      await handleWithdrawRequest(this.client, this.walletSync, bridge, state.withdrawLocked, state.currencyState, state.lastSuccessfulPayments, logger);
       bridge.scanRequested.value = true;
     }
   }

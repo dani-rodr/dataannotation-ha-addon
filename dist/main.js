@@ -4636,7 +4636,7 @@ async function maybeAutoAcceptNewTasks({
   }
   return { enabled, lastAttemptSignature: nextAttemptSignature };
 }
-async function handleWithdrawRequest(client, bridge, withdrawLocked, currencyState, lastSuccessfulPayments, logger) {
+async function handleWithdrawRequest(client, walletSync, bridge, withdrawLocked, currencyState, lastSuccessfulPayments, logger) {
   logger.info("Processing withdraw request");
   if (withdrawLocked) {
     try {
@@ -4673,6 +4673,13 @@ async function handleWithdrawRequest(client, bridge, withdrawLocked, currencySta
     logger.warning(`Withdrawal request was not submitted: ${result.status}`);
   } else {
     logger.info("Withdrawal request submitted successfully");
+    if (walletSync?.recordWithdrawalSubmission) {
+      await walletSync.recordWithdrawalSubmission({
+        payments,
+        currencyState,
+        now: /* @__PURE__ */ new Date()
+      });
+    }
   }
   bridge.publishPayments(publishedPayments);
   bridge.scanRequested.value = true;
@@ -5298,14 +5305,6 @@ var require_wallet_sync = __commonJS({
             });
             changed = changed || imported;
           }
-          const withdrawalProcessed = await this._processWithdrawalIfNeeded({
-            state,
-            referenceData,
-            payments,
-            fx,
-            now
-          });
-          changed = changed || withdrawalProcessed;
           state.last_seen_available_amount_cents = normalizeCents2(payments.available_amount_cents, payments.available_amount);
           state.last_seen_available_amount = normalizeMoney(payments.available_amount);
           state.updated_at = now.toISOString();
@@ -5374,9 +5373,50 @@ var require_wallet_sync = __commonJS({
           referenceRate: rate,
           settlementRate: roundToSix(rate * normalizeNumber(this.config.wallet_settlement_adjustment, 0.99856)),
           feeRate: normalizeNumber(this.config.wallet_paypal_fee_rate, 0.01),
-          feeMinUsd: normalizeNumber(this.config.wallet_paypal_fee_min_usd, 0.25),
           feeMaxUsd: normalizeNumber(this.config.wallet_paypal_fee_max_usd, 10)
         };
+      }
+      async recordWithdrawalSubmission({ payments, currencyState, now = /* @__PURE__ */ new Date() }) {
+        if (!this.isEnabled()) {
+          return { enabled: false, changed: false };
+        }
+        if (!payments) {
+          return { enabled: true, changed: false };
+        }
+        let state = loadWalletSyncState(this.statePath);
+        if (isFutureIsoDate(state.wallet_api_retry_after_at, now)) {
+          return { enabled: true, changed: false, reason: "wallet_backoff" };
+        }
+        try {
+          const referenceData = await this._ensureReferenceData();
+          if (!referenceData) {
+            return { enabled: true, changed: false, reason: "wallet_reference_data_unavailable" };
+          }
+          const fx = await this._resolveSettlementRate(currencyState, now);
+          if (!fx) {
+            this.logger.warning("Wallet withdrawal skipped because no USD/PHP rate is available");
+            return { enabled: true, changed: false, reason: "fx_unavailable" };
+          }
+          const result = await this._createConfirmedWithdrawal({
+            state,
+            referenceData,
+            payments,
+            fx,
+            now
+          });
+          state.updated_at = now.toISOString();
+          clearWalletApiBackoff(state);
+          saveWalletSyncState(this.statePath, state);
+          return { enabled: true, changed: result.changed };
+        } catch (error) {
+          applyWalletApiBackoff(state, error, now);
+          if (state) {
+            state.updated_at = now.toISOString();
+            saveWalletSyncState(this.statePath, state);
+          }
+          this.logger.warning(`Wallet withdrawal skipped: ${error.message}`);
+          return { enabled: true, changed: false, error: error.message };
+        }
       }
       async _importNewIncomeEntries({ state, referenceData, fundsHistorySnapshot, fx, now }) {
         const entries = Array.isArray(fundsHistorySnapshot?.pending_payout_entries) ? fundsHistorySnapshot.pending_payout_entries : [];
@@ -5605,34 +5645,19 @@ var require_wallet_sync = __commonJS({
           return { changed };
         }
       }
-      async _processWithdrawalIfNeeded({ state, referenceData, payments, fx, now }) {
-        const currentPayoutAt = normalizeIsoDate(payments.last_payout_at);
-        if (!state.first_sync_completed_at) {
-          state.first_sync_completed_at = now.toISOString();
-          if (currentPayoutAt) {
-            state.last_seen_last_payout_at = currentPayoutAt;
-          }
-          saveWalletSyncState(this.statePath, state);
-          return false;
-        }
-        if (!currentPayoutAt) {
-          return false;
-        }
-        const previousPayoutAt = normalizeIsoDate(state.last_seen_last_payout_at);
-        const grossUsdCents = positiveCents(payments.last_payout_amount_cents, payments.last_payout_amount) || positiveCents(state.last_seen_available_amount_cents, state.last_seen_available_amount);
+      async _createConfirmedWithdrawal({ state, referenceData, payments, fx, now }) {
+        const payoutAt = normalizeIsoDate(payments.last_payout_at) || now.toISOString();
+        const grossUsdCents = positiveCents(payments.last_payout_amount_cents, payments.last_payout_amount);
         if (grossUsdCents <= 0) {
-          return false;
+          return { changed: false };
         }
         const withdrawalMarker = buildWithdrawalMarker({
-          payoutAt: currentPayoutAt,
+          payoutAt,
           grossUsdCents
         });
         const withdrawalState = state.withdrawal_events[withdrawalMarker] || normalizeWithdrawalState(withdrawalMarker);
-        if (previousPayoutAt && currentPayoutAt <= previousPayoutAt && withdrawalState.fee_record_id && withdrawalState.transfer_record_id) {
-          return false;
-        }
         if (withdrawalState.fee_record_id && withdrawalState.transfer_record_id) {
-          return false;
+          return { changed: false };
         }
         const feeUsdCents = calculatePaypalFeeCents(grossUsdCents, fx);
         const netUsdCents = Math.max(0, grossUsdCents - feeUsdCents);
@@ -5640,7 +5665,7 @@ var require_wallet_sync = __commonJS({
         const feePhpCents = roundToCents(feeUsdCents / 100 * fx.settlementRate * 100);
         const netPhpCents = Math.max(0, grossPhpCents - feePhpCents);
         const commonContext = {
-          payoutAt: currentPayoutAt,
+          payoutAt,
           grossUsdCents,
           feeUsdCents,
           netUsdCents,
@@ -5696,10 +5721,10 @@ var require_wallet_sync = __commonJS({
             created_at: withdrawalState.created_at || now.toISOString(),
             completed_at: now.toISOString()
           };
-          state.last_seen_last_payout_at = currentPayoutAt;
+          state.last_seen_last_payout_at = payoutAt;
           state.first_sync_completed_at = state.first_sync_completed_at || now.toISOString();
           saveWalletSyncState(this.statePath, state);
-          return true;
+          return { changed: true };
         }
         withdrawalState.key = withdrawalMarker;
         withdrawalState.note_marker = withdrawalMarker;
@@ -5717,7 +5742,10 @@ var require_wallet_sync = __commonJS({
         withdrawalState.attempt_count = (withdrawalState.attempt_count || 0) + 1;
         state.withdrawal_events[withdrawalMarker] = withdrawalState;
         saveWalletSyncState(this.statePath, state);
-        return Boolean(feeRecord?.recordId || transferRecord?.recordId);
+        return { changed: Boolean(feeRecord?.recordId || transferRecord?.recordId) };
+      }
+      async _processWithdrawalIfNeeded() {
+        return false;
       }
       async _createWithdrawalFeeRecord(context, state, referenceData) {
         const existing = state.withdrawal_events[context.withdrawalMarker];
@@ -5973,7 +6001,7 @@ var require_wallet_sync = __commonJS({
     }
     function calculatePaypalFeeCents(grossUsdCents, fx) {
       const grossUsd = grossUsdCents / 100;
-      const feeUsd = Math.min(Math.max(roundToCents(grossUsd * fx.feeRate) / 100, fx.feeMinUsd), fx.feeMaxUsd);
+      const feeUsd = Math.min(grossUsd * fx.feeRate, fx.feeMaxUsd);
       return Math.min(grossUsdCents, roundToCents(feeUsd * 100));
     }
     function normalizeText2(value) {
@@ -6288,7 +6316,7 @@ var require_dataannotation_app = __commonJS({
         }
         if (bridge.withdrawRequested.value) {
           bridge.withdrawRequested.value = false;
-          await handleWithdrawRequest2(this.client, bridge, state.withdrawLocked, state.currencyState, state.lastSuccessfulPayments, logger);
+          await handleWithdrawRequest2(this.client, this.walletSync, bridge, state.withdrawLocked, state.currencyState, state.lastSuccessfulPayments, logger);
           bridge.scanRequested.value = true;
         }
       }
@@ -6444,7 +6472,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.2",
+      version: "0.7.3",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const test = require('node:test');
 
-const { WalletSync } = require('../../../src/wallet/wallet_sync.ts');
+const { WalletSync, calculatePaypalFeeCents } = require('../../../src/wallet/wallet_sync.ts');
 
 function createLogger() {
   return {
@@ -262,7 +262,7 @@ test('WalletSync marks a partial income batch as failed and backs off', async ()
   }
 });
 
-test('WalletSync creates fee and transfer records after the first baseline sync', async () => {
+test('WalletSync records a confirmed withdrawal only after explicit submission', async () => {
   const { sync, dir } = createWalletSync();
   const createdRecords = [];
 
@@ -309,31 +309,40 @@ test('WalletSync creates fee and transfer records after the first baseline sync'
     assert.equal(baseline.changed, false);
     assert.equal(createdRecords.length, 0);
 
-    const result = await sync.processSync({
+    const withdrawal = await sync.recordWithdrawalSubmission({
       payments: {
         ...baselinePayments,
+        last_payout_amount_cents: 50500,
+        last_payout_amount: 505,
         last_payout_at: '2026-07-15T11:30:00.000Z',
       },
-      includeFundsHistory: false,
       currencyState,
       now: new Date('2026-07-15T12:00:00.000Z'),
     });
 
-    assert.equal(result.enabled, true);
-    assert.equal(result.changed, true);
+    assert.equal(withdrawal.enabled, true);
+    assert.equal(withdrawal.changed, true);
     assert.equal(createdRecords.length, 2);
     assert.equal(createdRecords[0][0].paymentType, 'transfer');
     assert.equal(createdRecords[0][0].categoryId, 'fees');
     assert.equal(createdRecords[0][0].amount.currencyCode, 'PHP');
+    assert.match(createdRecords[0][0].note, /fee=\$5\.05/);
     assert.equal(createdRecords[1][0].transfer.accountId, 'gt');
     assert.equal(createdRecords[1][0].recordState, 'cleared');
     assert.equal(createdRecords[1][0].amount.currencyCode, 'PHP');
+    assert.match(createdRecords[1][0].note, /fee=\$5\.05/);
 
     const state = JSON.parse(fs.readFileSync(sync.statePath, 'utf8'));
     assert.equal(Object.keys(state.withdrawal_events).length, 1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('calculatePaypalFeeCents applies the 1% fee with no minimum floor', async () => {
+  assert.equal(calculatePaypalFeeCents(50500, { feeRate: 0.01, feeMaxUsd: 10 }), 505);
+  assert.equal(calculatePaypalFeeCents(2500, { feeRate: 0.01, feeMaxUsd: 10 }), 25);
+  assert.equal(calculatePaypalFeeCents(2_000_000, { feeRate: 0.01, feeMaxUsd: 10 }), 1000);
 });
 
 test('WalletSync persists a backoff when the Wallet API rate limits requests', async () => {
