@@ -70,3 +70,37 @@ test('WalletApiClient.deleteRecords sends the record id list contract', async ()
     global.fetch = originalFetch;
   }
 });
+
+test('WalletApiClient.patchRecords sends strict validation with batched record updates', async () => {
+  const originalFetch = global.fetch;
+  let requestedUrl = null;
+  let requestedBody = null;
+
+  global.fetch = async (url, options) => {
+    requestedUrl = String(url);
+    requestedBody = options?.body ? JSON.parse(options.body) : null;
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ results: [{ success: true, id: 'record-1' }] }),
+      headers: new Headers(),
+    };
+  };
+
+  try {
+    const client = new WalletApiClient('test-token');
+    const response = await client.patchRecords([
+      { id: 'record-1', amount: 123.45, note: 'DAWALLET|inc|abc123' },
+    ]);
+
+    assert.deepEqual(response, { results: [{ success: true, id: 'record-1' }] });
+    assert.match(requestedUrl, /\/records\?/);
+    assert.match(requestedUrl, /validation=strict/);
+    assert.match(requestedUrl, /returnData=true/);
+    assert.deepEqual(requestedBody, [
+      { id: 'record-1', amount: 123.45, note: 'DAWALLET|inc|abc123' },
+    ]);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

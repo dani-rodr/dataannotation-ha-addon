@@ -41,8 +41,10 @@ export function shouldIncludeFundsHistory({
   return Number.isFinite(nextFundsHistoryAt) ? now >= nextFundsHistoryAt : true;
 }
 
-export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefined): Pick<PaymentSnapshot, 'next_payout_days' | 'next_payout_at' | 'next_payout_entries_count' | 'next_payout_at_human' | 'next_payout_entries' | 'next_payout_amount' | 'next_payout_source' | 'next_payout_confidence' | 'pending_payout_entries' | 'last_payout_amount_cents' | 'last_payout_amount' | 'last_payout_amount_formatted'> {
+export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefined): Pick<PaymentSnapshot, 'available_amount_cents' | 'available_amount' | 'next_payout_days' | 'next_payout_at' | 'next_payout_entries_count' | 'next_payout_at_human' | 'next_payout_entries' | 'next_payout_amount' | 'next_payout_source' | 'next_payout_confidence' | 'pending_payout_entries' | 'funds_history_complete' | 'last_payout_amount_cents' | 'last_payout_amount' | 'last_payout_amount_formatted'> {
   return {
+    available_amount_cents: payments?.available_amount_cents ?? null,
+    available_amount: payments?.available_amount ?? null,
     next_payout_days: payments?.next_payout_days ?? 0,
     next_payout_at: payments?.next_payout_at ?? null,
     next_payout_entries_count: payments?.next_payout_entries_count ?? 0,
@@ -52,6 +54,7 @@ export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefi
     next_payout_source: payments?.next_payout_source ?? null,
     next_payout_confidence: payments?.next_payout_confidence ?? null,
     pending_payout_entries: Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : [],
+    funds_history_complete: payments?.funds_history_complete ?? null,
     last_payout_amount_cents: payments?.last_payout_amount_cents ?? null,
     last_payout_amount: payments?.last_payout_amount ?? null,
     last_payout_amount_formatted: payments?.last_payout_amount_formatted ?? null,
@@ -59,10 +62,20 @@ export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefi
 }
 
 export function mergePaymentsWithFundsHistory(payments: PaymentSnapshot | null | undefined, fundsHistorySnapshot: Partial<PaymentSnapshot> | null | undefined): PaymentSnapshot {
-  return {
+  const merged = {
     ...(payments || {}),
     ...(fundsHistorySnapshot || {}),
   };
+
+  if (payments && Object.prototype.hasOwnProperty.call(payments, 'available_amount_cents')) {
+    merged.available_amount_cents = payments.available_amount_cents;
+  }
+
+  if (payments && Object.prototype.hasOwnProperty.call(payments, 'available_amount')) {
+    merged.available_amount = payments.available_amount;
+  }
+
+  return merged;
 }
 
 export function retainNextWithdrawalAt(currentPayments: PaymentSnapshot | null | undefined, previousPayments: PaymentSnapshot | null | undefined, now: Date = new Date()): PaymentSnapshot {
@@ -108,14 +121,18 @@ function retainLastPayoutAmount(currentPayments: PaymentSnapshot, previousPaymen
 }
 
 function normalizeCents(centsValue: unknown, amountValue: unknown): number | null {
-  const cents = Number(centsValue);
-  if (Number.isFinite(cents)) {
-    return Math.round(cents);
+  if (centsValue !== undefined && centsValue !== null && centsValue !== '') {
+    const cents = Number(centsValue);
+    if (Number.isFinite(cents)) {
+      return Math.round(cents);
+    }
   }
 
-  const amount = Number(amountValue);
-  if (Number.isFinite(amount)) {
-    return Math.round(amount * 100);
+  if (amountValue !== undefined && amountValue !== null && amountValue !== '') {
+    const amount = Number(amountValue);
+    if (Number.isFinite(amount)) {
+      return Math.round(amount * 100);
+    }
   }
 
   return null;

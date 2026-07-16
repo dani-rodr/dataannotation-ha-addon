@@ -74,6 +74,27 @@ class WalletApiClient {
     return response.data;
   }
 
+  async patchRecords(records, returnData = true) {
+    const recordItems = Array.isArray(records) ? records.map((record) => ({ ...(record || {}) })) : [];
+    if (recordItems.length === 0) {
+      throw new WalletApiError('Wallet API patchRecords requires at least one record');
+    }
+
+    if (recordItems.length > 10) {
+      throw new WalletApiError('Wallet API patchRecords supports at most 10 records per request');
+    }
+
+    const response = await this._request('PATCH', '/records', {
+      query: {
+        validation: 'strict',
+        returnData: returnData ? 'true' : 'false',
+      },
+      body: recordItems,
+    });
+
+    return response.data;
+  }
+
   async deleteRecords(ids) {
     const recordIds = Array.isArray(ids) ? ids.map((value) => String(value).trim()).filter(Boolean) : [];
     if (recordIds.length === 0) {

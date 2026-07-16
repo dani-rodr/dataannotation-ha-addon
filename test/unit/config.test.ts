@@ -80,6 +80,7 @@ test('readConfig defaults fast polling to 5 seconds and preserves explicit value
   try {
     const config = await readConfig();
     assert.equal(config.fast_poll_cron, '*/15 * * * * *');
+    assert.equal(config.wallet_settlement_adjustment, 0.99985676);
   } finally {
     fs.existsSync = originalExistsSync;
     fs.readFileSync = originalReadFileSync;

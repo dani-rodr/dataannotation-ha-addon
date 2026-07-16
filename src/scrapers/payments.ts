@@ -13,6 +13,7 @@ function extractPaymentsSnapshot({
   next_payout_at = null,
   next_payout_entries_count = 0,
   pending_payout_entries = [],
+  funds_history_complete = null,
   scrapedAt = null,
   now = new Date(),
 }) {
@@ -87,6 +88,7 @@ function extractPaymentsSnapshot({
     next_payout_at_human: formatHumanTimestamp(next_payout_at),
     next_payout_entries_count: numberOrZero(next_payout_entries_count),
     pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
+    funds_history_complete: funds_history_complete ?? null,
     pending_payout_entries_public: formatPublicPayoutEntries(pending_payout_entries),
     next_payout_entries: nextPayoutEntries,
     next_payout_entries_public: formatPublicPayoutEntries(nextPayoutEntries),

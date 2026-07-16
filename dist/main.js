@@ -464,7 +464,7 @@ var init_config = __esm({
       wallet_paypal_fee_rate: 0.01,
       wallet_paypal_fee_min_usd: 0.25,
       wallet_paypal_fee_max_usd: 10,
-      wallet_settlement_adjustment: 0.99856
+      wallet_settlement_adjustment: 0.99985676
     };
   }
 });
@@ -2408,8 +2408,8 @@ var require_funds_history = __commonJS({
       "dec"
     ];
     async function scrapeFundsHistory(page, { observationsPath = null, now = /* @__PURE__ */ new Date() } = {}) {
-      await openFundsHistoryTab(page);
-      await expandFundsHistoryRows(page);
+      const historyTabReady = await openFundsHistoryTab(page);
+      const historyRowsReady = await expandFundsHistoryRows(page);
       const rows = await page.$$eval("tr", (tableRows) => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         return tableRows.map((row) => normalize(row.innerText || row.textContent || "")).filter(Boolean);
@@ -2423,7 +2423,10 @@ var require_funds_history = __commonJS({
         } catch {
         }
       }
-      return summarizeFundsHistoryEntries(merged.entries, now);
+      return {
+        ...summarizeFundsHistoryEntries(merged.entries, now),
+        funds_history_complete: historyTabReady && historyRowsReady && parsedEntries.length > 0
+      };
     }
     function parseFundsHistoryEntries(rows, now = /* @__PURE__ */ new Date()) {
       const entries = [];
@@ -2705,7 +2708,7 @@ var require_funds_history = __commonJS({
       return localMidnight.toISOString();
     }
     async function openFundsHistoryTab(page) {
-      await page.evaluate(() => {
+      const tabFound = await page.evaluate(() => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         const target = Array.from(document.querySelectorAll('button,[role="tab"]')).find((element) => {
           const node = element;
@@ -2717,41 +2720,44 @@ var require_funds_history = __commonJS({
         if (target) {
           target.click();
         }
+        return Boolean(target);
       });
-      await page.waitForFunction(() => {
+      if (!tabFound) {
+        return false;
+      }
+      const historyLoaded = await page.waitForFunction(() => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
           const node = element;
           const text = normalize(node.innerText || node.textContent || "");
           return /^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text);
         });
-      }, { timeout: 3e4 }).catch(() => {
-      });
+      }, { timeout: 3e4 }).then(() => true).catch(() => false);
       await sleep(250);
+      return historyLoaded;
     }
     async function expandFundsHistoryRows(page) {
-      await clickFundsHistoryRows(page, "month");
-      await page.waitForFunction(() => {
+      const monthRowCount = await clickFundsHistoryRows(page, "month");
+      const monthRowsExpanded = await page.waitForFunction(() => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
           const node = element;
           const text = normalize(node.innerText || node.textContent || "");
           return /^(Time Entry|Task Submission)/i.test(text) || /^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text) && !/^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text);
         });
-      }, { timeout: 3e4 }).catch(() => {
-      });
+      }, { timeout: 3e4 }).then(() => true).catch(() => false);
       await sleep(250);
-      await clickFundsHistoryRows(page, "project");
-      await page.waitForFunction(() => {
+      const projectRowCount = await clickFundsHistoryRows(page, "project");
+      const projectRowsExpanded = await page.waitForFunction(() => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         return Array.from(document.querySelectorAll("tr")).some((row) => {
           const node = row;
           const text = normalize(node.innerText || node.textContent || "");
           return /Pending Approval/i.test(text) || /Paid/i.test(text);
         });
-      }, { timeout: 3e4 }).catch(() => {
-      });
+      }, { timeout: 3e4 }).then(() => true).catch(() => false);
       await sleep(250);
+      return monthRowCount > 0 && monthRowsExpanded && projectRowCount > 0 && projectRowsExpanded;
     }
     async function clickFundsHistoryRows(page, kind) {
       return page.evaluate((rowKind) => {
@@ -2900,6 +2906,7 @@ var require_payments = __commonJS({
       next_payout_at = null,
       next_payout_entries_count = 0,
       pending_payout_entries = [],
+      funds_history_complete = null,
       scrapedAt = null,
       now = /* @__PURE__ */ new Date()
     }) {
@@ -2973,6 +2980,7 @@ var require_payments = __commonJS({
         next_payout_at_human: formatHumanTimestamp(next_payout_at),
         next_payout_entries_count: numberOrZero3(next_payout_entries_count),
         pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
+        funds_history_complete: funds_history_complete ?? null,
         pending_payout_entries_public: formatPublicPayoutEntries(pending_payout_entries),
         next_payout_entries: nextPayoutEntries,
         next_payout_entries_public: formatPublicPayoutEntries(nextPayoutEntries),
@@ -4899,6 +4907,8 @@ function shouldIncludeFundsHistory({
 }
 function pickFundsHistoryFields(payments) {
   return {
+    available_amount_cents: payments?.available_amount_cents ?? null,
+    available_amount: payments?.available_amount ?? null,
     next_payout_days: payments?.next_payout_days ?? 0,
     next_payout_at: payments?.next_payout_at ?? null,
     next_payout_entries_count: payments?.next_payout_entries_count ?? 0,
@@ -4908,16 +4918,24 @@ function pickFundsHistoryFields(payments) {
     next_payout_source: payments?.next_payout_source ?? null,
     next_payout_confidence: payments?.next_payout_confidence ?? null,
     pending_payout_entries: Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : [],
+    funds_history_complete: payments?.funds_history_complete ?? null,
     last_payout_amount_cents: payments?.last_payout_amount_cents ?? null,
     last_payout_amount: payments?.last_payout_amount ?? null,
     last_payout_amount_formatted: payments?.last_payout_amount_formatted ?? null
   };
 }
 function mergePaymentsWithFundsHistory(payments, fundsHistorySnapshot) {
-  return {
+  const merged = {
     ...payments || {},
     ...fundsHistorySnapshot || {}
   };
+  if (payments && Object.prototype.hasOwnProperty.call(payments, "available_amount_cents")) {
+    merged.available_amount_cents = payments.available_amount_cents;
+  }
+  if (payments && Object.prototype.hasOwnProperty.call(payments, "available_amount")) {
+    merged.available_amount = payments.available_amount;
+  }
+  return merged;
 }
 function retainNextWithdrawalAt(currentPayments, previousPayments, now = /* @__PURE__ */ new Date()) {
   const current = { ...currentPayments || {} };
@@ -4953,13 +4971,17 @@ function retainLastPayoutAmount(currentPayments, previousPayments) {
   currentPayments.last_payout_amount_formatted = formatCents(previousAvailableAmountCents);
 }
 function normalizeCents(centsValue, amountValue) {
-  const cents = Number(centsValue);
-  if (Number.isFinite(cents)) {
-    return Math.round(cents);
+  if (centsValue !== void 0 && centsValue !== null && centsValue !== "") {
+    const cents = Number(centsValue);
+    if (Number.isFinite(cents)) {
+      return Math.round(cents);
+    }
   }
-  const amount = Number(amountValue);
-  if (Number.isFinite(amount)) {
-    return Math.round(amount * 100);
+  if (amountValue !== void 0 && amountValue !== null && amountValue !== "") {
+    const amount = Number(amountValue);
+    if (Number.isFinite(amount)) {
+      return Math.round(amount * 100);
+    }
   }
   return null;
 }
@@ -5718,7 +5740,7 @@ var require_wallet_sync_state = __commonJS({
     var fs7 = require("node:fs");
     var path6 = require("node:path");
     var DEFAULT_WALLET_SYNC_STATE = {
-      version: 2,
+      version: 4,
       created_at: null,
       updated_at: null,
       first_sync_completed_at: null,
@@ -5728,6 +5750,8 @@ var require_wallet_sync_state = __commonJS({
       last_seen_last_payout_at: null,
       last_seen_available_amount_cents: null,
       last_seen_available_amount: null,
+      last_applied_settlement_rate: null,
+      pending_revaluation: null,
       imported_funds_entries: {},
       withdrawal_events: {}
     };
@@ -5753,7 +5777,8 @@ var require_wallet_sync_state = __commonJS({
     }
     function normalizeWalletSyncState(value) {
       const payload = value && typeof value === "object" ? value : {};
-      const version2 = normalizeNumber(payload.version) || 2;
+      const sourceVersion = normalizeNumber(payload.version) || 2;
+      const version2 = Math.max(4, sourceVersion);
       return {
         version: version2,
         created_at: normalizeIsoDate(payload.created_at) || null,
@@ -5765,50 +5790,78 @@ var require_wallet_sync_state = __commonJS({
         last_seen_last_payout_at: normalizeIsoDate(payload.last_seen_last_payout_at) || null,
         last_seen_available_amount_cents: normalizeNumber(payload.last_seen_available_amount_cents),
         last_seen_available_amount: normalizeNumber(payload.last_seen_available_amount),
-        imported_funds_entries: normalizeEntryMap(payload.imported_funds_entries),
+        last_applied_settlement_rate: normalizeNumber(payload.last_applied_settlement_rate),
+        pending_revaluation: normalizePendingRevaluation(payload.pending_revaluation),
+        imported_funds_entries: normalizeEntryMap(payload.imported_funds_entries, sourceVersion),
         withdrawal_events: normalizeEntryMap(payload.withdrawal_events)
       };
     }
-    function normalizeEntryMap(value) {
+    function normalizeEntryMap(value, sourceVersion = 4) {
       const entries = value && typeof value === "object" ? value : {};
       const normalized = {};
       for (const [key, entry] of Object.entries(entries)) {
-        const normalizedEntry = normalizeLedgerEntry(key, entry);
+        const normalizedEntry = normalizeLedgerEntry(key, entry, sourceVersion);
         if (normalizedEntry) {
           normalized[key] = normalizedEntry;
         }
       }
       return normalized;
     }
-    function normalizeLedgerEntry(key, value) {
+    function normalizeLedgerEntry(key, value, sourceVersion = 4) {
       if (!value || typeof value !== "object") {
         return null;
       }
       const feeRecordId = normalizeText2(value.fee_record_id) || normalizeText2(value.record_id);
       const transferRecordId = normalizeText2(value.transfer_record_id) || normalizeText2(value.mirror_record_id);
+      const sourceType = normalizeText2(value.source_type);
+      let status = normalizeText2(value.status);
+      let sourceRate = normalizeNumber(value.source_rate);
+      if (sourceType === "income" && sourceVersion < 4 && !status) {
+        status = "unclassified";
+      }
+      if (sourceType === "income" && sourceVersion < 4 && status !== "historical_locked" && status !== "transferred") {
+        sourceRate = null;
+      }
       return {
         key: String(value.key || key || "").trim(),
         note_marker: normalizeText2(value.note_marker),
         source_marker: normalizeText2(value.source_marker),
         source_observation_id: normalizeText2(value.source_observation_id),
+        source_project: normalizeText2(value.source_project),
         fee_record_id: feeRecordId,
         transfer_record_id: transferRecordId,
         record_id: feeRecordId,
         mirror_record_id: transferRecordId,
         source_fingerprint: normalizeText2(value.source_fingerprint),
-        source_type: normalizeText2(value.source_type),
+        source_type: sourceType,
         source_amount_usd_cents: normalizeNumber(value.source_amount_usd_cents),
         source_amount_php_cents: normalizeNumber(value.source_amount_php_cents),
         source_fee_usd_cents: normalizeNumber(value.source_fee_usd_cents),
         source_fee_php_cents: normalizeNumber(value.source_fee_php_cents),
         source_net_usd_cents: normalizeNumber(value.source_net_usd_cents),
         source_net_php_cents: normalizeNumber(value.source_net_php_cents),
-        source_rate: normalizeNumber(value.source_rate),
+        source_rate: sourceRate,
+        status: status || (sourceType === "income" ? "unclassified" : "historical_locked"),
+        status_updated_at: normalizeIsoDate(value.status_updated_at) || null,
+        withdrawal_marker: normalizeText2(value.withdrawal_marker),
+        transferred_at: normalizeIsoDate(value.transferred_at) || null,
         created_at: normalizeIsoDate(value.created_at) || null,
         completed_at: normalizeIsoDate(value.completed_at) || null,
         last_attempt_at: normalizeIsoDate(value.last_attempt_at) || null,
         attempt_count: normalizeNumber(value.attempt_count) || 0,
         last_error: normalizeText2(value.last_error)
+      };
+    }
+    function normalizePendingRevaluation(value) {
+      if (!value || typeof value !== "object") {
+        return null;
+      }
+      return {
+        queued_at: normalizeIsoDate(value.queued_at) || null,
+        reason: normalizeText2(value.reason),
+        reference_rate: normalizeNumber(value.reference_rate),
+        settlement_rate: normalizeNumber(value.settlement_rate),
+        source: normalizeText2(value.source)
       };
     }
     function cloneWalletSyncState(value) {
@@ -5833,6 +5886,9 @@ var require_wallet_sync_state = __commonJS({
       return text || null;
     }
     function normalizeNumber(value) {
+      if (value === void 0 || value === null || value === "") {
+        return null;
+      }
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : null;
     }
@@ -5904,6 +5960,23 @@ var require_wallet_api_client = __commonJS({
         const response = await this._request("POST", "/records", {
           query: { returnData: returnData ? "true" : "false" },
           body: Array.isArray(records) ? records : [records]
+        });
+        return response.data;
+      }
+      async patchRecords(records, returnData = true) {
+        const recordItems = Array.isArray(records) ? records.map((record) => ({ ...record || {} })) : [];
+        if (recordItems.length === 0) {
+          throw new WalletApiError("Wallet API patchRecords requires at least one record");
+        }
+        if (recordItems.length > 10) {
+          throw new WalletApiError("Wallet API patchRecords supports at most 10 records per request");
+        }
+        const response = await this._request("PATCH", "/records", {
+          query: {
+            validation: "strict",
+            returnData: returnData ? "true" : "false"
+          },
+          body: recordItems
         });
         return response.data;
       }
@@ -6053,6 +6126,8 @@ var require_wallet_sync = __commonJS({
     var WALLET_CURRENCY = "PHP";
     var NOTE_PREFIX = "DAWALLET";
     var DEFAULT_BATCH_SIZE = 25;
+    var DEFAULT_PATCH_BATCH_SIZE = 10;
+    var MAX_SUBSET_STATES = 1e5;
     var WalletSync = class {
       constructor(config, logger) {
         this.config = config;
@@ -6085,7 +6160,7 @@ var require_wallet_sync = __commonJS({
             this.logger.warning("Wallet sync skipped because no USD/PHP rate is available");
             return { enabled: true, changed: false, reason: "fx_unavailable" };
           }
-          let changed = false;
+          let changed = this._queueRevaluationIfNeeded(state, fx, now);
           if (includeFundsHistory) {
             const imported = await this._importNewIncomeEntries({
               state,
@@ -6095,7 +6170,14 @@ var require_wallet_sync = __commonJS({
               fx,
               now
             });
-            changed = changed || imported;
+            changed = changed || imported.changed;
+            const revalued = await this._applyQueuedRevaluation({
+              state,
+              referenceData,
+              fx,
+              now
+            });
+            changed = changed || revalued.changed;
           }
           state.last_seen_available_amount_cents = normalizeCents2(payments.available_amount_cents, payments.available_amount);
           state.last_seen_available_amount = normalizeMoney(payments.available_amount);
@@ -6163,7 +6245,7 @@ var require_wallet_sync = __commonJS({
         }
         return {
           referenceRate: rate,
-          settlementRate: roundToSix(rate * normalizeNumber(this.config.wallet_settlement_adjustment, 0.99856)),
+          settlementRate: roundToSix(rate * normalizeNumber(this.config.wallet_settlement_adjustment, 0.99985676)),
           feeRate: normalizeNumber(this.config.wallet_paypal_fee_rate, 0.01),
           feeMaxUsd: normalizeNumber(this.config.wallet_paypal_fee_max_usd, 10)
         };
@@ -6210,11 +6292,12 @@ var require_wallet_sync = __commonJS({
           return { enabled: true, changed: false, error: error.message };
         }
       }
-      async _importNewIncomeEntries({ state, referenceData, fundsHistorySnapshot, fx, now }) {
+      async _importNewIncomeEntries({ state, referenceData, payments, fundsHistorySnapshot, fx, now }) {
         const entries = Array.isArray(fundsHistorySnapshot?.pending_payout_entries) ? fundsHistorySnapshot.pending_payout_entries : [];
         let changed = false;
         const seenFingerprintCounts = {};
         const pendingCreates = [];
+        const currentPendingMarkers = /* @__PURE__ */ new Set();
         for (const entry of entries) {
           if (!entry || entry.status !== "pending") {
             continue;
@@ -6226,7 +6309,11 @@ var require_wallet_sync = __commonJS({
           }
           seenFingerprintCounts[sourceFingerprint] = (seenFingerprintCounts[sourceFingerprint] || 0) + 1;
           const marker = buildIncomeMarker(sourceFingerprint, seenFingerprintCounts[sourceFingerprint]);
+          currentPendingMarkers.add(marker);
           const existing = state.imported_funds_entries[marker] || null;
+          if (existing?.status === "transferred" || existing?.status === "withdrawal_pending") {
+            continue;
+          }
           if (existing?.record_id) {
             const existingRecord = await this._recoverExistingRecord({
               accountId: referenceData.dataAnnotationAccount.id,
@@ -6235,12 +6322,21 @@ var require_wallet_sync = __commonJS({
               categoryId: referenceData.incomeCategory.id
             });
             if (existingRecord) {
+              const sourceAmountUsdCents = normalizeCents2(entry.amount_cents, entry.amount);
+              const nextProject = normalizeText2(entry.project) || existing.source_project || null;
+              const nextStatusUpdatedAt = now.toISOString();
+              if (existing.status !== "pending" || !normalizeText2(existing.status_updated_at) || Number.isFinite(sourceAmountUsdCents) && existing.source_amount_usd_cents !== sourceAmountUsdCents || existing.source_project !== nextProject) {
+                existing.status = "pending";
+                existing.status_updated_at = nextStatusUpdatedAt;
+                if (Number.isFinite(sourceAmountUsdCents)) {
+                  existing.source_amount_usd_cents = sourceAmountUsdCents;
+                }
+                existing.source_project = nextProject;
+                changed = true;
+              }
               continue;
             }
             this.logger.warning(`Wallet income marker ${marker} was stored in sync state but no matching Wallet record was found; leaving it absent`);
-            continue;
-          }
-          if (state.imported_funds_entries[marker]?.record_id) {
             continue;
           }
           const existingRecords = await this.client.findRecordsByNote({
@@ -6253,6 +6349,7 @@ var require_wallet_sync = __commonJS({
               note_marker: marker,
               source_marker: sourceFingerprint,
               source_observation_id: normalizeText2(entry.observation_id) || null,
+              source_project: normalizeText2(entry.project) || null,
               record_id: existingRecords[0].id || null,
               source_type: "income",
               source_fingerprint: sourceFingerprint,
@@ -6262,7 +6359,9 @@ var require_wallet_sync = __commonJS({
               source_fee_php_cents: null,
               source_net_usd_cents: null,
               source_net_php_cents: null,
-              source_rate: fx.referenceRate,
+              source_rate: null,
+              status: "pending",
+              status_updated_at: now.toISOString(),
               created_at: now.toISOString()
             };
             changed = true;
@@ -6288,6 +6387,7 @@ var require_wallet_sync = __commonJS({
             marker,
             sourceFingerprint,
             sourceObservationId,
+            sourceProject: normalizeText2(entry.project) || null,
             usdCents,
             phpCents,
             recordInput
@@ -6298,8 +6398,288 @@ var require_wallet_sync = __commonJS({
           const createdMap = await this._createIncomeRecordBatch(batch, referenceData, fx, now, state);
           changed = changed || createdMap.changed;
         }
+        const reconciliation = this._reconcileIncomeStatuses({
+          state,
+          currentPendingMarkers,
+          availableAmountCents: normalizeCents2(
+            fundsHistorySnapshot?.available_amount_cents ?? payments?.available_amount_cents,
+            fundsHistorySnapshot?.available_amount ?? payments?.available_amount
+          ),
+          historyComplete: fundsHistorySnapshot?.funds_history_complete !== false,
+          now
+        });
+        changed = changed || reconciliation.changed;
         if (changed) {
           saveWalletSyncState(this.statePath, state);
+        }
+        return { changed };
+      }
+      _queueRevaluationIfNeeded(state, fx, now) {
+        if (!state || !fx) {
+          return false;
+        }
+        const targetRate = roundToSix(fx.settlementRate);
+        const currentRate = Number(state.last_applied_settlement_rate);
+        const currentQueueRate = Number(state.pending_revaluation?.settlement_rate);
+        const hasPendingRevaluation = Boolean(state.pending_revaluation && typeof state.pending_revaluation === "object");
+        const needsQueue = !Number.isFinite(currentRate) || roundToSix(currentRate) !== targetRate;
+        if (!needsQueue && (!hasPendingRevaluation || Number.isFinite(currentQueueRate) && roundToSix(currentQueueRate) === targetRate)) {
+          return false;
+        }
+        if (Number.isFinite(currentQueueRate) && roundToSix(currentQueueRate) === targetRate) {
+          return false;
+        }
+        if (!needsQueue) {
+          state.pending_revaluation = null;
+          return true;
+        }
+        state.pending_revaluation = {
+          queued_at: now.toISOString(),
+          reason: !Number.isFinite(currentRate) ? "initial_upgrade" : "fx_change",
+          reference_rate: fx.referenceRate,
+          settlement_rate: targetRate,
+          source: "wallet_sync"
+        };
+        return true;
+      }
+      _reconcileIncomeStatuses({ state, currentPendingMarkers, availableAmountCents, historyComplete = true, now }) {
+        const entries = state?.imported_funds_entries || {};
+        const currentMarkers = currentPendingMarkers instanceof Set ? currentPendingMarkers : /* @__PURE__ */ new Set();
+        const missingEntries = [];
+        let changed = false;
+        for (const [marker, entry] of Object.entries(entries)) {
+          if (!entry || normalizeText2(entry.source_type) !== "income") {
+            continue;
+          }
+          if (currentMarkers.has(marker)) {
+            if (entry.status === "transferred" || entry.status === "withdrawal_pending") {
+              continue;
+            }
+            if (entry.status !== "pending" || !normalizeText2(entry.status_updated_at)) {
+              entry.status = "pending";
+              entry.status_updated_at = now.toISOString();
+              changed = true;
+            }
+            continue;
+          }
+          if (entry.status === "transferred" || entry.status === "historical_locked" || entry.status === "withdrawal_pending") {
+            continue;
+          }
+          if (entry.status !== "pending" && entry.status !== "available" && entry.status !== "unclassified") {
+            continue;
+          }
+          missingEntries.push([marker, entry]);
+        }
+        if (missingEntries.length === 0) {
+          return { changed };
+        }
+        if (!historyComplete) {
+          changed = markUnmatchedIncomeEntriesUnclassified(missingEntries, now) || changed;
+          return { changed };
+        }
+        const availableCents = normalizeCents2(availableAmountCents, null);
+        if (!Number.isFinite(availableCents)) {
+          changed = markUnmatchedIncomeEntriesUnclassified(missingEntries, now) || changed;
+          return { changed };
+        }
+        if (availableCents <= 0) {
+          for (const [, entry] of missingEntries) {
+            if (entry.status !== "historical_locked") {
+              entry.status = "historical_locked";
+              entry.status_updated_at = now.toISOString();
+              changed = true;
+            }
+          }
+          return { changed };
+        }
+        const exactSubset = findExactCentsSubset(missingEntries, availableCents);
+        if (!exactSubset) {
+          this.logger.warning(`Wallet available funds could not be matched safely to imported income entries; leaving ${missingEntries.length} candidate records untouched`);
+          changed = markUnmatchedIncomeEntriesUnclassified(missingEntries, now) || changed;
+          return { changed };
+        }
+        const selectedMarkers = new Set(exactSubset.map(([marker]) => marker));
+        for (const [, entry] of exactSubset) {
+          if (entry.status !== "available") {
+            entry.status = "available";
+            entry.status_updated_at = now.toISOString();
+            changed = true;
+          }
+        }
+        for (const [marker, entry] of missingEntries) {
+          if (selectedMarkers.has(marker)) {
+            continue;
+          }
+          if (entry.status !== "historical_locked") {
+            entry.status = "historical_locked";
+            entry.status_updated_at = now.toISOString();
+            changed = true;
+          }
+        }
+        return { changed };
+      }
+      async _applyQueuedRevaluation({ state, referenceData, fx, now }) {
+        const targetRate = roundToSix(fx.settlementRate);
+        const queuedRate = Number(state?.pending_revaluation?.settlement_rate);
+        const lastAppliedRate = Number(state?.last_applied_settlement_rate);
+        if (Number.isFinite(queuedRate) && roundToSix(queuedRate) !== targetRate) {
+          state.pending_revaluation = {
+            queued_at: now.toISOString(),
+            reason: "fx_change",
+            reference_rate: fx.referenceRate,
+            settlement_rate: targetRate,
+            source: "wallet_sync"
+          };
+        }
+        const activeEntries = Object.values(state?.imported_funds_entries || {}).filter((entry) => entry && normalizeText2(entry.source_type) === "income" && (entry.status === "pending" || entry.status === "available" || entry.status === "unclassified"));
+        const entries = activeEntries.filter((entry) => entry && (entry.status === "pending" || entry.status === "available") && Number.isFinite(Number(entry.source_amount_usd_cents)) && Number(entry.source_amount_usd_cents) > 0);
+        let unresolvedRecordIds = entries.filter((entry) => !normalizeText2(entry.record_id)).length;
+        const hasUnresolvedEntries = () => activeEntries.some((entry) => entry.status === "unclassified" || !Number.isFinite(Number(entry.source_amount_usd_cents)) || Number(entry.source_amount_usd_cents) <= 0) || unresolvedRecordIds > 0;
+        if (entries.length === 0) {
+          if (hasUnresolvedEntries()) {
+            return { changed: false };
+          }
+          if (!Number.isFinite(queuedRate) && Number.isFinite(lastAppliedRate) && roundToSix(lastAppliedRate) === targetRate) {
+            return { changed: false };
+          }
+          state.last_applied_settlement_rate = targetRate;
+          state.pending_revaluation = null;
+          return { changed: true };
+        }
+        const revaluationIsQueued = Number.isFinite(queuedRate) && roundToSix(queuedRate) === targetRate;
+        const appliedRateIsStale = !Number.isFinite(lastAppliedRate) || roundToSix(lastAppliedRate) !== targetRate;
+        const staleEntries = entries.filter((entry) => revaluationIsQueued || appliedRateIsStale || roundToSix(Number(entry.source_rate)) !== targetRate);
+        if (staleEntries.length === 0) {
+          if (hasUnresolvedEntries()) {
+            return { changed: false };
+          }
+          if (!Number.isFinite(queuedRate) && Number.isFinite(lastAppliedRate) && roundToSix(lastAppliedRate) === targetRate) {
+            return { changed: false };
+          }
+          state.last_applied_settlement_rate = targetRate;
+          state.pending_revaluation = null;
+          return { changed: true };
+        }
+        const patchItems = [];
+        const patchMeta = [];
+        for (const entry of staleEntries) {
+          let recordId = normalizeText2(entry.record_id);
+          if (!recordId) {
+            if (!normalizeText2(entry.note_marker)) {
+              continue;
+            }
+            const recovered = await this._recoverExistingRecord({
+              accountId: referenceData.dataAnnotationAccount.id,
+              noteMarker: entry.note_marker,
+              paymentType: "web_payment"
+            });
+            recordId = normalizeText2(recovered?.id);
+            if (recordId) {
+              entry.record_id = recordId;
+              unresolvedRecordIds -= 1;
+            } else {
+              continue;
+            }
+          }
+          const records = await this.client.fetchRecords({ id: recordId, limit: 1 });
+          const record = Array.isArray(records) ? records[0] : null;
+          if (!record) {
+            this.logger.warning(`Wallet income record ${recordId} disappeared before revaluation; leaving it unchanged`);
+            markIncomeUnclassified(entry, now);
+            continue;
+          }
+          if (normalizeText2(record.accountId) !== normalizeText2(referenceData.dataAnnotationAccount.id) || record.accountIsBankSync === true || normalizeText2(record.paymentType) !== "web_payment" || record.transfer || normalizeText2(record.amount?.currencyCode).toUpperCase() !== WALLET_CURRENCY || !normalizeText2(entry.note_marker) || !normalizeText2(record.note).includes(normalizeText2(entry.note_marker))) {
+            this.logger.warning(`Wallet income record ${recordId} no longer matches revaluation safety checks; leaving it unchanged`);
+            markIncomeHistoricalLocked(entry, now);
+            continue;
+          }
+          const usdCents = normalizeCents2(entry.source_amount_usd_cents, null);
+          const phpCents = roundToCents(usdCents * targetRate);
+          const phpAmount = phpCents / 100;
+          const currentPhpCents = Number.isFinite(Number(record?.amount?.value)) ? Math.round(Number(record.amount.value) * 100) : null;
+          if (currentPhpCents === phpCents) {
+            entry.source_amount_php_cents = phpCents;
+            entry.source_rate = targetRate;
+            entry.status_updated_at = now.toISOString();
+            continue;
+          }
+          patchItems.push({
+            id: recordId,
+            amount: phpAmount,
+            note: buildIncomeNote({
+              noteMarker: entry.note_marker,
+              sourceFingerprint: entry.source_fingerprint,
+              usdAmount: usdCents / 100,
+              phpAmount,
+              fx,
+              entry: { project: entry.source_project || "DataAnnotation" }
+            })
+          });
+          patchMeta.push({ entry, phpCents, phpAmount });
+        }
+        if (patchItems.length === 0) {
+          if (hasUnresolvedEntries()) {
+            return { changed: true };
+          }
+          state.last_applied_settlement_rate = targetRate;
+          state.pending_revaluation = null;
+          return { changed: true };
+        }
+        let changed = false;
+        for (let index = 0; index < patchItems.length; index += DEFAULT_PATCH_BATCH_SIZE) {
+          const batch = patchItems.slice(index, index + DEFAULT_PATCH_BATCH_SIZE);
+          const batchMeta = patchMeta.slice(index, index + DEFAULT_PATCH_BATCH_SIZE);
+          const response = await this.client.patchRecords(batch, true);
+          const results = Array.isArray(response?.results) ? response.results : Array.isArray(response) ? response : [];
+          let batchFailed = false;
+          for (let itemIndex = 0; itemIndex < batch.length; itemIndex += 1) {
+            const result = results[itemIndex] || {};
+            const meta = batchMeta[itemIndex];
+            const resultId = normalizeText2(result.id || result.record?.id);
+            if (result.success !== true || resultId !== normalizeText2(batch[itemIndex].id)) {
+              batchFailed = true;
+              continue;
+            }
+            meta.entry.source_amount_php_cents = meta.phpCents;
+            meta.entry.source_rate = targetRate;
+            meta.entry.status_updated_at = now.toISOString();
+            changed = true;
+          }
+          if (batchFailed) {
+            this.logger.warning("Wallet income revaluation batch had failures; leaving revaluation queued for retry");
+            return { changed };
+          }
+        }
+        if (hasUnresolvedEntries()) {
+          return { changed: true };
+        }
+        state.last_applied_settlement_rate = targetRate;
+        state.pending_revaluation = null;
+        return { changed: true };
+      }
+      _markTransferredIncomeEntries(state, withdrawalMarker, grossUsdCents, now) {
+        const entries = state?.imported_funds_entries || {};
+        const candidates = Object.entries(entries).filter(([, entry]) => entry && normalizeText2(entry.source_type) === "income" && (entry.status === "available" || entry.status === "withdrawal_pending") && Number.isFinite(Number(entry.source_amount_usd_cents)) && Number(entry.source_amount_usd_cents) > 0);
+        const selected = findExactCentsSubset(candidates, grossUsdCents);
+        if (!selected) {
+          if (candidates.length > 0) {
+            this.logger.warning("Wallet withdrawal could not be matched safely to imported income entries; leaving income statuses unchanged");
+          }
+          return false;
+        }
+        let changed = false;
+        for (const [, entry] of selected) {
+          if (!entry || normalizeText2(entry.source_type) !== "income") {
+            continue;
+          }
+          if (entry.status !== "available" && entry.status !== "withdrawal_pending") {
+            continue;
+          }
+          entry.status = "transferred";
+          entry.withdrawal_marker = withdrawalMarker;
+          entry.transferred_at = now.toISOString();
+          entry.status_updated_at = now.toISOString();
+          changed = true;
         }
         return changed;
       }
@@ -6315,7 +6695,7 @@ var require_wallet_sync = __commonJS({
           const failures = [];
           for (let index = 0; index < batch.length; index += 1) {
             const item = batch[index];
-            const result = results[index] || results[0] || {};
+            const result = results[index] || {};
             if (result.success === false) {
               const recovered = await this._recoverExistingRecord({
                 accountId: referenceData.dataAnnotationAccount.id,
@@ -6332,6 +6712,7 @@ var require_wallet_sync = __commonJS({
                 note_marker: item.marker,
                 source_marker: item.sourceFingerprint,
                 source_observation_id: item.sourceObservationId,
+                source_project: item.sourceProject,
                 record_id: recovered.id || null,
                 source_type: "income",
                 source_fingerprint: item.sourceFingerprint,
@@ -6341,7 +6722,9 @@ var require_wallet_sync = __commonJS({
                 source_fee_php_cents: null,
                 source_net_usd_cents: null,
                 source_net_php_cents: null,
-                source_rate: fx.referenceRate,
+                source_rate: fx.settlementRate,
+                status: "pending",
+                status_updated_at: now.toISOString(),
                 created_at: now.toISOString()
               };
               changed = true;
@@ -6361,6 +6744,7 @@ var require_wallet_sync = __commonJS({
                   note_marker: item.marker,
                   source_marker: item.sourceFingerprint,
                   source_observation_id: item.sourceObservationId,
+                  source_project: item.sourceProject,
                   record_id: recovered.id || null,
                   source_type: "income",
                   source_fingerprint: item.sourceFingerprint,
@@ -6370,7 +6754,9 @@ var require_wallet_sync = __commonJS({
                   source_fee_php_cents: null,
                   source_net_usd_cents: null,
                   source_net_php_cents: null,
-                  source_rate: fx.referenceRate,
+                  source_rate: fx.settlementRate,
+                  status: "pending",
+                  status_updated_at: now.toISOString(),
                   created_at: now.toISOString()
                 };
                 changed = true;
@@ -6384,6 +6770,7 @@ var require_wallet_sync = __commonJS({
               note_marker: item.marker,
               source_marker: item.sourceFingerprint,
               source_observation_id: item.sourceObservationId,
+              source_project: item.sourceProject,
               record_id: recordId,
               source_type: "income",
               source_fingerprint: item.sourceFingerprint,
@@ -6393,7 +6780,9 @@ var require_wallet_sync = __commonJS({
               source_fee_php_cents: null,
               source_net_usd_cents: null,
               source_net_php_cents: null,
-              source_rate: fx.referenceRate,
+              source_rate: fx.settlementRate,
+              status: "pending",
+              status_updated_at: now.toISOString(),
               created_at: now.toISOString()
             };
             changed = true;
@@ -6425,6 +6814,7 @@ var require_wallet_sync = __commonJS({
               key: item.marker,
               note_marker: item.marker,
               source_marker: item.sourceFingerprint,
+              source_project: item.sourceProject,
               record_id: created.recordId,
               source_type: "income",
               source_fingerprint: item.sourceFingerprint,
@@ -6434,7 +6824,9 @@ var require_wallet_sync = __commonJS({
               source_fee_php_cents: null,
               source_net_usd_cents: null,
               source_net_php_cents: null,
-              source_rate: fx.referenceRate,
+              source_rate: fx.settlementRate,
+              status: "pending",
+              status_updated_at: now.toISOString(),
               created_at: now.toISOString()
             };
             changed = true;
@@ -6514,10 +6906,11 @@ var require_wallet_sync = __commonJS({
             source_fee_php_cents: feePhpCents,
             source_net_usd_cents: netUsdCents,
             source_net_php_cents: netPhpCents,
-            source_rate: fx.referenceRate,
+            source_rate: fx.settlementRate,
             created_at: withdrawalState.created_at || now.toISOString(),
             completed_at: now.toISOString()
           };
+          this._markTransferredIncomeEntries(state, withdrawalMarker, grossUsdCents, now);
           state.last_seen_last_payout_at = payoutAt;
           state.first_sync_completed_at = state.first_sync_completed_at || now.toISOString();
           saveWalletSyncState(this.statePath, state);
@@ -6533,7 +6926,7 @@ var require_wallet_sync = __commonJS({
         withdrawalState.source_fee_php_cents = feePhpCents;
         withdrawalState.source_net_usd_cents = netUsdCents;
         withdrawalState.source_net_php_cents = netPhpCents;
-        withdrawalState.source_rate = fx.referenceRate;
+        withdrawalState.source_rate = fx.settlementRate;
         withdrawalState.created_at = withdrawalState.created_at || now.toISOString();
         withdrawalState.last_attempt_at = now.toISOString();
         withdrawalState.attempt_count = (withdrawalState.attempt_count || 0) + 1;
@@ -6723,7 +7116,7 @@ var require_wallet_sync = __commonJS({
           `gross=${formatUsd(grossUsdCents / 100)}`,
           `fee=${formatUsd(feeUsdCents / 100)}`,
           `net=${formatUsd(netUsdCents / 100)}`,
-          `php=${formatPhp(phpCents)}`,
+          `php=${formatPhp(phpCents / 100)}`,
           `rate=${formatRate(fx.settlementRate)}`
         ].join(" "),
         255
@@ -6744,6 +7137,61 @@ var require_wallet_sync = __commonJS({
         normalizeText2(entry?.amount),
         normalizeText2(entry?.duration)
       ].join("|");
+    }
+    function findExactCentsSubset(entries, targetCents) {
+      const candidates = Array.isArray(entries) ? entries.map(([marker, entry]) => ({ marker, entry, cents: Math.max(0, Math.trunc(Number(entry?.source_amount_usd_cents) || 0)) })).filter((item) => item.cents > 0).sort((left, right) => right.cents - left.cents || String(left.marker).localeCompare(String(right.marker))) : [];
+      const target = Math.trunc(Number(targetCents) || 0);
+      if (target <= 0) {
+        return null;
+      }
+      const sums = /* @__PURE__ */ new Map([[0, []]]);
+      for (const candidate of candidates) {
+        const additions = Array.from(sums.entries());
+        for (const [sum, subset] of additions) {
+          const nextSum = sum + candidate.cents;
+          if (nextSum > target) {
+            continue;
+          }
+          const nextSubset = subset === "ambiguous" ? "ambiguous" : [...subset, [candidate.marker, candidate.entry]];
+          const existing = sums.get(nextSum);
+          if (existing === void 0) {
+            sums.set(nextSum, nextSubset);
+          } else if (existing !== "ambiguous") {
+            sums.set(nextSum, "ambiguous");
+          }
+          if (sums.size > MAX_SUBSET_STATES) {
+            return null;
+          }
+        }
+      }
+      const result = sums.get(target);
+      return Array.isArray(result) && result.length > 0 ? result : null;
+    }
+    function markIncomeHistoricalLocked(entry, now) {
+      if (!entry) {
+        return;
+      }
+      entry.status = "historical_locked";
+      entry.status_updated_at = now.toISOString();
+    }
+    function markIncomeUnclassified(entry, now) {
+      if (!entry) {
+        return;
+      }
+      entry.status = "unclassified";
+      entry.status_updated_at = now.toISOString();
+    }
+    function markUnmatchedIncomeEntriesUnclassified(entries, now) {
+      let changed = false;
+      for (const [, entry] of entries) {
+        if (entry.status !== "pending" && entry.status !== "available") {
+          continue;
+        }
+        entry.status = "unclassified";
+        entry.status_updated_at = now.toISOString();
+        changed = true;
+      }
+      return changed;
     }
     function normalizeWithdrawalState(withdrawalMarker) {
       return {
@@ -6819,17 +7267,24 @@ var require_wallet_sync = __commonJS({
       return Number.isNaN(date.getTime()) ? null : date;
     }
     function normalizeCents2(centsValue, amountValue) {
-      const cents = Number(centsValue);
-      if (Number.isFinite(cents)) {
-        return Math.round(cents);
+      if (centsValue !== void 0 && centsValue !== null && centsValue !== "") {
+        const cents = Number(centsValue);
+        if (Number.isFinite(cents)) {
+          return Math.round(cents);
+        }
       }
-      const amount = Number(amountValue);
-      if (Number.isFinite(amount)) {
-        return Math.round(amount * 100);
+      if (amountValue !== void 0 && amountValue !== null && amountValue !== "") {
+        const amount = Number(amountValue);
+        if (Number.isFinite(amount)) {
+          return Math.round(amount * 100);
+        }
       }
       return null;
     }
     function normalizeMoney(value) {
+      if (value === void 0 || value === null || value === "") {
+        return null;
+      }
       const amount = Number(value);
       return Number.isFinite(amount) ? amount : null;
     }
@@ -6838,6 +7293,9 @@ var require_wallet_sync = __commonJS({
       return Number.isFinite(cents) && cents > 0 ? cents : 0;
     }
     function normalizeNumber(value, fallback) {
+      if (value === void 0 || value === null || value === "") {
+        return fallback;
+      }
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : fallback;
     }

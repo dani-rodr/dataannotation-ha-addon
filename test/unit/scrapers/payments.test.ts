@@ -71,6 +71,21 @@ test('extractPaymentsSnapshot maps the observed cooldown state', () => {
   assert.equal(snapshot.last_payout_at, '2026-06-22T14:05:02.298Z');
 });
 
+test('extractPaymentsSnapshot preserves incomplete Funds History status', () => {
+  const snapshot = extractPaymentsSnapshot({
+    pageProps: {
+      paymentStatus: {
+        type: 'cooldown',
+        amountInCents: 0,
+      },
+    },
+    earningsSummary: {},
+    funds_history_complete: false,
+  });
+
+  assert.equal(snapshot.funds_history_complete, false);
+});
+
 test('extractPaymentsSnapshot marks withdrawable funds as available', () => {
   const now = new Date('2026-06-26T14:05:02.298Z');
   const snapshot = extractPaymentsSnapshot({

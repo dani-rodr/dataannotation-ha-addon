@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEFAULT_WALLET_SYNC_STATE = {
-  version: 2,
+  version: 4,
   created_at: null,
   updated_at: null,
   first_sync_completed_at: null,
@@ -13,6 +13,8 @@ const DEFAULT_WALLET_SYNC_STATE = {
   last_seen_last_payout_at: null,
   last_seen_available_amount_cents: null,
   last_seen_available_amount: null,
+  last_applied_settlement_rate: null,
+  pending_revaluation: null,
   imported_funds_entries: {},
   withdrawal_events: {},
 };
@@ -43,7 +45,8 @@ function saveWalletSyncState(filePath, state) {
 
 function normalizeWalletSyncState(value) {
   const payload = value && typeof value === 'object' ? value : {};
-  const version = normalizeNumber(payload.version) || 2;
+  const sourceVersion = normalizeNumber(payload.version) || 2;
+  const version = Math.max(4, sourceVersion);
   return {
     version,
     created_at: normalizeIsoDate(payload.created_at) || null,
@@ -55,17 +58,19 @@ function normalizeWalletSyncState(value) {
     last_seen_last_payout_at: normalizeIsoDate(payload.last_seen_last_payout_at) || null,
     last_seen_available_amount_cents: normalizeNumber(payload.last_seen_available_amount_cents),
     last_seen_available_amount: normalizeNumber(payload.last_seen_available_amount),
-    imported_funds_entries: normalizeEntryMap(payload.imported_funds_entries),
+    last_applied_settlement_rate: normalizeNumber(payload.last_applied_settlement_rate),
+    pending_revaluation: normalizePendingRevaluation(payload.pending_revaluation),
+    imported_funds_entries: normalizeEntryMap(payload.imported_funds_entries, sourceVersion),
     withdrawal_events: normalizeEntryMap(payload.withdrawal_events),
   };
 }
 
-function normalizeEntryMap(value) {
+function normalizeEntryMap(value, sourceVersion = 4) {
   const entries = value && typeof value === 'object' ? value : {};
   const normalized = {};
 
   for (const [key, entry] of Object.entries(entries)) {
-    const normalizedEntry = normalizeLedgerEntry(key, entry);
+    const normalizedEntry = normalizeLedgerEntry(key, entry, sourceVersion);
     if (normalizedEntry) {
       normalized[key] = normalizedEntry;
     }
@@ -74,7 +79,7 @@ function normalizeEntryMap(value) {
   return normalized;
 }
 
-function normalizeLedgerEntry(key, value) {
+function normalizeLedgerEntry(key, value, sourceVersion = 4) {
   if (!value || typeof value !== 'object') {
     return null;
   }
@@ -82,29 +87,58 @@ function normalizeLedgerEntry(key, value) {
   const feeRecordId = normalizeText(value.fee_record_id) || normalizeText(value.record_id);
   const transferRecordId = normalizeText(value.transfer_record_id) || normalizeText(value.mirror_record_id);
 
+  const sourceType = normalizeText(value.source_type);
+  let status = normalizeText(value.status);
+  let sourceRate = normalizeNumber(value.source_rate);
+  if (sourceType === 'income' && sourceVersion < 4 && !status) {
+    status = 'unclassified';
+  }
+  if (sourceType === 'income' && sourceVersion < 4 && status !== 'historical_locked' && status !== 'transferred') {
+    sourceRate = null;
+  }
+
   return {
     key: String(value.key || key || '').trim(),
     note_marker: normalizeText(value.note_marker),
     source_marker: normalizeText(value.source_marker),
     source_observation_id: normalizeText(value.source_observation_id),
+    source_project: normalizeText(value.source_project),
     fee_record_id: feeRecordId,
     transfer_record_id: transferRecordId,
     record_id: feeRecordId,
     mirror_record_id: transferRecordId,
     source_fingerprint: normalizeText(value.source_fingerprint),
-    source_type: normalizeText(value.source_type),
+    source_type: sourceType,
     source_amount_usd_cents: normalizeNumber(value.source_amount_usd_cents),
     source_amount_php_cents: normalizeNumber(value.source_amount_php_cents),
     source_fee_usd_cents: normalizeNumber(value.source_fee_usd_cents),
     source_fee_php_cents: normalizeNumber(value.source_fee_php_cents),
     source_net_usd_cents: normalizeNumber(value.source_net_usd_cents),
     source_net_php_cents: normalizeNumber(value.source_net_php_cents),
-    source_rate: normalizeNumber(value.source_rate),
+    source_rate: sourceRate,
+    status: status || (sourceType === 'income' ? 'unclassified' : 'historical_locked'),
+    status_updated_at: normalizeIsoDate(value.status_updated_at) || null,
+    withdrawal_marker: normalizeText(value.withdrawal_marker),
+    transferred_at: normalizeIsoDate(value.transferred_at) || null,
     created_at: normalizeIsoDate(value.created_at) || null,
     completed_at: normalizeIsoDate(value.completed_at) || null,
     last_attempt_at: normalizeIsoDate(value.last_attempt_at) || null,
     attempt_count: normalizeNumber(value.attempt_count) || 0,
     last_error: normalizeText(value.last_error),
+  };
+}
+
+function normalizePendingRevaluation(value) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  return {
+    queued_at: normalizeIsoDate(value.queued_at) || null,
+    reason: normalizeText(value.reason),
+    reference_rate: normalizeNumber(value.reference_rate),
+    settlement_rate: normalizeNumber(value.settlement_rate),
+    source: normalizeText(value.source),
   };
 }
 
@@ -136,6 +170,10 @@ function normalizeText(value) {
 }
 
 function normalizeNumber(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }

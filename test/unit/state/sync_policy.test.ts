@@ -83,6 +83,8 @@ test('pickFundsHistoryFields preserves the last history snapshot', () => {
   });
 
   assert.deepEqual(fields, {
+    available_amount_cents: null,
+    available_amount: null,
     next_payout_days: 2,
     next_payout_at: '2026-06-29T16:00:00.000Z',
     next_payout_entries_count: 3,
@@ -92,6 +94,7 @@ test('pickFundsHistoryFields preserves the last history snapshot', () => {
     next_payout_source: 'funds_history',
     next_payout_confidence: 'high',
     pending_payout_entries: [{ project: 'Example' }],
+    funds_history_complete: null,
     last_payout_amount_cents: 1234,
     last_payout_amount: 12.34,
     last_payout_amount_formatted: '$12.34',
@@ -101,7 +104,8 @@ test('pickFundsHistoryFields preserves the last history snapshot', () => {
 test('mergePaymentsWithFundsHistory keeps current summary and prior history fields', () => {
   const merged = mergePaymentsWithFundsHistory(
     {
-      available_amount: 12.34,
+      available_amount: 25.67,
+      available_amount_cents: 2567,
       can_withdraw: true,
       next_payout_days: 0,
       next_payout_at_human: null,
@@ -111,6 +115,8 @@ test('mergePaymentsWithFundsHistory keeps current summary and prior history fiel
       next_payout_confidence: null,
     },
     {
+      available_amount: 12.34,
+      available_amount_cents: 1234,
       next_payout_days: 2,
       next_payout_at: '2026-06-29T16:00:00.000Z',
       next_payout_at_human: 'June 29, 2026, 4:00 PM',
@@ -124,7 +130,8 @@ test('mergePaymentsWithFundsHistory keeps current summary and prior history fiel
     }
   );
 
-  assert.equal(merged.available_amount, 12.34);
+  assert.equal(merged.available_amount, 25.67);
+  assert.equal(merged.available_amount_cents, 2567);
   assert.equal(merged.can_withdraw, true);
   assert.equal(merged.next_payout_days, 2);
   assert.equal(merged.next_payout_at, '2026-06-29T16:00:00.000Z');
@@ -263,4 +270,25 @@ test('retainNextWithdrawalAt backfills last payout amount from previous availabl
   assert.equal(retained.last_payout_amount_cents, 49500);
   assert.equal(retained.last_payout_amount, 495);
   assert.equal(retained.last_payout_amount_formatted, '$495.00');
+});
+
+test('retainNextWithdrawalAt falls back to the previous available amount when cents are absent', () => {
+  const retained = retainNextWithdrawalAt(
+    {
+      can_withdraw: true,
+      available_amount: 0,
+      available_amount_cents: null,
+      last_payout_amount_cents: null,
+      last_payout_amount: null,
+      last_payout_amount_formatted: null,
+    },
+    {
+      available_amount: 12.34,
+      available_amount_cents: null,
+    },
+    new Date('2026-07-10T12:00:00.000Z')
+  );
+
+  assert.equal(retained.last_payout_amount_cents, 1234);
+  assert.equal(retained.last_payout_amount, 12.34);
 });

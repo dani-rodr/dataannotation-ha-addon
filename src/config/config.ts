@@ -64,7 +64,7 @@ const DEFAULT_CONFIG: Config = {
   wallet_paypal_fee_rate: 0.01,
   wallet_paypal_fee_min_usd: 0.25,
   wallet_paypal_fee_max_usd: 10.0,
-  wallet_settlement_adjustment: 0.99856,
+  wallet_settlement_adjustment: 0.99985676,
 };
 
 export async function readConfig(): Promise<Config> {

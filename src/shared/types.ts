@@ -71,6 +71,7 @@ export interface PaymentSnapshot {
   next_payout_entries_count?: number | null;
   next_payout_entries?: PublicPayoutEntry[];
   pending_payout_entries?: RawPayoutEntry[];
+  funds_history_complete?: boolean | null;
   next_payout_amount?: unknown;
   next_payout_source?: unknown;
   next_payout_confidence?: unknown;

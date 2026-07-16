@@ -24,8 +24,8 @@ const MONTH_NAMES = [
 ];
 
 async function scrapeFundsHistory(page: any, { observationsPath = null, now = new Date() }: any = {}) {
-  await openFundsHistoryTab(page);
-  await expandFundsHistoryRows(page);
+  const historyTabReady = await openFundsHistoryTab(page);
+  const historyRowsReady = await expandFundsHistoryRows(page);
 
   const rows = await page.$$eval('tr', (tableRows: any[]) => {
     const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
@@ -46,7 +46,10 @@ async function scrapeFundsHistory(page: any, { observationsPath = null, now = ne
     }
   }
 
-  return summarizeFundsHistoryEntries(merged.entries, now);
+  return {
+    ...summarizeFundsHistoryEntries(merged.entries, now),
+    funds_history_complete: historyTabReady && historyRowsReady && parsedEntries.length > 0,
+  };
 }
 
 function parseFundsHistoryEntries(rows: any, now = new Date()) {
@@ -419,7 +422,7 @@ function toLocalMidnightAtOffset(now: Date, daysOffset: number) {
 }
 
 async function openFundsHistoryTab(page: any) {
-  await page.evaluate(() => {
+  const tabFound = await page.evaluate(() => {
     const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
     const target = Array.from(document.querySelectorAll('button,[role="tab"]')).find((element) => {
       const node = element as any;
@@ -432,43 +435,51 @@ async function openFundsHistoryTab(page: any) {
     if (target) {
       (target as any).click();
     }
+
+    return Boolean(target);
   });
 
-  await page.waitForFunction(() => {
+  if (!tabFound) {
+    return false;
+  }
+
+  const historyLoaded = await page.waitForFunction(() => {
     const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
     return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
       const node = element as any;
       const text = normalize(node.innerText || node.textContent || '');
       return /^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text);
     });
-  }, { timeout: 30000 }).catch(() => {});
+  }, { timeout: 30000 }).then(() => true).catch(() => false);
 
   await sleep(250);
+  return historyLoaded;
 }
 
 async function expandFundsHistoryRows(page: any) {
-  await clickFundsHistoryRows(page, 'month');
-  await page.waitForFunction(() => {
+  const monthRowCount = await clickFundsHistoryRows(page, 'month');
+  const monthRowsExpanded = await page.waitForFunction(() => {
     const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
     return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
       const node = element as any;
       const text = normalize(node.innerText || node.textContent || '');
       return /^(Time Entry|Task Submission)/i.test(text) || (/^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text) && !/^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text));
     });
-  }, { timeout: 30000 }).catch(() => {});
+  }, { timeout: 30000 }).then(() => true).catch(() => false);
 
   await sleep(250);
-  await clickFundsHistoryRows(page, 'project');
-  await page.waitForFunction(() => {
+  const projectRowCount = await clickFundsHistoryRows(page, 'project');
+  const projectRowsExpanded = await page.waitForFunction(() => {
     const normalize = (value: any) => String(value || '').trim().replace(/\s+/g, ' ');
     return Array.from(document.querySelectorAll('tr')).some((row) => {
       const node = row as any;
       const text = normalize(node.innerText || node.textContent || '');
       return /Pending Approval/i.test(text) || /Paid/i.test(text);
     });
-  }, { timeout: 30000 }).catch(() => {});
+  }, { timeout: 30000 }).then(() => true).catch(() => false);
 
   await sleep(250);
+  return monthRowCount > 0 && monthRowsExpanded && projectRowCount > 0 && projectRowsExpanded;
 }
 
 async function clickFundsHistoryRows(page: any, kind: 'month' | 'project') {
