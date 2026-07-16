@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.10
+
+- Correct active DataAnnotation Wallet income records with the settlement-adjusted PHP rate while preventing duplicate imports and unsafe updates to historical, transferred, or unrelated records.
+- Preserve fresh Available Funds values during fast polls while retaining Funds History payout attributes.
+- Fail closed on incomplete Funds History scrapes so active Wallet entries remain retryable instead of being finalized incorrectly.
+
 ## 0.7.9
 
 - Fix Auto Accept startup restoration and direct-claim 404 handling.
