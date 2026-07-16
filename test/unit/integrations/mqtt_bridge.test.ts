@@ -17,6 +17,7 @@ test('device metadata uses a clean Data Annotation name', () => {
 test('discovery names stay short', () => {
   assert.deepEqual(buildDiscoveryNames(), {
     button: 'Sync Now',
+    clear_auto_accept_project_cache: 'Clear Priority Cache',
     profile: 'Profile',
     project_count: 'Project Count',
     total_tasks: 'Total Tasks',
@@ -30,6 +31,7 @@ test('discovery names stay short', () => {
     withdraw_funds: 'Withdraw Funds',
     rebuild_discovery: 'Rebuild Discovery',
     next_payout: 'Next Payout',
+    auto_accept_project: 'Auto Accept Priority',
   });
 });
 
@@ -76,6 +78,7 @@ test('configuration and diagnostic entities are categorized for the device page'
     assert.equal(parse('homeassistant/switch/dataannotation_fast_polling/config').entity_category, 'config');
     assert.equal(parse('homeassistant/switch/dataannotation_currency_mode/config').entity_category, 'config');
     assert.equal(parse('homeassistant/switch/dataannotation_auto_accept/config').entity_category, 'config');
+    assert.equal(parse('homeassistant/button/dataannotation_clear_auto_accept_project_cache/config').entity_category, 'config');
     assert.equal(parse('homeassistant/sensor/dataannotation_profile_name/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_usd_php_rate/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_total_earnings/config').entity_category, 'diagnostic');
@@ -251,6 +254,143 @@ test('claim project discovery includes project availability and offline publicat
     bridge.publishedProjectSlugs.add('project-1');
     bridge.publishPublishedProjectAvailability(false);
     assert.deepEqual(publishes, [{ topic: 'dataannotation/projects/project-1/availability', payload: 'offline' }]);
+  } finally {
+    Module._load = originalLoad;
+  }
+});
+
+test('priority cache discovery publishes retained switches and clear-cache button', () => {
+  const publishes = [];
+  const originalLoad = Module._load;
+  Module._load = function(request, parent, isMain) {
+    if (request === 'mqtt') {
+      return {
+        connect() {
+          return {
+            on() {},
+            subscribe() {},
+            publish(topic, payload) {
+              publishes.push({ topic, payload });
+            },
+            end(_force, _options, callback) {
+              callback?.();
+            },
+          };
+        },
+      };
+    }
+
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const { DataAnnotationMqttBridge } = require('../../../src/integrations/mqtt_bridge.ts');
+    const bridge = new DataAnnotationMqttBridge({
+      host: 'localhost',
+      port: 1883,
+      topicPrefix: 'dataannotation',
+      profileName: 'Test Profile',
+      version: '1.0.0',
+    });
+
+    bridge.publishDiscovery();
+    const cache = {
+      version: 1,
+      updated_at: '2026-07-16T10:00:00.000Z',
+      projects: {
+        '550e8400-e29b-41d4-a716-446655440000': {
+          project_id: '550e8400-e29b-41d4-a716-446655440000',
+          enabled: true,
+          last_seen_name: 'Priority Project',
+          last_seen_slug: 'project_1',
+          last_seen_url: 'https://app.dataannotation.tech/workers/projects/550e8400-e29b-41d4-a716-446655440000',
+          first_seen_at: '2026-07-15T10:00:00.000Z',
+          last_seen_at: '2026-07-16T10:00:00.000Z',
+        },
+      },
+    };
+
+    bridge.publishAutoAcceptProjectPreferences({
+      projects: [{ id: '550e8400-e29b-41d4-a716-446655440000', slug: 'project_1', name: 'Priority Project', url: 'https://app.dataannotation.tech/workers/projects/550e8400-e29b-41d4-a716-446655440000', tasks: 1 }],
+      cache,
+      autoAcceptEnabled: true,
+      now: new Date('2026-07-16T10:05:00.000Z'),
+    });
+
+    const discovery = publishes.find((entry) => entry.topic === 'homeassistant/switch/dataannotation_auto_accept_project_550e8400_e29b_41d4_a716_446655440000/config');
+    assert.ok(discovery);
+    assert.equal(JSON.parse(discovery.payload).command_topic, 'dataannotation/auto_accept/projects/550e8400_e29b_41d4_a716_446655440000/set');
+    assert.equal(JSON.parse(discovery.payload).state_topic, 'dataannotation/auto_accept/projects/550e8400_e29b_41d4_a716_446655440000/state');
+
+    const clearButton = publishes.find((entry) => entry.topic === 'homeassistant/button/dataannotation_clear_auto_accept_project_cache/config');
+    assert.ok(clearButton);
+  } finally {
+    Module._load = originalLoad;
+  }
+});
+
+test('auto accept priority command resolves canonical project ids', () => {
+  let messageHandler = null;
+  const originalLoad = Module._load;
+  Module._load = function(request, parent, isMain) {
+    if (request === 'mqtt') {
+      return {
+        connect() {
+          return {
+            on(event, handler) {
+              if (event === 'message') {
+                messageHandler = handler;
+              }
+            },
+            subscribe() {},
+            publish() {},
+            end(_force, _options, callback) {
+              callback?.();
+            },
+          };
+        },
+      };
+    }
+
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const { DataAnnotationMqttBridge } = require('../../../src/integrations/mqtt_bridge.ts');
+    const bridge = new DataAnnotationMqttBridge({
+      host: 'localhost',
+      port: 1883,
+      topicPrefix: 'dataannotation',
+      profileName: 'Test Profile',
+      version: '1.0.0',
+    });
+
+    bridge.publishAutoAcceptProjectPreferences({
+      projects: [{ id: '550e8400-e29b-41d4-a716-446655440000', slug: 'project_1', name: 'Priority Project', tasks: 1 }],
+      cache: {
+        version: 1,
+        projects: {
+          '550e8400-e29b-41d4-a716-446655440000': {
+            project_id: '550e8400-e29b-41d4-a716-446655440000',
+            enabled: false,
+            last_seen_name: 'Priority Project',
+            last_seen_slug: 'project_1',
+            last_seen_url: 'https://app.dataannotation.tech/workers/projects/550e8400-e29b-41d4-a716-446655440000',
+            first_seen_at: '2026-07-15T10:00:00.000Z',
+            last_seen_at: '2026-07-16T10:00:00.000Z',
+          },
+        },
+      },
+      autoAcceptEnabled: true,
+    });
+
+    messageHandler('dataannotation/auto_accept/projects/550e8400_e29b_41d4_a716_446655440000/set', Buffer.from('ON'));
+    messageHandler('dataannotation/auto_accept/projects/550e8400_e29b_41d4_a716_446655440000/set', Buffer.from('OFF'));
+
+    assert.deepEqual(bridge.drainAutoAcceptProjectChanges(), [
+      { projectId: '550e8400-e29b-41d4-a716-446655440000', enabled: true },
+      { projectId: '550e8400-e29b-41d4-a716-446655440000', enabled: false },
+    ]);
   } finally {
     Module._load = originalLoad;
   }

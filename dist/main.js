@@ -545,6 +545,7 @@ var require_mqtt_discovery = __commonJS({
     function buildDiscoveryNames() {
       return {
         button: "Sync Now",
+        clear_auto_accept_project_cache: "Clear Priority Cache",
         profile: "Profile",
         project_count: "Project Count",
         total_tasks: "Total Tasks",
@@ -557,8 +558,12 @@ var require_mqtt_discovery = __commonJS({
         usd_php_rate: "USD to PHP Rate",
         withdraw_funds: "Withdraw Funds",
         rebuild_discovery: "Rebuild Discovery",
-        next_payout: "Next Payout"
+        next_payout: "Next Payout",
+        auto_accept_project: "Auto Accept Priority"
       };
+    }
+    function formatAutoAcceptProjectEntityName(name) {
+      return `Auto Accept Priority - ${shortenProjectName(name, 40)}`;
     }
     function buildDeviceInfo(profileName, version2) {
       return {
@@ -576,6 +581,7 @@ var require_mqtt_discovery = __commonJS({
     module2.exports = {
       buildDeviceInfo,
       buildDiscoveryNames,
+      formatAutoAcceptProjectEntityName,
       formatProjectEntityName,
       normalizeProjectName,
       shortenProjectName,
@@ -592,11 +598,180 @@ var require_mqtt_topics = __commonJS({
       return {
         topic: (suffix) => `${topicPrefix}/${suffix}`,
         projectStateTopic: (slug) => `${topicPrefix}/projects/${slug}/state`,
-        projectAvailabilityTopic: (slug) => `${topicPrefix}/projects/${slug}/availability`
+        projectAvailabilityTopic: (slug) => `${topicPrefix}/projects/${slug}/availability`,
+        autoAcceptProjectStateTopic: (projectKey) => `${topicPrefix}/auto_accept/projects/${projectKey}/state`,
+        autoAcceptProjectCommandTopic: (projectKey) => `${topicPrefix}/auto_accept/projects/${projectKey}/set`,
+        autoAcceptProjectCommandBaseTopic: () => `${topicPrefix}/auto_accept/projects`
       };
     }
     module2.exports = {
       buildTopicHelpers
+    };
+  }
+});
+
+// src/state/auto_accept_projects.ts
+var require_auto_accept_projects = __commonJS({
+  "src/state/auto_accept_projects.ts"(exports2, module2) {
+    "use strict";
+    var fs7 = require("node:fs");
+    var path6 = require("node:path");
+    var AUTO_ACCEPT_PROJECT_RETENTION_MS = 7 * 24 * 60 * 60 * 1e3;
+    var DEFAULT_AUTO_ACCEPT_PROJECTS = {
+      version: 1,
+      projects: {},
+      updated_at: null
+    };
+    function loadAutoAcceptProjects(filePath, now = /* @__PURE__ */ new Date()) {
+      if (!filePath || !fs7.existsSync(filePath)) {
+        return cloneAutoAcceptProjects(DEFAULT_AUTO_ACCEPT_PROJECTS);
+      }
+      try {
+        return normalizeAutoAcceptProjects(JSON.parse(fs7.readFileSync(filePath, "utf8")), now);
+      } catch {
+        return cloneAutoAcceptProjects(DEFAULT_AUTO_ACCEPT_PROJECTS);
+      }
+    }
+    function saveAutoAcceptProjects(filePath, projects, now = /* @__PURE__ */ new Date()) {
+      if (!filePath) {
+        return;
+      }
+      const normalized = normalizeAutoAcceptProjects(projects, now);
+      fs7.mkdirSync(path6.dirname(filePath), { recursive: true });
+      const tempPath = `${filePath}.tmp`;
+      fs7.writeFileSync(tempPath, JSON.stringify(normalized, null, 2));
+      fs7.renameSync(tempPath, filePath);
+    }
+    function normalizeAutoAcceptProjects(value, now = /* @__PURE__ */ new Date()) {
+      const payload = value && typeof value === "object" ? value : {};
+      const projects = payload.projects && typeof payload.projects === "object" ? payload.projects : {};
+      const normalizedProjects = {};
+      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      for (const [projectId, project] of Object.entries(projects)) {
+        const normalized = normalizeAutoAcceptProject(projectId, project, current);
+        if (!normalized || isProjectExpired(normalized, current)) {
+          continue;
+        }
+        normalizedProjects[normalized.project_id] = normalized;
+      }
+      return {
+        version: 1,
+        projects: normalizedProjects,
+        updated_at: normalizeIsoDate(payload.updated_at) || null
+      };
+    }
+    function normalizeAutoAcceptProject(projectId, project, now = /* @__PURE__ */ new Date()) {
+      if (!project || typeof project !== "object") {
+        return null;
+      }
+      const normalizedProjectId = normalizeText2(project.project_id || projectId);
+      if (!normalizedProjectId) {
+        return null;
+      }
+      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      return {
+        project_id: normalizedProjectId,
+        enabled: Boolean(project.enabled),
+        last_seen_name: normalizeText2(project.last_seen_name),
+        last_seen_slug: normalizeText2(project.last_seen_slug),
+        last_seen_url: normalizeText2(project.last_seen_url),
+        first_seen_at: normalizeIsoDate(project.first_seen_at) || current.toISOString(),
+        last_seen_at: normalizeIsoDate(project.last_seen_at) || current.toISOString()
+      };
+    }
+    function upsertAutoAcceptProject(projects, project, enabled = false, now = /* @__PURE__ */ new Date()) {
+      const normalized = normalizeAutoAcceptProjects(projects, now);
+      const projectId = resolveAutoAcceptProjectId(project);
+      if (!projectId) {
+        return normalized;
+      }
+      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const existing = normalized.projects[projectId] || null;
+      normalized.projects[projectId] = {
+        project_id: projectId,
+        enabled: Boolean(enabled),
+        last_seen_name: normalizeText2(project?.name) || existing?.last_seen_name || null,
+        last_seen_slug: normalizeText2(project?.slug) || existing?.last_seen_slug || null,
+        last_seen_url: normalizeText2(project?.url) || existing?.last_seen_url || null,
+        first_seen_at: existing?.first_seen_at || current.toISOString(),
+        last_seen_at: current.toISOString()
+      };
+      normalized.updated_at = current.toISOString();
+      return normalized;
+    }
+    function setAutoAcceptProjectEnabled(projects, projectId, enabled, now = /* @__PURE__ */ new Date()) {
+      const normalized = normalizeAutoAcceptProjects(projects, now);
+      const resolvedProjectId = normalizeText2(projectId);
+      if (!resolvedProjectId || !normalized.projects[resolvedProjectId]) {
+        return normalized;
+      }
+      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      normalized.projects[resolvedProjectId] = {
+        ...normalized.projects[resolvedProjectId],
+        enabled: Boolean(enabled),
+        last_seen_at: current.toISOString()
+      };
+      normalized.updated_at = current.toISOString();
+      return normalized;
+    }
+    function clearAutoAcceptProjectCache(_projects, now = /* @__PURE__ */ new Date()) {
+      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      return {
+        version: 1,
+        projects: {},
+        updated_at: current.toISOString()
+      };
+    }
+    function pruneExpiredAutoAcceptProjects(projects, now = /* @__PURE__ */ new Date()) {
+      return normalizeAutoAcceptProjects(projects, now);
+    }
+    function resolveAutoAcceptProjectId(project) {
+      return normalizeText2(project?.id);
+    }
+    function listEnabledAutoAcceptProjectIds(projects, now = /* @__PURE__ */ new Date()) {
+      const normalized = normalizeAutoAcceptProjects(projects, now);
+      return Object.values(normalized.projects).filter((project) => project.enabled).map((project) => project.project_id);
+    }
+    function isProjectExpired(project, now = /* @__PURE__ */ new Date()) {
+      const lastSeenAt = normalizeDate2(project?.last_seen_at);
+      if (!lastSeenAt) {
+        return false;
+      }
+      return now.getTime() - lastSeenAt.getTime() > AUTO_ACCEPT_PROJECT_RETENTION_MS;
+    }
+    function normalizeIsoDate(value) {
+      const date = normalizeDate2(value);
+      return date ? date.toISOString() : null;
+    }
+    function normalizeDate2(value) {
+      if (!value) {
+        return null;
+      }
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    function normalizeText2(value) {
+      if (value === void 0 || value === null) {
+        return null;
+      }
+      const text = String(value).trim();
+      return text || null;
+    }
+    function cloneAutoAcceptProjects(value) {
+      return normalizeAutoAcceptProjects(JSON.parse(JSON.stringify(value)));
+    }
+    module2.exports = {
+      AUTO_ACCEPT_PROJECT_RETENTION_MS,
+      DEFAULT_AUTO_ACCEPT_PROJECTS,
+      clearAutoAcceptProjectCache,
+      listEnabledAutoAcceptProjectIds,
+      loadAutoAcceptProjects,
+      normalizeAutoAcceptProjects,
+      pruneExpiredAutoAcceptProjects,
+      resolveAutoAcceptProjectId,
+      saveAutoAcceptProjects,
+      setAutoAcceptProjectEnabled,
+      upsertAutoAcceptProject
     };
   }
 });
@@ -616,8 +791,9 @@ var require_mqtt_bridge = __commonJS({
       }
     };
     var { formatClaimProjectEntityName } = require_project_claim();
-    var { buildDeviceInfo, buildDiscoveryNames, formatProjectEntityName, shortenProjectName, slugify } = require_mqtt_discovery();
+    var { buildDeviceInfo, buildDiscoveryNames, formatAutoAcceptProjectEntityName, formatProjectEntityName, shortenProjectName, slugify } = require_mqtt_discovery();
     var { buildTopicHelpers } = require_mqtt_topics();
+    var { clearAutoAcceptProjectCache, pruneExpiredAutoAcceptProjects, resolveAutoAcceptProjectId, setAutoAcceptProjectEnabled, upsertAutoAcceptProject } = require_auto_accept_projects();
     function numberOrZero3(value) {
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : 0;
@@ -636,11 +812,14 @@ var require_mqtt_bridge = __commonJS({
         this.claimProjectsLockChange = { value: null };
         this.fastPollingChange = { value: null };
         this.autoAcceptChange = { value: null };
+        this.autoAcceptProjectChanges = [];
+        this.clearAutoAcceptProjectCacheRequested = { value: false };
         this.currencyModeChange = { value: null };
         this.rebuildDiscoveryRequested = { value: false };
         this.claimRequested = { value: null };
         this.publishedProjectSlugs = /* @__PURE__ */ new Set();
         this.publishedClaimProjectSlugs = /* @__PURE__ */ new Set();
+        this.publishedAutoAcceptProjectIds = /* @__PURE__ */ new Set();
         this.connected = false;
         this._availabilityState = "offline";
         this.client = mqtt.connect({
@@ -663,7 +842,7 @@ var require_mqtt_bridge = __commonJS({
           this.connected = true;
           this.logger.info("Connected to MQTT broker");
           this.client.subscribe(
-            [this._topic("command/sync"), this._topic("command/withdraw"), this._topic("command/rebuild_discovery"), this._topic("withdraw/lock/set"), this._topic("fast/poll/set"), this._topic("claim/lock/set"), this._topic("auto_accept/set"), this._topic("currency/mode/set"), this._topic("claim/+")],
+            [this._topic("command/sync"), this._topic("command/withdraw"), this._topic("command/rebuild_discovery"), this._topic("withdraw/lock/set"), this._topic("fast/poll/set"), this._topic("claim/lock/set"), this._topic("auto_accept/set"), this._topic("currency/mode/set"), this._topic("auto_accept/projects/clear"), this._topic("auto_accept/projects/+/set"), this._topic("claim/+")],
             { qos: 1 }
           );
           this.logger.debug(`Subscribed to ${this._topic("command/sync")}`);
@@ -674,6 +853,8 @@ var require_mqtt_bridge = __commonJS({
           this.logger.debug(`Subscribed to ${this._topic("claim/lock/set")}`);
           this.logger.debug(`Subscribed to ${this._topic("auto_accept/set")}`);
           this.logger.debug(`Subscribed to ${this._topic("currency/mode/set")}`);
+          this.logger.debug(`Subscribed to ${this._topic("auto_accept/projects/clear")}`);
+          this.logger.debug(`Subscribed to ${this._topic("auto_accept/projects/+/set")}`);
           this.logger.debug(`Subscribed to ${this._topic("claim/+")}`);
         });
         this.client.on("close", () => {
@@ -744,6 +925,19 @@ var require_mqtt_bridge = __commonJS({
             this.currencyModeChange.value = false;
             this.logger.debug("Publishing optimistic currency mode state: USD");
             this.publishCurrencyModeState(false);
+          } else if (topic === this._topic("auto_accept/projects/clear") && message === "clear") {
+            this.logger.info("Received auto accept priority cache clear request");
+            this.clearAutoAcceptProjectCacheRequested.value = true;
+          } else if (topic.startsWith(this._topic("auto_accept/projects/")) && topic.endsWith("/set")) {
+            const projectKey = topic.slice(this._topic("auto_accept/projects/").length, -"/set".length).trim();
+            if (projectKey && (message === "on" || message === "off")) {
+              const projectId = this._resolveAutoAcceptProjectIdFromTopicKey(projectKey);
+              if (projectId) {
+                this.logger.info(`Received auto accept priority request via MQTT for ${projectId}: ${message.toUpperCase()}`);
+                this.autoAcceptProjectChanges.push({ projectId, enabled: message === "on" });
+                this.publishAutoAcceptProjectState(projectId, message === "on");
+              }
+            }
           } else if (topic.startsWith(this._topic("claim/")) && topic !== this._topic("claim/lock/set") && message === "claim") {
             const slug = topic.slice(this._topic("claim/").length);
             if (slug) {
@@ -775,10 +969,69 @@ var require_mqtt_bridge = __commonJS({
         const discoveryEntries = this._buildStaticDiscoveryEntries(currencyUnit);
         discoveryEntries.forEach((entry) => this._publishDiscovery(entry.component, entry.objectId, entry.payload));
       }
+      publishAutoAcceptProjectPreferences({ projects = [], cache = null, autoAcceptEnabled = false, now = /* @__PURE__ */ new Date() } = {}) {
+        const normalizedCache = pruneExpiredAutoAcceptProjects(cache, now);
+        const currentProjects = Array.isArray(projects) ? projects : [];
+        const desiredProjectIds = /* @__PURE__ */ new Set();
+        this._lastAutoAcceptProjects = currentProjects;
+        this._lastAutoAcceptProjectCache = normalizedCache;
+        if (autoAcceptEnabled) {
+          for (const project of currentProjects) {
+            const projectId = resolveAutoAcceptProjectId(project);
+            if (!projectId) {
+              continue;
+            }
+            const updatedCache = upsertAutoAcceptProject(normalizedCache, project, Boolean(normalizedCache.projects[projectId]?.enabled), now);
+            normalizedCache.projects = updatedCache.projects;
+            normalizedCache.updated_at = updatedCache.updated_at || normalizedCache.updated_at;
+            desiredProjectIds.add(projectId);
+            this._publishAutoAcceptProjectDiscovery(projectId, normalizedCache.projects[projectId] || updatedCache.projects[projectId], project);
+          }
+          for (const [projectId, preference] of Object.entries(normalizedCache.projects || {})) {
+            if (desiredProjectIds.has(projectId)) {
+              continue;
+            }
+            desiredProjectIds.add(projectId);
+            this._publishAutoAcceptProjectDiscovery(projectId, preference, null);
+          }
+        }
+        const shouldForceDelete = !autoAcceptEnabled;
+        const knownProjectIds = /* @__PURE__ */ new Set([
+          ...this.publishedAutoAcceptProjectIds,
+          ...Object.keys(normalizedCache.projects || {})
+        ]);
+        for (const projectId of knownProjectIds) {
+          if (shouldForceDelete || !desiredProjectIds.has(projectId)) {
+            this._deleteAutoAcceptProjectEntity(projectId);
+          }
+        }
+        this.publishedAutoAcceptProjectIds = desiredProjectIds;
+        return normalizedCache;
+      }
+      drainAutoAcceptProjectChanges() {
+        const changes = Array.isArray(this.autoAcceptProjectChanges) ? this.autoAcceptProjectChanges : [];
+        this.autoAcceptProjectChanges = [];
+        return changes;
+      }
+      publishAutoAcceptProjectState(projectId, enabled) {
+        const state = enabled ? "ON" : "OFF";
+        this._publish(this._projectAutoAcceptStateTopic(projectId), state, true);
+      }
+      clearAutoAcceptProjectPreferences() {
+        const knownProjectIds = /* @__PURE__ */ new Set([
+          ...this.publishedAutoAcceptProjectIds,
+          ...Object.keys(this._lastAutoAcceptProjectCache?.projects || {})
+        ]);
+        for (const projectId of knownProjectIds) {
+          this._deleteAutoAcceptProjectEntity(projectId);
+        }
+        this.publishedAutoAcceptProjectIds = /* @__PURE__ */ new Set();
+      }
       rebuildDiscovery({ currencyUnit = "USD" } = {}) {
         this.logger.info("Rebuilding MQTT discovery payloads");
         const discoveryEntries = this._buildStaticDiscoveryEntries(currencyUnit);
         discoveryEntries.forEach((entry) => this._publish(`homeassistant/${entry.component}/${this.topicPrefix}_${entry.objectId}/config`, "", true));
+        this._deleteAllAutoAcceptProjectEntities();
         discoveryEntries.forEach((entry) => this._publishDiscovery(entry.component, entry.objectId, entry.payload));
       }
       _buildStaticDiscoveryEntries(currencyUnit) {
@@ -812,6 +1065,22 @@ var require_mqtt_bridge = __commonJS({
               payload_available: "online",
               payload_not_available: "offline",
               icon: "mdi:database-refresh",
+              device: this.device
+            }
+          },
+          {
+            component: "button",
+            objectId: "clear_auto_accept_project_cache",
+            payload: {
+              name: names.clear_auto_accept_project_cache,
+              unique_id: `${this.topicPrefix}_clear_auto_accept_project_cache`,
+              entity_category: "config",
+              command_topic: this._topic("auto_accept/projects/clear"),
+              payload_press: "clear",
+              availability_topic: this._topic("availability"),
+              payload_available: "online",
+              payload_not_available: "offline",
+              icon: "mdi:cache-remove",
               device: this.device
             }
           },
@@ -1341,6 +1610,33 @@ var require_mqtt_bridge = __commonJS({
           device: this.device
         });
       }
+      _publishAutoAcceptProjectDiscovery(projectId, preference, project = null) {
+        const safeKey = slugify(projectId);
+        const enabled = Boolean(preference?.enabled);
+        const name = preference?.last_seen_name || project?.name || projectId;
+        this._publishDiscovery("switch", `auto_accept_project_${safeKey}`, {
+          name: formatAutoAcceptProjectEntityName(name),
+          unique_id: `${this.topicPrefix}_auto_accept_project_${safeKey}`,
+          entity_category: "config",
+          state_topic: this._projectAutoAcceptStateTopic(projectId),
+          command_topic: this._projectAutoAcceptCommandTopic(projectId),
+          payload_on: "ON",
+          payload_off: "OFF",
+          state_on: "ON",
+          state_off: "OFF",
+          availability_topic: this._topic("availability"),
+          payload_available: "online",
+          payload_not_available: "offline",
+          icon: "mdi:star-circle",
+          device: this.device
+        });
+        this._publish(this._projectAutoAcceptStateTopic(projectId), enabled ? "ON" : "OFF", true);
+      }
+      _deleteAutoAcceptProjectEntity(projectId) {
+        const safeKey = slugify(projectId);
+        this._publish(`homeassistant/switch/${this.topicPrefix}_auto_accept_project_${safeKey}/config`, "", true);
+        this._publish(this._projectAutoAcceptStateTopic(projectId), "OFF", true);
+      }
       _publishDiscovery(component, objectId, payload) {
         this._publishJson(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, payload, true);
       }
@@ -1365,6 +1661,35 @@ var require_mqtt_bridge = __commonJS({
       }
       _projectAvailabilityTopic(slug) {
         return this.topics.projectAvailabilityTopic(slug);
+      }
+      _projectAutoAcceptStateTopic(projectId) {
+        return this.topics.autoAcceptProjectStateTopic(slugify(projectId));
+      }
+      _projectAutoAcceptCommandTopic(projectId) {
+        return this.topics.autoAcceptProjectCommandTopic(slugify(projectId));
+      }
+      _resolveAutoAcceptProjectIdFromTopicKey(projectKey) {
+        const normalizedKey = slugify(projectKey);
+        if (!normalizedKey) {
+          return null;
+        }
+        const currentProjects = Array.isArray(this._lastAutoAcceptProjects) ? this._lastAutoAcceptProjects : [];
+        const directMatch = currentProjects.find((project) => slugify(project?.id) === normalizedKey && project?.id);
+        if (directMatch?.id) {
+          return String(directMatch.id).trim();
+        }
+        const cacheMatch = this._lastAutoAcceptProjectCache?.projects ? Object.values(this._lastAutoAcceptProjectCache.projects).find((project) => slugify(project?.project_id) === normalizedKey) : null;
+        return cacheMatch?.project_id ? String(cacheMatch.project_id).trim() : null;
+      }
+      _deleteAllAutoAcceptProjectEntities() {
+        const knownProjectIds = /* @__PURE__ */ new Set([
+          ...this.publishedAutoAcceptProjectIds,
+          ...Object.keys(this._lastAutoAcceptProjectCache?.projects || {})
+        ]);
+        for (const projectId of knownProjectIds) {
+          this._deleteAutoAcceptProjectEntity(projectId);
+        }
+        this.publishedAutoAcceptProjectIds = /* @__PURE__ */ new Set();
       }
     };
     module2.exports = {
@@ -3302,21 +3627,27 @@ var require_dataannotation_client = __commonJS({
       }
       async claimProject(projectSlug) {
         const page = await this._newPage();
+        const targetProject = projectSlug && typeof projectSlug === "object" ? projectSlug : null;
+        const targetSlug = String(targetProject?.slug || projectSlug || "").trim();
+        const targetId = String(targetProject?.id || "").trim();
         try {
           const claimStartedAt = Date.now();
-          this.logger.debug(`Opening DataAnnotation projects page for claim: ${projectSlug}`);
+          this.logger.debug(`Opening DataAnnotation projects page for claim: ${targetId || targetSlug}`);
           await this._applyClaimViewport(page);
-          await this._loadAuthenticatedPage(page, PROJECTS_URL, 'div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]');
-          this.logger.debug("Reading fresh project list for claim request");
-          const projects = await this._scrapeProjects(page);
-          const project = projects.find((item) => item.slug === projectSlug);
+          let project = targetProject;
           if (!project) {
-            this.logger.debug("Claim request target project was not found in the active project list");
-            return {
-              status: "not_found",
-              pageUrl: page.url(),
-              projectSlug
-            };
+            await this._loadAuthenticatedPage(page, PROJECTS_URL, 'div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]');
+            this.logger.debug("Reading fresh project list for claim request");
+            const projects = await this._scrapeProjects(page);
+            project = projects.find((item) => item.slug === targetSlug);
+            if (!project) {
+              this.logger.debug("Claim request target project was not found in the active project list");
+              return {
+                status: "not_found",
+                pageUrl: page.url(),
+                projectSlug: targetSlug
+              };
+            }
           }
           const targetUrls = this._resolveProjectClaimUrls(project);
           if (targetUrls.length === 0) {
@@ -3329,29 +3660,41 @@ var require_dataannotation_client = __commonJS({
           }
           this.logger.debug(`Claim target fields: slug=${project.slug}, id=${project.id || ""}, name=${project.name}`);
           this.logger.debug(`Claim target route priority: ${targetUrls.join(" -> ")}`);
-          let clickResult = await this._clickProjectClaimTarget(page, targetUrls);
-          this.logger.debug(`Project row click result: ${clickResult.kind || "none"}${clickResult.href ? ` (${clickResult.href})` : ""}`);
-          if (!clickResult.clicked) {
-            this.logger.debug("Project row not ready yet; opening the Projects tab and waiting for the exact link");
-            await this._openProjectsTab(page);
-            const targetReady = await this._waitForProjectClaimTarget(page, targetUrls, 7e3);
-            if (!targetReady) {
-              this.logger.debug(`Exact claim link for ${project.slug} did not appear in time`);
+          if (targetProject) {
+            const directUrl = buildProjectUrl2(targetId) || null;
+            if (!directUrl) {
               return {
                 status: "not_found",
                 pageUrl: page.url(),
                 project
               };
             }
-            clickResult = await this._clickProjectClaimTarget(page, targetUrls);
-            this.logger.debug(`Project row retry result: ${clickResult.kind || "none"}${clickResult.href ? ` (${clickResult.href})` : ""}`);
-          }
-          if (!clickResult.clicked) {
-            return {
-              status: "not_found",
-              pageUrl: page.url(),
-              project
-            };
+            await this._loadAuthenticatedPage(page, directUrl, "body");
+          } else {
+            const clickResult = await this._clickProjectClaimTarget(page, targetUrls);
+            this.logger.debug(`Project row click result: ${clickResult.kind || "none"}${clickResult.href ? ` (${clickResult.href})` : ""}`);
+            if (!clickResult.clicked) {
+              this.logger.debug("Project row not ready yet; opening the Projects tab and waiting for the exact link");
+              await this._openProjectsTab(page);
+              const targetReady = await this._waitForProjectClaimTarget(page, targetUrls, 7e3);
+              if (!targetReady) {
+                this.logger.debug(`Exact claim link for ${project.slug} did not appear in time`);
+                return {
+                  status: "not_found",
+                  pageUrl: page.url(),
+                  project
+                };
+              }
+              const retryClickResult = await this._clickProjectClaimTarget(page, targetUrls);
+              this.logger.debug(`Project row retry result: ${retryClickResult.kind || "none"}${retryClickResult.href ? ` (${retryClickResult.href})` : ""}`);
+              if (!retryClickResult.clicked) {
+                return {
+                  status: "not_found",
+                  pageUrl: page.url(),
+                  project
+                };
+              }
+            }
           }
           let pageState = await this._waitForClaimPageState(
             page,
@@ -4614,9 +4957,11 @@ var init_sync_policy = __esm({
 var project_delta_exports = {};
 __export(project_delta_exports, {
   detectNewTaskProjects: () => detectNewTaskProjects,
+  indexProjectsById: () => indexProjectsById,
   indexProjectsBySlug: () => indexProjectsBySlug
 });
 function detectNewTaskProjects(previousProjects, currentProjects) {
+  const previousById = indexProjectsById(previousProjects);
   const previousBySlug = indexProjectsBySlug(previousProjects);
   const deltas = [];
   for (const project of Array.isArray(currentProjects) ? currentProjects : []) {
@@ -4625,10 +4970,11 @@ function detectNewTaskProjects(previousProjects, currentProjects) {
       continue;
     }
     const slug = String(project?.slug || "").trim();
-    if (!slug) {
+    const id = stringOrNull(project?.id);
+    if (!slug && !id) {
       continue;
     }
-    const previous = previousBySlug.get(slug);
+    const previous = (id ? previousById.get(id) : null) || previousBySlug.get(slug);
     const previousTasks = numberOrZero2(previous?.tasks);
     const addedTasks = currentTasks - previousTasks;
     if (addedTasks <= 0) {
@@ -4636,7 +4982,7 @@ function detectNewTaskProjects(previousProjects, currentProjects) {
     }
     deltas.push({
       slug,
-      id: stringOrNull(project?.id),
+      id,
       name: String(project?.name || "Unknown project").trim(),
       url: project?.url ? String(project.url) : buildProjectUrl(project?.id),
       previous_tasks: previousTasks,
@@ -4645,6 +4991,17 @@ function detectNewTaskProjects(previousProjects, currentProjects) {
     });
   }
   return deltas;
+}
+function indexProjectsById(projects) {
+  const map = /* @__PURE__ */ new Map();
+  for (const project of Array.isArray(projects) ? projects : []) {
+    const id = stringOrNull(project?.id);
+    if (!id || map.has(id)) {
+      continue;
+    }
+    map.set(id, project);
+  }
+  return map;
 }
 function indexProjectsBySlug(projects) {
   const map = /* @__PURE__ */ new Map();
@@ -4815,7 +5172,7 @@ function buildAutoAcceptSignature(newTaskEvents) {
   if (!Array.isArray(newTaskEvents) || newTaskEvents.length === 0) {
     return null;
   }
-  return newTaskEvents.map((event) => [event.slug, event.added_tasks, event.current_tasks, event.name].join("|")).join(";;");
+  return newTaskEvents.map((event) => [String(event.id || event.slug || ""), event.added_tasks, event.current_tasks, event.name].join("|")).join(";;");
 }
 async function maybeAutoAcceptNewTasks({
   bridge,
@@ -4825,6 +5182,7 @@ async function maybeAutoAcceptNewTasks({
   claimProjectsLocked,
   currentProjects,
   newTaskEvents,
+  autoAcceptProjectCache,
   lastAttemptSignature,
   pendingClaimTarget,
   pendingClaimAttemptCount,
@@ -4838,6 +5196,21 @@ async function maybeAutoAcceptNewTasks({
   let nextPendingClaimAttemptCount = Number.isFinite(pendingClaimAttemptCount) ? Number(pendingClaimAttemptCount) : 0;
   let nextPendingClaimAttemptedAt = Number.isFinite(pendingClaimAttemptedAt) ? Number(pendingClaimAttemptedAt) : null;
   const currentProjectList = Array.isArray(currentProjects) ? currentProjects : [];
+  const currentProjectsById = /* @__PURE__ */ new Map();
+  const currentProjectsBySlug = /* @__PURE__ */ new Map();
+  for (const project of currentProjectList) {
+    const projectId = String(project?.id || "").trim();
+    const projectSlug = String(project?.slug || "").trim();
+    if (projectId && !currentProjectsById.has(projectId)) {
+      currentProjectsById.set(projectId, project);
+    }
+    if (projectSlug && !currentProjectsBySlug.has(projectSlug)) {
+      currentProjectsBySlug.set(projectSlug, project);
+    }
+  }
+  const enabledProjectIds = new Set(
+    Object.values(autoAcceptProjectCache && autoAcceptProjectCache.projects || {}).filter((project) => project?.enabled).map((project) => String(project?.project_id || "").trim()).filter(Boolean)
+  );
   if (!enabled) {
     return {
       enabled,
@@ -4861,14 +5234,17 @@ async function maybeAutoAcceptNewTasks({
   }
   if (nextPendingClaimTarget) {
     const pendingSlug = String(nextPendingClaimTarget.slug || "").trim();
+    const pendingId = String(nextPendingClaimTarget.id || "").trim();
     const currentPendingProject = currentProjectList.find((project) => String(project?.slug || "").trim() === String(nextPendingClaimTarget.slug || "").trim());
+    const currentPendingProjectById = pendingId ? currentProjectList.find((project) => String(project?.id || "").trim() === pendingId) : null;
+    const visiblePendingProject = currentPendingProjectById || currentPendingProject;
     if (Number.isFinite(nextPendingClaimAttemptedAt) && now - Number(nextPendingClaimAttemptedAt) >= AUTO_ACCEPT_RETRY_WINDOW_MS) {
       logger.warning(`Auto accept pending task expired after ${AUTO_ACCEPT_RETRY_WINDOW_MS / 1e3} seconds: ${pendingSlug}`);
       nextPendingClaimTarget = null;
       nextPendingClaimAttemptCount = 0;
       nextPendingClaimAttemptedAt = null;
       nextAttemptSignature = null;
-    } else if (!currentPendingProject || Number(currentPendingProject?.tasks) <= 0) {
+    } else if (!visiblePendingProject || Number(visiblePendingProject?.tasks) <= 0) {
       logger.info("Auto accept pending task is not currently visible; waiting for the next poll");
       return {
         enabled,
@@ -4900,9 +5276,31 @@ async function maybeAutoAcceptNewTasks({
         pendingClaimAttemptedAt: nextPendingClaimAttemptedAt
       };
     }
-    claimTarget = newTaskEvents[0];
+    const resolveEventProject = (event) => {
+      const eventId = String(event?.id || "").trim();
+      if (eventId && currentProjectsById.has(eventId)) {
+        return currentProjectsById.get(eventId);
+      }
+      const eventSlug = String(event?.slug || "").trim();
+      if (eventSlug && currentProjectsBySlug.has(eventSlug)) {
+        return currentProjectsBySlug.get(eventSlug);
+      }
+      return event;
+    };
+    const prioritizedEvents = enabledProjectIds.size > 0 ? newTaskEvents.filter((event) => {
+      const resolved = resolveEventProject(event);
+      return Boolean(resolved?.id) && enabledProjectIds.has(String(resolved.id).trim());
+    }) : newTaskEvents;
+    claimTarget = prioritizedEvents[0] || newTaskEvents[0];
     nextAttemptSignature = signature;
     nextPendingClaimAttemptedAt = now;
+  }
+  if (claimTarget) {
+    const claimTargetId = String(claimTarget.id || "").trim();
+    const freshestProject = claimTargetId ? currentProjectsById.get(claimTargetId) : currentProjectsBySlug.get(String(claimTarget.slug || "").trim());
+    if (freshestProject) {
+      claimTarget = freshestProject;
+    }
   }
   if (!claimTarget) {
     return {
@@ -4930,7 +5328,7 @@ async function maybeAutoAcceptNewTasks({
   const claimStartedAt = Date.now();
   let claimResult;
   try {
-    claimResult = await client.claimProject(claimTarget.slug);
+    claimResult = await client.claimProject(claimTarget);
   } catch (error) {
     logger.warning(`Auto accept claim threw for ${claimTarget.slug}: ${error.message}`);
     claimResult = {
@@ -5112,7 +5510,7 @@ function republishCurrencyViews(bridge, projects, payments, currencyState, scrap
     bridge.publishPayments(convertPaymentsForCurrency2(payments, currencyState), payments.scraped_at || scrapedAt);
   }
 }
-async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessfulProjectCount, lastSuccessfulTotalTaskCount, initialSyncCompleted, previousProjects, lastSuccessfulPayments, autoAcceptState, currencyState, withdrawLocked, includeFundsHistory, lastFundsHistorySnapshot, logger) {
+async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessfulProjectCount, lastSuccessfulTotalTaskCount, initialSyncCompleted, previousProjects, lastSuccessfulPayments, autoAcceptState, autoAcceptProjectCache, currencyState, withdrawLocked, includeFundsHistory, lastFundsHistorySnapshot, logger) {
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
   logger.info(`Starting sync at ${startedAt}`);
   let autoAcceptResult = autoAcceptState;
@@ -5186,6 +5584,7 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
       claimProjectsLocked: autoAcceptState.claimProjectsLocked,
       currentProjects: projects,
       newTaskEvents,
+      autoAcceptProjectCache,
       lastAttemptSignature: autoAcceptState.lastAttemptSignature,
       pendingClaimTarget: autoAcceptState.pendingClaimTarget,
       pendingClaimAttemptCount: autoAcceptState.pendingClaimAttemptCount,
@@ -6498,6 +6897,7 @@ var require_runtime_state = __commonJS({
       lastSuccessfulPayments = null;
       persistedNextWithdrawalState = null;
       lastFundsHistorySnapshot = null;
+      autoAcceptProjectCache = null;
       lastInProgressTask = null;
       lastAutoAcceptAttemptSignature = null;
       lastAutoAcceptPendingTarget = null;
@@ -6537,6 +6937,7 @@ var require_dataannotation_app = __commonJS({
     } = require_currency_conversion();
     var { loadFastPollingState: loadFastPollingState2, saveFastPollingState: saveFastPollingState2 } = (init_fast_polling_state(), __toCommonJS(fast_polling_state_exports));
     var { loadNextWithdrawalState: loadNextWithdrawalState2, saveNextWithdrawalState: saveNextWithdrawalState2 } = (init_next_withdrawal_state(), __toCommonJS(next_withdrawal_state_exports));
+    var { clearAutoAcceptProjectCache, loadAutoAcceptProjects, pruneExpiredAutoAcceptProjects, saveAutoAcceptProjects, setAutoAcceptProjectEnabled } = require_auto_accept_projects();
     var { loadWithdrawLockState: loadWithdrawLockState2, saveWithdrawLockState: saveWithdrawLockState2 } = (init_withdraw_lock_state(), __toCommonJS(withdraw_lock_state_exports));
     var { shouldIncludeFundsHistory: shouldIncludeFundsHistory2 } = (init_sync_policy(), __toCommonJS(sync_policy_exports));
     var { doSync: doSync2, getActivePollCron: getActivePollCron2, republishCurrencyViews: republishCurrencyViews2 } = (init_sync(), __toCommonJS(sync_exports));
@@ -6556,6 +6957,7 @@ var require_dataannotation_app = __commonJS({
     var CLAIM_PROJECTS_LOCK_STATE_PATH = "/data/claim-projects-lock-state.json";
     var FAST_POLLING_STATE_PATH = "/data/fast-polling-state.json";
     var AUTO_ACCEPT_STATE_PATH2 = "/data/auto-accept-state.json";
+    var AUTO_ACCEPT_PROJECTS_STATE_PATH = "/data/auto-accept-projects.json";
     var CURRENCY_STATE_PATH = "/data/currency-state.json";
     var NEXT_WITHDRAWAL_STATE_PATH = "/data/next-withdrawal-state.json";
     var DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES = 2;
@@ -6621,6 +7023,7 @@ var require_dataannotation_app = __commonJS({
         this.state.claimProjectsLocked = loadClaimProjectsLockState2(CLAIM_PROJECTS_LOCK_STATE_PATH);
         this.state.fastPollingEnabled = loadFastPollingState2(FAST_POLLING_STATE_PATH);
         this.state.autoAcceptEnabled = loadAutoAcceptState2(AUTO_ACCEPT_STATE_PATH2);
+        this.state.autoAcceptProjectCache = loadAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH);
         this.state.currencyState = loadCurrencyState(CURRENCY_STATE_PATH);
         this.state.persistedNextWithdrawalState = loadNextWithdrawalState2(NEXT_WITHDRAWAL_STATE_PATH);
       }
@@ -6629,6 +7032,13 @@ var require_dataannotation_app = __commonJS({
         await bridge.waitForConnection();
         bridge.publishOnline();
         bridge.publishDiscovery({ currencyUnit: getDisplayCurrency2(state.currencyState) });
+        state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
+          projects: [],
+          cache: state.autoAcceptProjectCache,
+          autoAcceptEnabled: false,
+          now: /* @__PURE__ */ new Date()
+        });
+        saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
         this._publishStaticState();
       }
       async _applyBridgeChanges() {
@@ -6672,6 +7082,42 @@ var require_dataannotation_app = __commonJS({
             state.lastAutoAcceptPendingAttemptedAt = null;
           }
           logger.info(`Auto accept state updated: ${state.autoAcceptEnabled ? "enabled" : "disabled"}`);
+          bridge.clearAutoAcceptProjectPreferences();
+          if (state.autoAcceptEnabled && Array.isArray(state.lastSuccessfulProjects) && state.lastSuccessfulProjects.length > 0) {
+            state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
+              projects: state.lastSuccessfulProjects || [],
+              cache: state.autoAcceptProjectCache,
+              autoAcceptEnabled: true,
+              now: /* @__PURE__ */ new Date()
+            });
+            saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+          } else {
+            saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+          }
+        }
+        const autoAcceptProjectChanges = bridge.drainAutoAcceptProjectChanges();
+        if (autoAcceptProjectChanges.length > 0) {
+          for (const change of autoAcceptProjectChanges) {
+            state.autoAcceptProjectCache = setAutoAcceptProjectEnabled(state.autoAcceptProjectCache, change.projectId, change.enabled, /* @__PURE__ */ new Date());
+            logger.info(`Auto accept priority updated for ${change.projectId}: ${change.enabled ? "enabled" : "disabled"}`);
+          }
+          if (state.autoAcceptEnabled && Array.isArray(state.lastSuccessfulProjects) && state.lastSuccessfulProjects.length > 0) {
+            state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
+              projects: state.lastSuccessfulProjects || [],
+              cache: state.autoAcceptProjectCache,
+              autoAcceptEnabled: true,
+              now: /* @__PURE__ */ new Date()
+            });
+          }
+          saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+        }
+        if (bridge.clearAutoAcceptProjectCacheRequested.value) {
+          bridge.clearAutoAcceptProjectCacheRequested.value = false;
+          state.autoAcceptProjectCache = clearAutoAcceptProjectCache(state.autoAcceptProjectCache, /* @__PURE__ */ new Date());
+          saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+          bridge.clearAutoAcceptProjectPreferences();
+          saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+          logger.info("Auto accept priority cache cleared");
         }
         if (bridge.currencyModeChange.value !== null) {
           state.currencyState.convert_to_php = bridge.currencyModeChange.value;
@@ -6773,6 +7219,7 @@ var require_dataannotation_app = __commonJS({
             pendingClaimAttemptCount: state.lastAutoAcceptPendingAttemptCount,
             pendingClaimAttemptedAt: state.lastAutoAcceptPendingAttemptedAt
           },
+          state.autoAcceptProjectCache,
           state.currencyState,
           state.withdrawLocked,
           includeFundsHistory,
@@ -6828,6 +7275,14 @@ var require_dataannotation_app = __commonJS({
         if (Number.isFinite(state.nextExpeditedFundsHistoryAt)) {
           state.nextRunAt = Math.min(state.nextRunAt, state.nextExpeditedFundsHistoryAt);
         }
+        state.autoAcceptProjectCache = pruneExpiredAutoAcceptProjects(state.autoAcceptProjectCache, /* @__PURE__ */ new Date());
+        state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
+          projects: state.lastSuccessfulProjects || [],
+          cache: state.autoAcceptProjectCache,
+          autoAcceptEnabled: state.autoAcceptEnabled,
+          now: /* @__PURE__ */ new Date()
+        });
+        saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
       }
       _publishStaticState() {
         const { config, state, bridge } = this;
@@ -6863,7 +7318,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.7",
+      version: "0.7.8",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

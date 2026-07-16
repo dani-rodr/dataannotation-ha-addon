@@ -11,6 +11,7 @@ class RuntimeState {
   lastSuccessfulPayments = null;
   persistedNextWithdrawalState = null;
   lastFundsHistorySnapshot = null;
+  autoAcceptProjectCache = null;
   lastInProgressTask = null;
   lastAutoAcceptAttemptSignature = null;
   lastAutoAcceptPendingTarget = null;

@@ -2,6 +2,7 @@ import { buildProjectUrl } from '../scrapers/projects';
 import type { ProjectDelta, ProjectLike } from '../shared/types';
 
 export function detectNewTaskProjects(previousProjects: Array<ProjectLike> | null | undefined, currentProjects: Array<ProjectLike> | null | undefined): ProjectDelta[] {
+  const previousById = indexProjectsById(previousProjects);
   const previousBySlug = indexProjectsBySlug(previousProjects);
   const deltas: ProjectDelta[] = [];
 
@@ -12,11 +13,12 @@ export function detectNewTaskProjects(previousProjects: Array<ProjectLike> | nul
     }
 
     const slug = String(project?.slug || '').trim();
-    if (!slug) {
+    const id = stringOrNull(project?.id);
+    if (!slug && !id) {
       continue;
     }
 
-    const previous = previousBySlug.get(slug);
+    const previous = (id ? previousById.get(id) : null) || previousBySlug.get(slug);
     const previousTasks = numberOrZero(previous?.tasks);
     const addedTasks = currentTasks - previousTasks;
 
@@ -26,7 +28,7 @@ export function detectNewTaskProjects(previousProjects: Array<ProjectLike> | nul
 
     deltas.push({
       slug,
-      id: stringOrNull(project?.id),
+      id,
       name: String(project?.name || 'Unknown project').trim(),
       url: project?.url ? String(project.url) : buildProjectUrl(project?.id),
       previous_tasks: previousTasks,
@@ -36,6 +38,21 @@ export function detectNewTaskProjects(previousProjects: Array<ProjectLike> | nul
   }
 
   return deltas;
+}
+
+export function indexProjectsById(projects: Array<ProjectLike> | null | undefined): Map<string, ProjectLike> {
+  const map = new Map<string, ProjectLike>();
+
+  for (const project of Array.isArray(projects) ? projects : []) {
+    const id = stringOrNull(project?.id);
+    if (!id || map.has(id)) {
+      continue;
+    }
+
+    map.set(id, project);
+  }
+
+  return map;
 }
 
 export function indexProjectsBySlug(projects: Array<ProjectLike> | null | undefined): Map<string, ProjectLike> {

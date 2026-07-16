@@ -230,3 +230,35 @@ test('claimProject returns null when claim page state does not resolve before ti
 
   assert.equal(result, null);
 });
+
+test('claimProject uses the canonical project url for object-based claims', async () => {
+  const client = new DataAnnotationClient({
+    email: 'user@example.com',
+    password: 'secret',
+    executablePath: '/usr/bin/google-chrome',
+    logger: createLogger(),
+  });
+
+  const loaded = [];
+  client._newPage = async () => ({
+    url() {
+      return 'https://app.dataannotation.tech/workers/projects';
+    },
+    close: async () => {},
+  });
+  client._applyClaimViewport = async () => {};
+  client._loadAuthenticatedPage = async (_page, url) => {
+    loaded.push(url);
+  };
+  client._waitForClaimPageState = async () => ({
+    url: 'https://app.dataannotation.tech/workers/projects/project-alpha',
+    enterVisible: false,
+    exitVisible: true,
+    hasScreenWarning: false,
+  });
+
+  const result = await client.claimProject({ slug: 'alpha', id: 'project-alpha', name: 'Alpha' });
+
+  assert.deepEqual(loaded, ['https://app.dataannotation.tech/workers/projects/project-alpha']);
+  assert.equal(result.status, 'already_in_work_mode');
+});

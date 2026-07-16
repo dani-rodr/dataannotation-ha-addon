@@ -23,6 +23,7 @@ function formatProjectEntityName(name) {
 function buildDiscoveryNames() {
   return {
     button: 'Sync Now',
+    clear_auto_accept_project_cache: 'Clear Priority Cache',
     profile: 'Profile',
     project_count: 'Project Count',
     total_tasks: 'Total Tasks',
@@ -36,7 +37,12 @@ function buildDiscoveryNames() {
     withdraw_funds: 'Withdraw Funds',
     rebuild_discovery: 'Rebuild Discovery',
     next_payout: 'Next Payout',
+    auto_accept_project: 'Auto Accept Priority',
   };
+}
+
+function formatAutoAcceptProjectEntityName(name) {
+  return `Auto Accept Priority - ${shortenProjectName(name, 40)}`;
 }
 
 function buildDeviceInfo(profileName, version) {
@@ -60,6 +66,7 @@ function slugify(value) {
 module.exports = {
   buildDeviceInfo,
   buildDiscoveryNames,
+  formatAutoAcceptProjectEntityName,
   formatProjectEntityName,
   normalizeProjectName,
   shortenProjectName,

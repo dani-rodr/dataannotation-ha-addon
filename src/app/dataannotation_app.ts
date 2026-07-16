@@ -14,6 +14,7 @@ const {
 } = require('../state/currency_conversion.ts');
 const { loadFastPollingState, saveFastPollingState } = require('../state/fast_polling_state.ts');
 const { loadNextWithdrawalState, saveNextWithdrawalState } = require('../state/next_withdrawal_state.ts');
+const { clearAutoAcceptProjectCache, loadAutoAcceptProjects, pruneExpiredAutoAcceptProjects, saveAutoAcceptProjects, setAutoAcceptProjectEnabled } = require('../state/auto_accept_projects.ts');
 const { loadWithdrawLockState, saveWithdrawLockState } = require('../state/withdraw_lock_state.ts');
 const { shouldIncludeFundsHistory } = require('../state/sync_policy.ts');
 const { doSync, getActivePollCron, republishCurrencyViews } = require('./sync.ts');
@@ -35,6 +36,7 @@ const WITHDRAW_LOCK_STATE_PATH = '/data/withdraw-lock-state.json';
 const CLAIM_PROJECTS_LOCK_STATE_PATH = '/data/claim-projects-lock-state.json';
 const FAST_POLLING_STATE_PATH = '/data/fast-polling-state.json';
 const AUTO_ACCEPT_STATE_PATH = '/data/auto-accept-state.json';
+const AUTO_ACCEPT_PROJECTS_STATE_PATH = '/data/auto-accept-projects.json';
 const CURRENCY_STATE_PATH = '/data/currency-state.json';
 const NEXT_WITHDRAWAL_STATE_PATH = '/data/next-withdrawal-state.json';
 const DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES = 2;
@@ -104,6 +106,7 @@ class DataAnnotationApp {
     this.state.claimProjectsLocked = loadClaimProjectsLockState(CLAIM_PROJECTS_LOCK_STATE_PATH);
     this.state.fastPollingEnabled = loadFastPollingState(FAST_POLLING_STATE_PATH);
     this.state.autoAcceptEnabled = loadAutoAcceptState(AUTO_ACCEPT_STATE_PATH);
+    this.state.autoAcceptProjectCache = loadAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH);
     this.state.currencyState = loadCurrencyState(CURRENCY_STATE_PATH);
     this.state.persistedNextWithdrawalState = loadNextWithdrawalState(NEXT_WITHDRAWAL_STATE_PATH);
   }
@@ -113,6 +116,13 @@ class DataAnnotationApp {
     await bridge.waitForConnection();
     bridge.publishOnline();
     bridge.publishDiscovery({ currencyUnit: getDisplayCurrency(state.currencyState) });
+    state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
+      projects: [],
+      cache: state.autoAcceptProjectCache,
+      autoAcceptEnabled: false,
+      now: new Date(),
+    });
+    saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
     this._publishStaticState();
   }
 
@@ -161,6 +171,46 @@ class DataAnnotationApp {
         state.lastAutoAcceptPendingAttemptedAt = null;
       }
       logger.info(`Auto accept state updated: ${state.autoAcceptEnabled ? 'enabled' : 'disabled'}`);
+      bridge.clearAutoAcceptProjectPreferences();
+      if (state.autoAcceptEnabled && Array.isArray(state.lastSuccessfulProjects) && state.lastSuccessfulProjects.length > 0) {
+        state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
+          projects: state.lastSuccessfulProjects || [],
+          cache: state.autoAcceptProjectCache,
+          autoAcceptEnabled: true,
+          now: new Date(),
+        });
+        saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+      } else {
+        saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+      }
+    }
+
+    const autoAcceptProjectChanges = bridge.drainAutoAcceptProjectChanges();
+    if (autoAcceptProjectChanges.length > 0) {
+      for (const change of autoAcceptProjectChanges) {
+        state.autoAcceptProjectCache = setAutoAcceptProjectEnabled(state.autoAcceptProjectCache, change.projectId, change.enabled, new Date());
+        logger.info(`Auto accept priority updated for ${change.projectId}: ${change.enabled ? 'enabled' : 'disabled'}`);
+      }
+
+      if (state.autoAcceptEnabled && Array.isArray(state.lastSuccessfulProjects) && state.lastSuccessfulProjects.length > 0) {
+        state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
+          projects: state.lastSuccessfulProjects || [],
+          cache: state.autoAcceptProjectCache,
+          autoAcceptEnabled: true,
+          now: new Date(),
+        });
+      }
+
+      saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+    }
+
+    if (bridge.clearAutoAcceptProjectCacheRequested.value) {
+      bridge.clearAutoAcceptProjectCacheRequested.value = false;
+      state.autoAcceptProjectCache = clearAutoAcceptProjectCache(state.autoAcceptProjectCache, new Date());
+      saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+      bridge.clearAutoAcceptProjectPreferences();
+      saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
+      logger.info('Auto accept priority cache cleared');
     }
 
     if (bridge.currencyModeChange.value !== null) {
@@ -271,6 +321,7 @@ class DataAnnotationApp {
         pendingClaimAttemptCount: state.lastAutoAcceptPendingAttemptCount,
         pendingClaimAttemptedAt: state.lastAutoAcceptPendingAttemptedAt,
       },
+      state.autoAcceptProjectCache,
       state.currencyState,
       state.withdrawLocked,
       includeFundsHistory,
@@ -335,6 +386,14 @@ class DataAnnotationApp {
     if (Number.isFinite(state.nextExpeditedFundsHistoryAt)) {
       state.nextRunAt = Math.min(state.nextRunAt, state.nextExpeditedFundsHistoryAt);
     }
+    state.autoAcceptProjectCache = pruneExpiredAutoAcceptProjects(state.autoAcceptProjectCache, new Date());
+    state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
+      projects: state.lastSuccessfulProjects || [],
+      cache: state.autoAcceptProjectCache,
+      autoAcceptEnabled: state.autoAcceptEnabled,
+      now: new Date(),
+    });
+    saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);
   }
 
   _publishStaticState() {

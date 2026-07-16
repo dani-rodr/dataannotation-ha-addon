@@ -14,7 +14,7 @@ export function buildAutoAcceptSignature(newTaskEvents: unknown): string | null 
   }
 
   return newTaskEvents
-    .map((event: any) => [event.slug, event.added_tasks, event.current_tasks, event.name].join('|'))
+    .map((event: any) => [String(event.id || event.slug || ''), event.added_tasks, event.current_tasks, event.name].join('|'))
     .join(';;');
 }
 
@@ -26,6 +26,7 @@ export async function maybeAutoAcceptNewTasks({
   claimProjectsLocked,
   currentProjects,
   newTaskEvents,
+  autoAcceptProjectCache,
   lastAttemptSignature,
   pendingClaimTarget,
   pendingClaimAttemptCount,
@@ -39,6 +40,24 @@ export async function maybeAutoAcceptNewTasks({
   let nextPendingClaimAttemptCount = Number.isFinite(pendingClaimAttemptCount) ? Number(pendingClaimAttemptCount) : 0;
   let nextPendingClaimAttemptedAt = Number.isFinite(pendingClaimAttemptedAt) ? Number(pendingClaimAttemptedAt) : null;
   const currentProjectList = Array.isArray(currentProjects) ? currentProjects : [];
+  const currentProjectsById = new Map();
+  const currentProjectsBySlug = new Map();
+  for (const project of currentProjectList) {
+    const projectId = String(project?.id || '').trim();
+    const projectSlug = String(project?.slug || '').trim();
+    if (projectId && !currentProjectsById.has(projectId)) {
+      currentProjectsById.set(projectId, project);
+    }
+    if (projectSlug && !currentProjectsBySlug.has(projectSlug)) {
+      currentProjectsBySlug.set(projectSlug, project);
+    }
+  }
+  const enabledProjectIds = new Set(
+    Object.values((autoAcceptProjectCache && autoAcceptProjectCache.projects) || {})
+      .filter((project: any) => project?.enabled)
+      .map((project: any) => String(project?.project_id || '').trim())
+      .filter(Boolean)
+  );
 
   if (!enabled) {
     return {
@@ -66,14 +85,17 @@ export async function maybeAutoAcceptNewTasks({
 
   if (nextPendingClaimTarget) {
     const pendingSlug = String(nextPendingClaimTarget.slug || '').trim();
+    const pendingId = String(nextPendingClaimTarget.id || '').trim();
     const currentPendingProject = currentProjectList.find((project: any) => String(project?.slug || '').trim() === String(nextPendingClaimTarget.slug || '').trim());
+    const currentPendingProjectById = pendingId ? currentProjectList.find((project: any) => String(project?.id || '').trim() === pendingId) : null;
+    const visiblePendingProject = currentPendingProjectById || currentPendingProject;
     if (Number.isFinite(nextPendingClaimAttemptedAt) && now - Number(nextPendingClaimAttemptedAt) >= AUTO_ACCEPT_RETRY_WINDOW_MS) {
       logger.warning(`Auto accept pending task expired after ${AUTO_ACCEPT_RETRY_WINDOW_MS / 1000} seconds: ${pendingSlug}`);
       nextPendingClaimTarget = null;
       nextPendingClaimAttemptCount = 0;
       nextPendingClaimAttemptedAt = null;
       nextAttemptSignature = null;
-    } else if (!currentPendingProject || Number(currentPendingProject?.tasks) <= 0) {
+    } else if (!visiblePendingProject || Number(visiblePendingProject?.tasks) <= 0) {
       logger.info('Auto accept pending task is not currently visible; waiting for the next poll');
       return {
         enabled,
@@ -108,9 +130,39 @@ export async function maybeAutoAcceptNewTasks({
       };
     }
 
-    claimTarget = newTaskEvents[0];
+    const resolveEventProject = (event: any) => {
+      const eventId = String(event?.id || '').trim();
+      if (eventId && currentProjectsById.has(eventId)) {
+        return currentProjectsById.get(eventId);
+      }
+
+      const eventSlug = String(event?.slug || '').trim();
+      if (eventSlug && currentProjectsBySlug.has(eventSlug)) {
+        return currentProjectsBySlug.get(eventSlug);
+      }
+
+      return event;
+    };
+
+    const prioritizedEvents = enabledProjectIds.size > 0
+      ? newTaskEvents.filter((event: any) => {
+        const resolved = resolveEventProject(event);
+        return Boolean(resolved?.id) && enabledProjectIds.has(String(resolved.id).trim());
+      })
+      : newTaskEvents;
+    claimTarget = prioritizedEvents[0] || newTaskEvents[0];
     nextAttemptSignature = signature;
     nextPendingClaimAttemptedAt = now;
+  }
+
+  if (claimTarget) {
+    const claimTargetId = String(claimTarget.id || '').trim();
+    const freshestProject = claimTargetId
+      ? currentProjectsById.get(claimTargetId)
+      : currentProjectsBySlug.get(String(claimTarget.slug || '').trim());
+    if (freshestProject) {
+      claimTarget = freshestProject;
+    }
   }
 
   if (!claimTarget) {
@@ -142,7 +194,7 @@ export async function maybeAutoAcceptNewTasks({
   let claimResult;
 
   try {
-    claimResult = await client.claimProject(claimTarget.slug);
+    claimResult = await client.claimProject(claimTarget);
   } catch (error: any) {
     logger.warning(`Auto accept claim threw for ${claimTarget.slug}: ${error.message}`);
     claimResult = {

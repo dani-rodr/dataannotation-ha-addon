@@ -152,23 +152,29 @@ class DataAnnotationClient {
 
   async claimProject(projectSlug) {
     const page = await this._newPage();
+    const targetProject = projectSlug && typeof projectSlug === 'object' ? projectSlug : null;
+    const targetSlug = String(targetProject?.slug || projectSlug || '').trim();
+    const targetId = String(targetProject?.id || '').trim();
 
     try {
       const claimStartedAt = Date.now();
-      this.logger.debug(`Opening DataAnnotation projects page for claim: ${projectSlug}`);
+      this.logger.debug(`Opening DataAnnotation projects page for claim: ${targetId || targetSlug}`);
       await this._applyClaimViewport(page);
-      await this._loadAuthenticatedPage(page, PROJECTS_URL, 'div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]');
-      this.logger.debug('Reading fresh project list for claim request');
-      const projects = await this._scrapeProjects(page);
-      const project = projects.find((item) => item.slug === projectSlug);
-
+      let project = targetProject;
       if (!project) {
-        this.logger.debug('Claim request target project was not found in the active project list');
-        return {
-          status: 'not_found',
-          pageUrl: page.url(),
-          projectSlug,
-        };
+        await this._loadAuthenticatedPage(page, PROJECTS_URL, 'div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]');
+        this.logger.debug('Reading fresh project list for claim request');
+        const projects = await this._scrapeProjects(page);
+        project = projects.find((item) => item.slug === targetSlug);
+
+        if (!project) {
+          this.logger.debug('Claim request target project was not found in the active project list');
+          return {
+            status: 'not_found',
+            pageUrl: page.url(),
+            projectSlug: targetSlug,
+          };
+        }
       }
 
       const targetUrls = this._resolveProjectClaimUrls(project);
@@ -183,15 +189,9 @@ class DataAnnotationClient {
 
       this.logger.debug(`Claim target fields: slug=${project.slug}, id=${project.id || ''}, name=${project.name}`);
       this.logger.debug(`Claim target route priority: ${targetUrls.join(' -> ')}`);
-      let clickResult = await this._clickProjectClaimTarget(page, targetUrls);
-      this.logger.debug(`Project row click result: ${clickResult.kind || 'none'}${clickResult.href ? ` (${clickResult.href})` : ''}`);
-
-      if (!clickResult.clicked) {
-        this.logger.debug('Project row not ready yet; opening the Projects tab and waiting for the exact link');
-        await this._openProjectsTab(page);
-        const targetReady = await this._waitForProjectClaimTarget(page, targetUrls, 7000);
-        if (!targetReady) {
-          this.logger.debug(`Exact claim link for ${project.slug} did not appear in time`);
+      if (targetProject) {
+        const directUrl = buildProjectUrl(targetId) || null;
+        if (!directUrl) {
           return {
             status: 'not_found',
             pageUrl: page.url(),
@@ -199,16 +199,34 @@ class DataAnnotationClient {
           };
         }
 
-        clickResult = await this._clickProjectClaimTarget(page, targetUrls);
-        this.logger.debug(`Project row retry result: ${clickResult.kind || 'none'}${clickResult.href ? ` (${clickResult.href})` : ''}`);
-      }
+        await this._loadAuthenticatedPage(page, directUrl, 'body');
+      } else {
+        const clickResult = await this._clickProjectClaimTarget(page, targetUrls);
+        this.logger.debug(`Project row click result: ${clickResult.kind || 'none'}${clickResult.href ? ` (${clickResult.href})` : ''}`);
 
-      if (!clickResult.clicked) {
-        return {
-          status: 'not_found',
-          pageUrl: page.url(),
-          project,
-        };
+        if (!clickResult.clicked) {
+          this.logger.debug('Project row not ready yet; opening the Projects tab and waiting for the exact link');
+          await this._openProjectsTab(page);
+          const targetReady = await this._waitForProjectClaimTarget(page, targetUrls, 7000);
+          if (!targetReady) {
+            this.logger.debug(`Exact claim link for ${project.slug} did not appear in time`);
+            return {
+              status: 'not_found',
+              pageUrl: page.url(),
+              project,
+            };
+          }
+
+          const retryClickResult = await this._clickProjectClaimTarget(page, targetUrls);
+          this.logger.debug(`Project row retry result: ${retryClickResult.kind || 'none'}${retryClickResult.href ? ` (${retryClickResult.href})` : ''}`);
+          if (!retryClickResult.clicked) {
+            return {
+              status: 'not_found',
+              pageUrl: page.url(),
+              project,
+            };
+          }
+        }
       }
 
       let pageState = await this._waitForClaimPageState(page, (state) =>

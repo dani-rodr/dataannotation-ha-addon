@@ -66,3 +66,19 @@ test('detectNewTaskProjects ignores decreases and zero-task projects', () => {
 
   assert.deepEqual(deltas, []);
 });
+
+test('detectNewTaskProjects matches existing projects by stable id before slug', () => {
+  const deltas = detectNewTaskProjects(
+    [
+      { slug: 'old-slug', id: 'project-123', tasks: 3 },
+    ],
+    [
+      { slug: 'new-slug', id: 'project-123', tasks: 5, name: 'Renamed Project' },
+    ]
+  );
+
+  assert.equal(deltas.length, 1);
+  assert.equal(deltas[0].id, 'project-123');
+  assert.equal(deltas[0].previous_tasks, 3);
+  assert.equal(deltas[0].added_tasks, 2);
+});

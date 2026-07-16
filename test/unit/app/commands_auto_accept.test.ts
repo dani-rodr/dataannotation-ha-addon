@@ -63,11 +63,51 @@ test('maybeAutoAcceptNewTasks retries a pending project even without a fresh del
   });
 
   assert.equal(claimCalls.length, 2);
-  assert.equal(claimCalls[0], 'alpha');
-  assert.equal(claimCalls[1], 'alpha');
+  assert.equal(claimCalls[0].slug, 'alpha');
+  assert.equal(claimCalls[1].slug, 'alpha');
   assert.equal(initial.pendingClaimAttemptCount, 1);
   assert.equal(retry.pendingClaimAttemptCount, 2);
   assert.equal(retry.pendingClaimTarget.slug, 'alpha');
+});
+
+test('maybeAutoAcceptNewTasks prefers enabled cached projects when multiple new tasks appear', async () => {
+  const claimCalls = [];
+  const client = {
+    async claimProject(project) {
+      claimCalls.push(project);
+      return { status: 'not_available', pageUrl: 'https://app.dataannotation.tech/workers/projects/alpha' };
+    },
+  };
+
+  const result = await maybeAutoAcceptNewTasks({
+    bridge: createBridge(),
+    client,
+    logger: createLogger(),
+    autoAcceptEnabled: true,
+    claimProjectsLocked: false,
+    currentProjects: [
+      { id: 'alpha-id', slug: 'alpha', tasks: 2, name: 'Alpha' },
+      { id: 'beta-id', slug: 'beta', tasks: 2, name: 'Beta' },
+    ],
+    newTaskEvents: [
+      { id: 'alpha-id', slug: 'alpha', added_tasks: 1, current_tasks: 2, name: 'Alpha', url: 'https://app.dataannotation.tech/workers/projects/alpha-id' },
+      { id: 'beta-id', slug: 'beta', added_tasks: 1, current_tasks: 2, name: 'Beta', url: 'https://app.dataannotation.tech/workers/projects/beta-id' },
+    ],
+    autoAcceptProjectCache: {
+      projects: {
+        'beta-id': { project_id: 'beta-id', enabled: true },
+      },
+    },
+    lastAttemptSignature: null,
+    pendingClaimTarget: null,
+    pendingClaimAttemptCount: 0,
+    pendingClaimAttemptedAt: null,
+    taskStatus: {},
+  });
+
+  assert.equal(claimCalls.length, 1);
+  assert.equal(claimCalls[0].id, 'beta-id');
+  assert.equal(result.pendingClaimTarget.id, 'beta-id');
 });
 
 test('maybeAutoAcceptNewTasks clears pending state after a successful claim', async () => {

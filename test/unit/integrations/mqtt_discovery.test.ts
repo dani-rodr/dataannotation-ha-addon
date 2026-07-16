@@ -13,6 +13,7 @@ const {
 test('mqtt discovery helpers keep the public labels stable', () => {
   assert.deepEqual(buildDiscoveryNames(), {
     button: 'Sync Now',
+    clear_auto_accept_project_cache: 'Clear Priority Cache',
     profile: 'Profile',
     project_count: 'Project Count',
     total_tasks: 'Total Tasks',
@@ -26,6 +27,7 @@ test('mqtt discovery helpers keep the public labels stable', () => {
     withdraw_funds: 'Withdraw Funds',
     rebuild_discovery: 'Rebuild Discovery',
     next_payout: 'Next Payout',
+    auto_accept_project: 'Auto Accept Priority',
   });
 });
 

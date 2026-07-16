@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.8
+
+- Add cached Auto Accept priority switches per project UUID, plus a Clear Priority Cache button and direct-claim optimization.
+
 ## 0.7.7
 
 - Give Funds History entries stable observation IDs so title or duration drift does not create new Wallet income records.

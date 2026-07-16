@@ -5,6 +5,7 @@ export interface ProjectLike {
   id?: string | number | null;
   url?: string | null;
   tasks?: number | null;
+  auto_accept_priority?: boolean | null;
 }
 
 export interface ProjectSummary {
@@ -20,6 +21,22 @@ export interface ProjectDelta {
   previous_tasks: number;
   current_tasks: number;
   added_tasks: number;
+}
+
+export interface AutoAcceptProjectPreference {
+  project_id: string;
+  enabled: boolean;
+  last_seen_name: string | null;
+  last_seen_slug: string | null;
+  last_seen_url: string | null;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+}
+
+export interface AutoAcceptProjectPreferenceStore {
+  version: number;
+  projects: Record<string, AutoAcceptProjectPreference>;
+  updated_at: string | null;
 }
 
 export interface FilteredProjectsResult<T extends ProjectLike = ProjectLike> {

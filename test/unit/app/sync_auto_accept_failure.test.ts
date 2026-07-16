@@ -58,6 +58,7 @@ test('doSync preserves auto accept retry state when payments scraping fails', as
     [],
     null,
     { enabled: true, claimProjectsLocked: false, lastAttemptSignature: null, pendingClaimTarget: null, pendingClaimAttemptCount: 0, pendingClaimAttemptedAt: null },
+    null,
     { convert_to_php: false, usd_php_rate: 56, usd_php_rate_source: 'test', usd_php_rate_date: '2026-01-01', usd_php_rate_fetched_at: '2026-01-01T00:00:00.000Z' },
     false,
     false,
@@ -66,7 +67,7 @@ test('doSync preserves auto accept retry state when payments scraping fails', as
   );
 
   assert.equal(result.autoAcceptState.enabled, true);
-  assert.equal(result.autoAcceptState.lastAttemptSignature, 'alpha|2|2|Alpha');
+  assert.equal(result.autoAcceptState.lastAttemptSignature, 'project-alpha|2|2|Alpha');
   assert.equal(result.autoAcceptState.pendingClaimTarget.slug, 'alpha');
   assert.equal(result.autoAcceptState.pendingClaimAttemptCount, 1);
   assert.equal(result.payments, null);

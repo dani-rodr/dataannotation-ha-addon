@@ -8,8 +8,9 @@ const NULL_LOGGER = {
 };
 
 const { formatClaimProjectEntityName } = require('../projects/project_claim.ts');
-const { buildDeviceInfo, buildDiscoveryNames, formatProjectEntityName, shortenProjectName, slugify } = require('./mqtt_discovery.ts');
+const { buildDeviceInfo, buildDiscoveryNames, formatAutoAcceptProjectEntityName, formatProjectEntityName, shortenProjectName, slugify } = require('./mqtt_discovery.ts');
 const { buildTopicHelpers } = require('./mqtt_topics.ts');
+const { clearAutoAcceptProjectCache, pruneExpiredAutoAcceptProjects, resolveAutoAcceptProjectId, setAutoAcceptProjectEnabled, upsertAutoAcceptProject } = require('../state/auto_accept_projects.ts');
 
 function numberOrZero(value) {
   const parsed = Number(value);
@@ -30,11 +31,14 @@ class DataAnnotationMqttBridge {
     this.claimProjectsLockChange = { value: null };
     this.fastPollingChange = { value: null };
     this.autoAcceptChange = { value: null };
+    this.autoAcceptProjectChanges = [];
+    this.clearAutoAcceptProjectCacheRequested = { value: false };
     this.currencyModeChange = { value: null };
     this.rebuildDiscoveryRequested = { value: false };
     this.claimRequested = { value: null };
     this.publishedProjectSlugs = new Set();
     this.publishedClaimProjectSlugs = new Set();
+    this.publishedAutoAcceptProjectIds = new Set();
     this.connected = false;
     this._availabilityState = 'offline';
     this.client = mqtt.connect({
@@ -59,7 +63,7 @@ class DataAnnotationMqttBridge {
       this.connected = true;
       this.logger.info('Connected to MQTT broker');
       this.client.subscribe(
-        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('command/rebuild_discovery'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('auto_accept/set'), this._topic('currency/mode/set'), this._topic('claim/+')],
+        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('command/rebuild_discovery'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('auto_accept/set'), this._topic('currency/mode/set'), this._topic('auto_accept/projects/clear'), this._topic('auto_accept/projects/+/set'), this._topic('claim/+')],
         { qos: 1 }
       );
       this.logger.debug(`Subscribed to ${this._topic('command/sync')}`);
@@ -70,6 +74,8 @@ class DataAnnotationMqttBridge {
       this.logger.debug(`Subscribed to ${this._topic('claim/lock/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('auto_accept/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('currency/mode/set')}`);
+      this.logger.debug(`Subscribed to ${this._topic('auto_accept/projects/clear')}`);
+      this.logger.debug(`Subscribed to ${this._topic('auto_accept/projects/+/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('claim/+')}`);
     });
     this.client.on('close', () => {
@@ -140,6 +146,19 @@ class DataAnnotationMqttBridge {
         this.currencyModeChange.value = false;
         this.logger.debug('Publishing optimistic currency mode state: USD');
         this.publishCurrencyModeState(false);
+      } else if (topic === this._topic('auto_accept/projects/clear') && message === 'clear') {
+        this.logger.info('Received auto accept priority cache clear request');
+        this.clearAutoAcceptProjectCacheRequested.value = true;
+      } else if (topic.startsWith(this._topic('auto_accept/projects/')) && topic.endsWith('/set')) {
+        const projectKey = topic.slice(this._topic('auto_accept/projects/').length, -'/set'.length).trim();
+        if (projectKey && (message === 'on' || message === 'off')) {
+          const projectId = this._resolveAutoAcceptProjectIdFromTopicKey(projectKey);
+          if (projectId) {
+            this.logger.info(`Received auto accept priority request via MQTT for ${projectId}: ${message.toUpperCase()}`);
+          this.autoAcceptProjectChanges.push({ projectId, enabled: message === 'on' });
+          this.publishAutoAcceptProjectState(projectId, message === 'on');
+          }
+        }
       } else if (topic.startsWith(this._topic('claim/')) && topic !== this._topic('claim/lock/set') && message === 'claim') {
         const slug = topic.slice(this._topic('claim/').length);
         if (slug) {
@@ -176,10 +195,82 @@ class DataAnnotationMqttBridge {
     discoveryEntries.forEach((entry) => this._publishDiscovery(entry.component, entry.objectId, entry.payload));
   }
 
+  publishAutoAcceptProjectPreferences({ projects = [], cache = null, autoAcceptEnabled = false, now = new Date() } = {}) {
+    const normalizedCache = pruneExpiredAutoAcceptProjects(cache, now);
+    const currentProjects = Array.isArray(projects) ? projects : [];
+    const desiredProjectIds = new Set();
+    this._lastAutoAcceptProjects = currentProjects;
+    this._lastAutoAcceptProjectCache = normalizedCache;
+
+    if (autoAcceptEnabled) {
+      for (const project of currentProjects) {
+        const projectId = resolveAutoAcceptProjectId(project);
+        if (!projectId) {
+          continue;
+        }
+
+        const updatedCache = upsertAutoAcceptProject(normalizedCache, project, Boolean(normalizedCache.projects[projectId]?.enabled), now);
+        normalizedCache.projects = updatedCache.projects;
+        normalizedCache.updated_at = updatedCache.updated_at || normalizedCache.updated_at;
+        desiredProjectIds.add(projectId);
+        this._publishAutoAcceptProjectDiscovery(projectId, normalizedCache.projects[projectId] || updatedCache.projects[projectId], project);
+      }
+
+      for (const [projectId, preference] of Object.entries(normalizedCache.projects || {})) {
+        if (desiredProjectIds.has(projectId)) {
+          continue;
+        }
+
+        desiredProjectIds.add(projectId);
+        this._publishAutoAcceptProjectDiscovery(projectId, preference, null);
+      }
+    }
+
+    const shouldForceDelete = !autoAcceptEnabled;
+    const knownProjectIds = new Set([
+      ...this.publishedAutoAcceptProjectIds,
+      ...Object.keys(normalizedCache.projects || {}),
+    ]);
+
+    for (const projectId of knownProjectIds) {
+      if (shouldForceDelete || !desiredProjectIds.has(projectId)) {
+        this._deleteAutoAcceptProjectEntity(projectId);
+      }
+    }
+
+    this.publishedAutoAcceptProjectIds = desiredProjectIds;
+    return normalizedCache;
+  }
+
+  drainAutoAcceptProjectChanges() {
+    const changes = Array.isArray(this.autoAcceptProjectChanges) ? this.autoAcceptProjectChanges : [];
+    this.autoAcceptProjectChanges = [];
+    return changes;
+  }
+
+  publishAutoAcceptProjectState(projectId, enabled) {
+    const state = enabled ? 'ON' : 'OFF';
+    this._publish(this._projectAutoAcceptStateTopic(projectId), state, true);
+  }
+
+  clearAutoAcceptProjectPreferences() {
+    const knownProjectIds = new Set([
+      ...this.publishedAutoAcceptProjectIds,
+      ...Object.keys(this._lastAutoAcceptProjectCache?.projects || {}),
+    ]);
+
+    for (const projectId of knownProjectIds) {
+      this._deleteAutoAcceptProjectEntity(projectId);
+    }
+
+    this.publishedAutoAcceptProjectIds = new Set();
+  }
+
   rebuildDiscovery({ currencyUnit = 'USD' } = {}) {
     this.logger.info('Rebuilding MQTT discovery payloads');
     const discoveryEntries = this._buildStaticDiscoveryEntries(currencyUnit);
     discoveryEntries.forEach((entry) => this._publish(`homeassistant/${entry.component}/${this.topicPrefix}_${entry.objectId}/config`, '', true));
+    this._deleteAllAutoAcceptProjectEntities();
     discoveryEntries.forEach((entry) => this._publishDiscovery(entry.component, entry.objectId, entry.payload));
   }
 
@@ -214,6 +305,22 @@ class DataAnnotationMqttBridge {
           payload_available: 'online',
           payload_not_available: 'offline',
           icon: 'mdi:database-refresh',
+          device: this.device,
+        },
+      },
+      {
+        component: 'button',
+        objectId: 'clear_auto_accept_project_cache',
+        payload: {
+          name: names.clear_auto_accept_project_cache,
+          unique_id: `${this.topicPrefix}_clear_auto_accept_project_cache`,
+          entity_category: 'config',
+          command_topic: this._topic('auto_accept/projects/clear'),
+          payload_press: 'clear',
+          availability_topic: this._topic('availability'),
+          payload_available: 'online',
+          payload_not_available: 'offline',
+          icon: 'mdi:cache-remove',
           device: this.device,
         },
       },
@@ -774,6 +881,35 @@ class DataAnnotationMqttBridge {
     });
   }
 
+  _publishAutoAcceptProjectDiscovery(projectId, preference, project = null) {
+    const safeKey = slugify(projectId);
+    const enabled = Boolean(preference?.enabled);
+    const name = preference?.last_seen_name || project?.name || projectId;
+    this._publishDiscovery('switch', `auto_accept_project_${safeKey}`, {
+      name: formatAutoAcceptProjectEntityName(name),
+      unique_id: `${this.topicPrefix}_auto_accept_project_${safeKey}`,
+      entity_category: 'config',
+      state_topic: this._projectAutoAcceptStateTopic(projectId),
+      command_topic: this._projectAutoAcceptCommandTopic(projectId),
+      payload_on: 'ON',
+      payload_off: 'OFF',
+      state_on: 'ON',
+      state_off: 'OFF',
+      availability_topic: this._topic('availability'),
+      payload_available: 'online',
+      payload_not_available: 'offline',
+      icon: 'mdi:star-circle',
+      device: this.device,
+    });
+    this._publish(this._projectAutoAcceptStateTopic(projectId), enabled ? 'ON' : 'OFF', true);
+  }
+
+  _deleteAutoAcceptProjectEntity(projectId) {
+    const safeKey = slugify(projectId);
+    this._publish(`homeassistant/switch/${this.topicPrefix}_auto_accept_project_${safeKey}/config`, '', true);
+    this._publish(this._projectAutoAcceptStateTopic(projectId), 'OFF', true);
+  }
+
   _publishDiscovery(component, objectId, payload) {
     this._publishJson(`homeassistant/${component}/${this.topicPrefix}_${objectId}/config`, payload, true);
   }
@@ -805,6 +941,45 @@ class DataAnnotationMqttBridge {
 
   _projectAvailabilityTopic(slug) {
     return this.topics.projectAvailabilityTopic(slug);
+  }
+
+  _projectAutoAcceptStateTopic(projectId) {
+    return this.topics.autoAcceptProjectStateTopic(slugify(projectId));
+  }
+
+  _projectAutoAcceptCommandTopic(projectId) {
+    return this.topics.autoAcceptProjectCommandTopic(slugify(projectId));
+  }
+
+  _resolveAutoAcceptProjectIdFromTopicKey(projectKey) {
+    const normalizedKey = slugify(projectKey);
+    if (!normalizedKey) {
+      return null;
+    }
+
+    const currentProjects = Array.isArray(this._lastAutoAcceptProjects) ? this._lastAutoAcceptProjects : [];
+    const directMatch = currentProjects.find((project) => slugify(project?.id) === normalizedKey && project?.id);
+    if (directMatch?.id) {
+      return String(directMatch.id).trim();
+    }
+
+    const cacheMatch = this._lastAutoAcceptProjectCache?.projects
+      ? Object.values(this._lastAutoAcceptProjectCache.projects).find((project) => slugify(project?.project_id) === normalizedKey)
+      : null;
+    return cacheMatch?.project_id ? String(cacheMatch.project_id).trim() : null;
+  }
+
+  _deleteAllAutoAcceptProjectEntities() {
+    const knownProjectIds = new Set([
+      ...this.publishedAutoAcceptProjectIds,
+      ...Object.keys(this._lastAutoAcceptProjectCache?.projects || {}),
+    ]);
+
+    for (const projectId of knownProjectIds) {
+      this._deleteAutoAcceptProjectEntity(projectId);
+    }
+
+    this.publishedAutoAcceptProjectIds = new Set();
   }
 }
 
