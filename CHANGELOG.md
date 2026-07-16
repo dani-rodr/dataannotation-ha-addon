@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.9
+
+- Fix Auto Accept startup restoration and direct-claim 404 handling.
+
 ## 0.7.8
 
 - Add cached Auto Accept priority switches per project UUID, plus a Clear Priority Cache button and direct-claim optimization.
