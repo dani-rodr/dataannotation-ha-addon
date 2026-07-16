@@ -119,7 +119,7 @@ test('WalletSync imports new funds history entries once and dedupes on rerun', a
   }
 });
 
-test('WalletSync recreates a missing income record when sync state is stale', async () => {
+test('WalletSync leaves a manually deleted income record absent instead of recreating it', async () => {
   const { sync, dir } = createWalletSync();
   const createdRecords = [];
 
@@ -186,8 +186,8 @@ test('WalletSync recreates a missing income record when sync state is stale', as
     });
 
     assert.equal(second.enabled, true);
-    assert.equal(second.changed, true);
-    assert.equal(createdRecords.length, 2);
+    assert.equal(second.changed, false);
+    assert.equal(createdRecords.length, 1);
 
     const state = JSON.parse(fs.readFileSync(sync.statePath, 'utf8'));
     assert.equal(Object.keys(state.imported_funds_entries).length, 1);

@@ -86,6 +86,7 @@ function normalizeLedgerEntry(key, value) {
     key: String(value.key || key || '').trim(),
     note_marker: normalizeText(value.note_marker),
     source_marker: normalizeText(value.source_marker),
+    source_observation_id: normalizeText(value.source_observation_id),
     fee_record_id: feeRecordId,
     transfer_record_id: transferRecordId,
     record_id: feeRecordId,

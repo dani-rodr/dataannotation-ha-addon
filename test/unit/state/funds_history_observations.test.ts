@@ -38,6 +38,32 @@ test('funds history observations persist and reuse the original payout estimate'
   assert.equal(secondResult.entries[0].estimated_payout_at, firstResult.entries[0].estimated_payout_at);
   assert.equal(secondResult.entries[0].first_seen_at, firstResult.entries[0].first_seen_at);
   assert.equal(secondResult.entries[0].estimate_source, 'observed_hours');
+  assert.equal(secondResult.entries[0].observation_id, firstResult.entries[0].observation_id);
+});
+
+test('funds history observations keep a stable observation id when the project text changes', () => {
+  const now = new Date('2026-07-15T19:45:00.000Z');
+  const laterNow = new Date('2026-07-15T20:10:00.000Z');
+
+  const firstEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 13 minutes ago',
+    'Example Project A',
+    new Date('2026-07-15T00:00:00.000Z'),
+    now
+  );
+  const firstResult = applyFundsHistoryObservations([firstEntry], null, now);
+
+  const secondEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 18 minutes ago',
+    'Example Project B',
+    new Date('2026-07-15T00:00:00.000Z'),
+    laterNow
+  );
+  const secondResult = applyFundsHistoryObservations([secondEntry], firstResult.observations, laterNow);
+
+  assert.equal(secondResult.entries.length, 1);
+  assert.equal(secondResult.entries[0].observation_id, firstResult.entries[0].observation_id);
+  assert.equal(secondResult.entries[0].estimated_payout_at, firstResult.entries[0].estimated_payout_at);
 });
 
 test('funds history observations preserve minute-based estimates', () => {

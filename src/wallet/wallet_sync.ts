@@ -211,7 +211,8 @@ class WalletSync {
         continue;
       }
 
-      const sourceFingerprint = normalizeText(entry.fingerprint) || buildFallbackFingerprint(entry);
+      const sourceObservationId = normalizeText(entry.observation_id) || null;
+      const sourceFingerprint = sourceObservationId || normalizeText(entry.fingerprint) || buildFallbackFingerprint(entry);
       if (!sourceFingerprint) {
         continue;
       }
@@ -230,9 +231,8 @@ class WalletSync {
           continue;
         }
 
-        this.logger.warning(`Wallet income marker ${marker} was stored in sync state but no matching Wallet record was found; recreating it`);
-        delete state.imported_funds_entries[marker];
-        changed = true;
+        this.logger.warning(`Wallet income marker ${marker} was stored in sync state but no matching Wallet record was found; leaving it absent`);
+        continue;
       }
 
       if (state.imported_funds_entries[marker]?.record_id) {
@@ -248,6 +248,7 @@ class WalletSync {
           key: marker,
           note_marker: marker,
           source_marker: sourceFingerprint,
+          source_observation_id: normalizeText(entry.observation_id) || null,
           record_id: existingRecords[0].id || null,
           source_type: 'income',
           source_fingerprint: sourceFingerprint,
@@ -284,6 +285,7 @@ class WalletSync {
       pendingCreates.push({
         marker,
         sourceFingerprint,
+        sourceObservationId,
         usdCents,
         phpCents,
         recordInput,
@@ -338,6 +340,7 @@ class WalletSync {
             key: item.marker,
             note_marker: item.marker,
             source_marker: item.sourceFingerprint,
+            source_observation_id: item.sourceObservationId,
             record_id: recovered.id || null,
             source_type: 'income',
             source_fingerprint: item.sourceFingerprint,
@@ -367,6 +370,7 @@ class WalletSync {
               key: item.marker,
               note_marker: item.marker,
               source_marker: item.sourceFingerprint,
+              source_observation_id: item.sourceObservationId,
               record_id: recovered.id || null,
               source_type: 'income',
               source_fingerprint: item.sourceFingerprint,
@@ -391,6 +395,7 @@ class WalletSync {
           key: item.marker,
           note_marker: item.marker,
           source_marker: item.sourceFingerprint,
+          source_observation_id: item.sourceObservationId,
           record_id: recordId,
           source_type: 'income',
           source_fingerprint: item.sourceFingerprint,

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.7
+
+- Give Funds History entries stable observation IDs so title or duration drift does not create new Wallet income records.
+- Stop Wallet sync from recreating a confirmed income record when it was manually deleted in Wallet.
+- Treat stable-observation matching as the source of truth for duplicate prevention.
+
 ## 0.7.6
 
 - Prefer the observed task-list claim route, then the projects selection route, then the direct project route, while still matching only exact visible links.
