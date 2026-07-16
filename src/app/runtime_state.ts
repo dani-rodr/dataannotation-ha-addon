@@ -13,6 +13,9 @@ class RuntimeState {
   lastFundsHistorySnapshot = null;
   lastInProgressTask = null;
   lastAutoAcceptAttemptSignature = null;
+  lastAutoAcceptPendingTarget = null;
+  lastAutoAcceptPendingAttemptCount = 0;
+  lastAutoAcceptPendingAttemptedAt = null;
   nextRunAt = Date.now();
   nextCurrencyRateRefreshAt = Date.now();
   nextFundsHistoryAt = Date.now();

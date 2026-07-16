@@ -40,6 +40,7 @@ export async function doSync(
 ) {
   const startedAt = new Date().toISOString();
   logger.info(`Starting sync at ${startedAt}`);
+  let autoAcceptResult = autoAcceptState;
 
   try {
     const projectStartedAt = Date.now();
@@ -107,14 +108,18 @@ export async function doSync(
     }
 
     const autoAcceptStartedAt = Date.now();
-    const autoAcceptResult = await maybeAutoAcceptNewTasks({
+    autoAcceptResult = await maybeAutoAcceptNewTasks({
       bridge,
       client,
       logger,
       autoAcceptEnabled: autoAcceptState.enabled,
       claimProjectsLocked: autoAcceptState.claimProjectsLocked,
+      currentProjects: projects,
       newTaskEvents,
       lastAttemptSignature: autoAcceptState.lastAttemptSignature,
+      pendingClaimTarget: autoAcceptState.pendingClaimTarget,
+      pendingClaimAttemptCount: autoAcceptState.pendingClaimAttemptCount,
+      pendingClaimAttemptedAt: autoAcceptState.pendingClaimAttemptedAt,
       taskStatus: result.taskStatus,
     });
     autoAcceptState.enabled = autoAcceptResult.enabled;
@@ -172,7 +177,13 @@ export async function doSync(
       projects: previousProjects,
       payments: null,
       currencyUnit: getDisplayCurrency(currencyState),
-      autoAcceptState,
+      autoAcceptState: autoAcceptResult || {
+        enabled: false,
+        lastAttemptSignature: null,
+        pendingClaimTarget: null,
+        pendingClaimAttemptCount: 0,
+        pendingClaimAttemptedAt: null,
+      },
       fundsHistorySnapshot: null,
       includeFundsHistory: false,
       taskStatus: null,

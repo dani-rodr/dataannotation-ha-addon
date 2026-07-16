@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.6
+
+- Prefer the observed task-list claim route, then the projects selection route, then the direct project route, while still matching only exact visible links.
+- Keep report-time links excluded from Auto Accept claim targeting.
+
+## 0.7.5
+
+- Set the default fast poll interval to 5 seconds to improve Auto Accept reaction time.
+- Add a regression test for the 5-second fast poll default.
+- Retry pending Auto Accept claims across polls for up to 30 seconds, and keep the retry state if later sync work fails.
+
+## 0.7.4
+
+- Match only the exact canonical project claim link, fail closed when it is missing or ambiguous, and wait up to 7 seconds for claim state to settle.
+- Keep claim state reads null-safe so claim timeouts return retryable results instead of crashing.
+
 ## 0.7.3
 
 - Remove automatic Wallet withdrawal detection and create Wallet fee/transfer records only after a confirmed Data Annotation withdraw submission.

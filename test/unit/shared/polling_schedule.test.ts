@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  DEFAULT_FAST_POLL_CRON,
   computeNextRunAt,
   getPollingCronIntervalSeconds,
   normalizePollingCron,
@@ -12,6 +13,10 @@ test('normalizePollingCron keeps the supported simple schedules', () => {
   assert.equal(normalizePollingCron('*/5 * * * *'), '*/5 * * * *');
   assert.equal(normalizePollingCron('*/5 * * * * *'), '*/5 * * * * *');
   assert.equal(normalizePollingCron('*/30 * * * * *'), '*/30 * * * * *');
+});
+
+test('default fast poll runs every 5 seconds', () => {
+  assert.equal(DEFAULT_FAST_POLL_CRON, '*/5 * * * * *');
 });
 
 test('computeNextRunAt advances to the next cron boundary', () => {

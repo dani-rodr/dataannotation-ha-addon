@@ -158,6 +158,24 @@ export function buildProjectUrl(id: unknown): string | null {
   return `https://app.dataannotation.tech/workers/projects/${encodeURIComponent(projectId)}`;
 }
 
+export function buildProjectTasksUrl(id: unknown): string | null {
+  const projectId = stringOrEmpty(id);
+  if (!projectId) {
+    return null;
+  }
+
+  return `https://app.dataannotation.tech/workers/tasks?project_id=${encodeURIComponent(projectId)}`;
+}
+
+export function buildProjectSelectionUrl(id: unknown): string | null {
+  const projectId = stringOrEmpty(id);
+  if (!projectId) {
+    return null;
+  }
+
+  return `https://app.dataannotation.tech/workers/projects?project_id=${encodeURIComponent(projectId)}`;
+}
+
 export function stableSlug(name: string, id: string | null, created: string | null): string {
   const hash = crypto
     .createHash('sha1')

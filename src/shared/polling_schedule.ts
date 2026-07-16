@@ -1,5 +1,5 @@
 export const DEFAULT_POLL_CRON = '*/5 * * * *';
-export const DEFAULT_FAST_POLL_CRON = '*/30 * * * * *';
+export const DEFAULT_FAST_POLL_CRON = '*/5 * * * * *';
 export const DEFAULT_FUNDS_HISTORY_CRON = '*/30 * * * *';
 export const MINIMUM_INTERVAL_SECONDS = 5;
 

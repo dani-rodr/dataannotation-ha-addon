@@ -6,7 +6,7 @@
 | `email` | required | DataAnnotation login email |
 | `password` | required | DataAnnotation login password |
 | `poll_cron` | `*/5 * * * *` | Cron schedule for normal polling |
-| `fast_poll_cron` | `*/30 * * * * *` | Cron schedule when Fast Polling is enabled |
+| `fast_poll_cron` | `*/5 * * * * *` | Cron schedule when Fast Polling is enabled |
 | `funds_history_cron` | `*/30 * * * *` | Cron schedule for the slower Funds History refresh |
 | `funds_history_after_task_delay_minutes` | `2` | Delay after a task ends before an expedited Funds History refresh |
 | `excluded_project_patterns` | `""` | Newline-separated substrings used to hide projects |

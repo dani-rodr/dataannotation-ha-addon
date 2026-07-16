@@ -159,7 +159,7 @@ var init_polling_schedule = __esm({
   "src/shared/polling_schedule.ts"() {
     "use strict";
     DEFAULT_POLL_CRON = "*/5 * * * *";
-    DEFAULT_FAST_POLL_CRON = "*/30 * * * * *";
+    DEFAULT_FAST_POLL_CRON = "*/5 * * * * *";
     DEFAULT_FUNDS_HISTORY_CRON = "*/30 * * * *";
     MINIMUM_INTERVAL_SECONDS = 5;
   }
@@ -1380,6 +1380,8 @@ var require_mqtt_bridge = __commonJS({
 // src/scrapers/projects.ts
 var projects_exports = {};
 __export(projects_exports, {
+  buildProjectSelectionUrl: () => buildProjectSelectionUrl,
+  buildProjectTasksUrl: () => buildProjectTasksUrl,
   buildProjectUrl: () => buildProjectUrl,
   classifyCategory: () => classifyCategory,
   extractProjects: () => extractProjects,
@@ -1502,6 +1504,20 @@ function buildProjectUrl(id) {
     return null;
   }
   return `https://app.dataannotation.tech/workers/projects/${encodeURIComponent(projectId)}`;
+}
+function buildProjectTasksUrl(id) {
+  const projectId = stringOrEmpty(id);
+  if (!projectId) {
+    return null;
+  }
+  return `https://app.dataannotation.tech/workers/tasks?project_id=${encodeURIComponent(projectId)}`;
+}
+function buildProjectSelectionUrl(id) {
+  const projectId = stringOrEmpty(id);
+  if (!projectId) {
+    return null;
+  }
+  return `https://app.dataannotation.tech/workers/projects?project_id=${encodeURIComponent(projectId)}`;
 }
 function stableSlug(name, id, created) {
   const hash = import_crypto.default.createHash("sha1").update([name, id || "", created || ""].join("|")).digest("hex").slice(0, 12);
@@ -3004,7 +3020,7 @@ var require_dataannotation_client = __commonJS({
     "use strict";
     var fs7 = require("fs");
     var { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require_project_claim();
-    var { extractProjects: extractProjects2 } = (init_projects(), __toCommonJS(projects_exports));
+    var { buildProjectSelectionUrl: buildProjectSelectionUrl2, buildProjectTasksUrl: buildProjectTasksUrl2, buildProjectUrl: buildProjectUrl2, extractProjects: extractProjects2 } = (init_projects(), __toCommonJS(projects_exports));
     var { extractTaskStatus } = require_task_status();
     var { chooseWithdrawalButton, scrapePayments } = require_payments();
     var { DataAnnotationBrowserSession, resolveExecutablePath } = require_browser_session();
@@ -3146,6 +3162,7 @@ var require_dataannotation_client = __commonJS({
       async claimProject(projectSlug) {
         const page = await this._newPage();
         try {
+          const claimStartedAt = Date.now();
           this.logger.debug(`Opening DataAnnotation projects page for claim: ${projectSlug}`);
           await this._applyClaimViewport(page);
           await this._loadAuthenticatedPage(page, PROJECTS_URL, 'div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]');
@@ -3160,10 +3177,34 @@ var require_dataannotation_client = __commonJS({
               projectSlug
             };
           }
+          const targetUrls = this._resolveProjectClaimUrls(project);
+          if (targetUrls.length === 0) {
+            this.logger.warning(`Claim target ${project.slug} has no canonical project URLs`);
+            return {
+              status: "not_found",
+              pageUrl: page.url(),
+              project
+            };
+          }
           this.logger.debug(`Claim target fields: slug=${project.slug}, id=${project.id || ""}, name=${project.name}`);
-          await this._openProjectsTab(page, project.name);
-          const clickResult = await this._clickProjectClaimTarget(page, project);
+          this.logger.debug(`Claim target route priority: ${targetUrls.join(" -> ")}`);
+          let clickResult = await this._clickProjectClaimTarget(page, targetUrls);
           this.logger.debug(`Project row click result: ${clickResult.kind || "none"}${clickResult.href ? ` (${clickResult.href})` : ""}`);
+          if (!clickResult.clicked) {
+            this.logger.debug("Project row not ready yet; opening the Projects tab and waiting for the exact link");
+            await this._openProjectsTab(page);
+            const targetReady = await this._waitForProjectClaimTarget(page, targetUrls, 7e3);
+            if (!targetReady) {
+              this.logger.debug(`Exact claim link for ${project.slug} did not appear in time`);
+              return {
+                status: "not_found",
+                pageUrl: page.url(),
+                project
+              };
+            }
+            clickResult = await this._clickProjectClaimTarget(page, targetUrls);
+            this.logger.debug(`Project row retry result: ${clickResult.kind || "none"}${clickResult.href ? ` (${clickResult.href})` : ""}`);
+          }
           if (!clickResult.clicked) {
             return {
               status: "not_found",
@@ -3171,13 +3212,21 @@ var require_dataannotation_client = __commonJS({
               project
             };
           }
-          await Promise.race([
-            page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 7e3 }).catch(() => {
-            }),
-            new Promise((resolve) => setTimeout(resolve, 2500))
-          ]);
-          const pageState = await this._readClaimPageState(page);
-          this.logger.debug(`Claim target landed on ${pageState.url}`);
+          let pageState = await this._waitForClaimPageState(
+            page,
+            (state) => state.enterVisible || state.exitVisible || state.hasScreenWarning || /\/workers\/projects\/[^/]+\/report_time(?:\?|$)/.test(state.url),
+            7e3
+          );
+          if (!pageState) {
+            this.logger.warning(`Claim target state did not resolve for ${project.slug}`);
+            return {
+              status: "not_available",
+              pageUrl: page.url(),
+              project,
+              pageState: null
+            };
+          }
+          this.logger.debug(`Claim target landed on ${pageState.url} in ${Date.now() - claimStartedAt}ms`);
           if (pageState.hasScreenWarning) {
             return {
               status: "screen_too_small",
@@ -3212,13 +3261,9 @@ var require_dataannotation_client = __commonJS({
                 pageState
               };
             }
-            await Promise.race([
-              page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 7e3 }).catch(() => {
-              }),
-              new Promise((resolve) => setTimeout(resolve, 2500))
-            ]);
-            const afterEnter = await this._readClaimPageState(page);
-            if (afterEnter.exitVisible) {
+            const afterEnter = await this._waitForClaimPageState(page, (state) => state.exitVisible || state.hasScreenWarning || /\/workers\/projects\/[^/]+\/report_time(?:\?|$)/.test(state.url), 7e3);
+            this.logger.debug(`Enter Work Mode readiness resolved in ${Date.now() - claimStartedAt}ms`);
+            if (afterEnter?.exitVisible) {
               return {
                 status: "claimed",
                 pageUrl: afterEnter.url,
@@ -3228,9 +3273,9 @@ var require_dataannotation_client = __commonJS({
             }
             return {
               status: "not_available",
-              pageUrl: afterEnter.url,
+              pageUrl: afterEnter?.url || page.url(),
               project,
-              pageState: afterEnter
+              pageState: afterEnter || null
             };
           }
           return {
@@ -3385,51 +3430,65 @@ var require_dataannotation_client = __commonJS({
         });
         await page.setUserAgent(CLAIM_WORK_USER_AGENT);
       }
-      async _clickProjectClaimTarget(page, project) {
-        const target = buildClaimProjectTarget(project);
-        return page.evaluate(({ slug, name, id }) => {
+      _resolveProjectClaimUrls(project) {
+        const routes = [
+          buildProjectTasksUrl2(project?.id),
+          buildProjectSelectionUrl2(project?.id),
+          buildProjectUrl2(project?.id)
+        ].map((url) => String(url || "").trim()).filter(Boolean);
+        return [...new Set(routes)];
+      }
+      async _clickProjectClaimTarget(page, targetUrls) {
+        const targets = Array.isArray(targetUrls) ? targetUrls : [targetUrls];
+        const normalizedTargets = [...new Set(targets.map((url) => String(url || "").trim()).filter(Boolean))];
+        if (normalizedTargets.length === 0) {
+          return {
+            clicked: false,
+            kind: "none",
+            href: ""
+          };
+        }
+        return page.evaluate((claimTargetUrls) => {
           const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
-          const exactName = normalize(name);
-          const exactSlug = normalize(slug);
-          const exactId = normalize(id);
-          const rows = Array.from(document.querySelectorAll("tr"));
-          for (const row of rows) {
-            const rowText = normalize(row.innerText || row.textContent || "");
-            if (!rowText) {
-              continue;
+          const toAbsoluteUrl = (value) => {
+            try {
+              return new URL(String(value || ""), window.location.href).href;
+            } catch {
+              return "";
             }
-            const rowMatches = [exactName, exactSlug, exactId].filter(Boolean).some((needle) => rowText.includes(needle));
-            if (!rowMatches) {
-              continue;
+          };
+          const isVisible = (node) => {
+            const style = window.getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+          };
+          const anchors = Array.from(document.querySelectorAll("a[href]")).filter((anchor) => isVisible(anchor));
+          for (const claimTargetUrl of claimTargetUrls) {
+            const matches = anchors.filter((anchor) => toAbsoluteUrl(anchor.getAttribute("href") || "") === claimTargetUrl);
+            if (matches.length > 1) {
+              return {
+                clicked: false,
+                kind: "ambiguous",
+                href: ""
+              };
             }
-            const anchors = Array.from(row.querySelectorAll("a[href]"));
-            const preferredAnchor = anchors.find((anchor) => normalize(anchor.innerText || anchor.textContent || "") === exactName) || anchors.find((anchor) => normalize(anchor.innerText || anchor.textContent || "").includes(exactName)) || anchors.find((anchor) => {
-              const href = normalize(anchor.getAttribute("href") || "");
-              return href && !/\/report_time(?:\?|$)/.test(href);
-            });
-            if (preferredAnchor) {
-              preferredAnchor.click();
+            if (matches.length === 1) {
+              matches[0].click();
               return {
                 clicked: true,
                 kind: "anchor",
-                href: preferredAnchor.getAttribute("href") || ""
+                href: normalize(matches[0].getAttribute("href") || "")
               };
             }
-            row.click();
-            return {
-              clicked: true,
-              kind: "row",
-              href: ""
-            };
           }
           return {
             clicked: false,
             kind: "none",
             href: ""
           };
-        }, target);
+        }, normalizedTargets);
       }
-      async _openProjectsTab(page, projectName) {
+      async _openProjectsTab(page) {
         const clicked = await page.evaluate(() => {
           const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
           const candidates = Array.from(document.querySelectorAll('a,button,[role="tab"]')).filter((node) => {
@@ -3447,17 +3506,48 @@ var require_dataannotation_client = __commonJS({
           visibleCandidates[0].click();
           return true;
         });
-        if (clicked) {
-          await page.waitForFunction(
-            () => {
-              const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
-              return Array.from(document.querySelectorAll('[role="tab"][aria-selected="true"],button[aria-selected="true"]')).some((node) => /^Projects(?:\s+\d+)?$/i.test(normalize(node.innerText || node.textContent || node.getAttribute("aria-label") || "")));
-            },
-            { timeout: 1e4 }
-          ).catch(() => {
-          });
-        }
         return clicked;
+      }
+      async _waitForProjectClaimTarget(page, targetUrls, timeoutMs = 7e3) {
+        const startedAt = Date.now();
+        const normalizedTargets = Array.isArray(targetUrls) ? [...new Set(targetUrls.map((url) => String(url || "").trim()).filter(Boolean))] : [String(targetUrls || "").trim()].filter(Boolean);
+        while (Date.now() - startedAt < timeoutMs) {
+          const targetReady = await page.evaluate((claimTargetUrls) => {
+            const toAbsoluteUrl = (value) => {
+              try {
+                return new URL(String(value || ""), window.location.href).href;
+              } catch {
+                return "";
+              }
+            };
+            const isVisible = (node) => {
+              const style = window.getComputedStyle(node);
+              const rect = node.getBoundingClientRect();
+              return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+            };
+            const anchors = Array.from(document.querySelectorAll("a[href]")).filter((anchor) => isVisible(anchor));
+            return claimTargetUrls.some((claimTargetUrl) => anchors.some((anchor) => toAbsoluteUrl(anchor.getAttribute("href") || "") === claimTargetUrl));
+          }, normalizedTargets).catch(() => false);
+          if (targetReady) {
+            return true;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return null;
+      }
+      async _waitForClaimPageState(page, predicate, timeoutMs = 7e3) {
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < timeoutMs) {
+          const state = await this._readClaimPageState(page).catch((error) => {
+            this.logger.warning(`Claim page state read failed: ${error.message}`);
+            return null;
+          });
+          if (state && predicate(state)) {
+            return state;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return null;
       }
       async _readClaimPageState(page) {
         return page.evaluate(() => {
@@ -4592,39 +4682,122 @@ async function maybeAutoAcceptNewTasks({
   logger,
   autoAcceptEnabled,
   claimProjectsLocked,
+  currentProjects,
   newTaskEvents,
   lastAttemptSignature,
-  taskStatus
+  pendingClaimTarget,
+  pendingClaimAttemptCount,
+  pendingClaimAttemptedAt,
+  taskStatus,
+  now = Date.now()
 }) {
   let enabled = Boolean(autoAcceptEnabled);
   let nextAttemptSignature = lastAttemptSignature || null;
+  let nextPendingClaimTarget = pendingClaimTarget || null;
+  let nextPendingClaimAttemptCount = Number.isFinite(pendingClaimAttemptCount) ? Number(pendingClaimAttemptCount) : 0;
+  let nextPendingClaimAttemptedAt = Number.isFinite(pendingClaimAttemptedAt) ? Number(pendingClaimAttemptedAt) : null;
+  const currentProjectList = Array.isArray(currentProjects) ? currentProjects : [];
   if (!enabled) {
-    return { enabled, lastAttemptSignature: nextAttemptSignature };
+    return {
+      enabled,
+      lastAttemptSignature: nextAttemptSignature,
+      pendingClaimTarget: nextPendingClaimTarget,
+      pendingClaimAttemptCount: nextPendingClaimAttemptCount,
+      pendingClaimAttemptedAt: nextPendingClaimAttemptedAt
+    };
   }
   if (taskStatus?.in_progress_task) {
     logger.info("Auto accept disabled because In Progress Task is ON");
     saveAutoAcceptState2(AUTO_ACCEPT_STATE_PATH, false);
     bridge.publishAutoAcceptState(false);
-    return { enabled: false, lastAttemptSignature: null };
+    return { enabled: false, lastAttemptSignature: null, pendingClaimTarget: null, pendingClaimAttemptCount: 0, pendingClaimAttemptedAt: null };
   }
   if (claimProjectsLocked) {
     logger.info("Auto accept disabled because Claim Projects Locked is ON");
     saveAutoAcceptState2(AUTO_ACCEPT_STATE_PATH, false);
     bridge.publishAutoAcceptState(false);
-    return { enabled: false, lastAttemptSignature: null };
+    return { enabled: false, lastAttemptSignature: null, pendingClaimTarget: null, pendingClaimAttemptCount: 0, pendingClaimAttemptedAt: null };
   }
-  if (!Array.isArray(newTaskEvents) || newTaskEvents.length === 0) {
-    return { enabled, lastAttemptSignature: nextAttemptSignature };
+  if (nextPendingClaimTarget) {
+    const pendingSlug = String(nextPendingClaimTarget.slug || "").trim();
+    const currentPendingProject = currentProjectList.find((project) => String(project?.slug || "").trim() === String(nextPendingClaimTarget.slug || "").trim());
+    if (Number.isFinite(nextPendingClaimAttemptedAt) && now - Number(nextPendingClaimAttemptedAt) >= AUTO_ACCEPT_RETRY_WINDOW_MS) {
+      logger.warning(`Auto accept pending task expired after ${AUTO_ACCEPT_RETRY_WINDOW_MS / 1e3} seconds: ${pendingSlug}`);
+      nextPendingClaimTarget = null;
+      nextPendingClaimAttemptCount = 0;
+      nextPendingClaimAttemptedAt = null;
+      nextAttemptSignature = null;
+    } else if (!currentPendingProject || Number(currentPendingProject?.tasks) <= 0) {
+      logger.info("Auto accept pending task is not currently visible; waiting for the next poll");
+      return {
+        enabled,
+        lastAttemptSignature: nextAttemptSignature,
+        pendingClaimTarget: nextPendingClaimTarget,
+        pendingClaimAttemptCount: nextPendingClaimAttemptCount,
+        pendingClaimAttemptedAt: nextPendingClaimAttemptedAt
+      };
+    }
   }
-  const signature = buildAutoAcceptSignature(newTaskEvents);
-  if (signature && signature === nextAttemptSignature) {
-    return { enabled, lastAttemptSignature: nextAttemptSignature };
+  let claimTarget = nextPendingClaimTarget;
+  if (!claimTarget) {
+    if (!Array.isArray(newTaskEvents) || newTaskEvents.length === 0) {
+      return {
+        enabled,
+        lastAttemptSignature: nextAttemptSignature,
+        pendingClaimTarget: nextPendingClaimTarget,
+        pendingClaimAttemptCount: nextPendingClaimAttemptCount,
+        pendingClaimAttemptedAt: nextPendingClaimAttemptedAt
+      };
+    }
+    const signature = buildAutoAcceptSignature(newTaskEvents);
+    if (signature && signature === nextAttemptSignature) {
+      return {
+        enabled,
+        lastAttemptSignature: nextAttemptSignature,
+        pendingClaimTarget: nextPendingClaimTarget,
+        pendingClaimAttemptCount: nextPendingClaimAttemptCount,
+        pendingClaimAttemptedAt: nextPendingClaimAttemptedAt
+      };
+    }
+    claimTarget = newTaskEvents[0];
+    nextAttemptSignature = signature;
+    nextPendingClaimAttemptedAt = now;
   }
-  const claimTarget = newTaskEvents[0];
-  nextAttemptSignature = signature;
-  logger.info(`Auto accept detected new task: "${claimTarget.name}"${claimTarget.url ? ` ${claimTarget.url}` : ""}`);
+  if (!claimTarget) {
+    return {
+      enabled,
+      lastAttemptSignature: nextAttemptSignature,
+      pendingClaimTarget: nextPendingClaimTarget,
+      pendingClaimAttemptCount: nextPendingClaimAttemptCount,
+      pendingClaimAttemptedAt: nextPendingClaimAttemptedAt
+    };
+  }
+  if (nextPendingClaimTarget && nextPendingClaimAttemptCount >= AUTO_ACCEPT_MAX_ATTEMPTS) {
+    logger.warning(`Auto accept retry limit reached for ${nextPendingClaimTarget.slug}`);
+    return {
+      enabled,
+      lastAttemptSignature: null,
+      pendingClaimTarget: null,
+      pendingClaimAttemptCount: 0,
+      pendingClaimAttemptedAt: null
+    };
+  }
+  const claimSignature = nextAttemptSignature || buildAutoAcceptSignature([claimTarget]);
+  logger.info(
+    `Auto accept ${nextPendingClaimTarget ? `retrying task` : "detected new task"}: "${claimTarget.name}"${claimTarget.url ? ` ${claimTarget.url}` : ""}${nextPendingClaimTarget ? ` (attempt ${nextPendingClaimAttemptCount + 1}/${AUTO_ACCEPT_MAX_ATTEMPTS})` : ""}`
+  );
   const claimStartedAt = Date.now();
-  const claimResult = await client.claimProject(claimTarget.slug);
+  let claimResult;
+  try {
+    claimResult = await client.claimProject(claimTarget.slug);
+  } catch (error) {
+    logger.warning(`Auto accept claim threw for ${claimTarget.slug}: ${error.message}`);
+    claimResult = {
+      status: "not_available",
+      pageUrl: "",
+      error: error.message
+    };
+  }
   logger.info(`Auto accept claim result for ${claimTarget.slug}: ${claimResult.status}`);
   logger.debug(`Auto accept claim completed in ${Date.now() - claimStartedAt}ms`);
   if (claimResult.status === "claimed" || claimResult.status === "already_in_work_mode") {
@@ -4632,9 +4805,50 @@ async function maybeAutoAcceptNewTasks({
     saveAutoAcceptState2(AUTO_ACCEPT_STATE_PATH, false);
     bridge.publishAutoAcceptState(false);
     bridge.scanRequested.value = true;
-    return { enabled: false, lastAttemptSignature: null };
+    return {
+      enabled: false,
+      lastAttemptSignature: null,
+      pendingClaimTarget: null,
+      pendingClaimAttemptCount: 0,
+      pendingClaimAttemptedAt: null
+    };
   }
-  return { enabled, lastAttemptSignature: nextAttemptSignature };
+  if (claimResult.status === "screen_too_small" || claimResult.status === "wrong_route") {
+    return {
+      enabled,
+      lastAttemptSignature: null,
+      pendingClaimTarget: null,
+      pendingClaimAttemptCount: 0,
+      pendingClaimAttemptedAt: null
+    };
+  }
+  if (nextPendingClaimTarget || claimResult.status === "not_available" || claimResult.status === "not_found") {
+    const nextAttemptCount = (nextPendingClaimTarget ? nextPendingClaimAttemptCount : 0) + 1;
+    if (nextAttemptCount >= AUTO_ACCEPT_MAX_ATTEMPTS) {
+      logger.warning(`Auto accept giving up on ${claimTarget.slug} after ${nextAttemptCount} attempts`);
+      return {
+        enabled,
+        lastAttemptSignature: null,
+        pendingClaimTarget: null,
+        pendingClaimAttemptCount: 0,
+        pendingClaimAttemptedAt: null
+      };
+    }
+    return {
+      enabled,
+      lastAttemptSignature: claimSignature,
+      pendingClaimTarget: claimTarget,
+      pendingClaimAttemptCount: nextAttemptCount,
+      pendingClaimAttemptedAt: nextPendingClaimAttemptedAt || now
+    };
+  }
+  return {
+    enabled,
+    lastAttemptSignature: nextAttemptSignature,
+    pendingClaimTarget: nextPendingClaimTarget,
+    pendingClaimAttemptCount: nextPendingClaimAttemptCount,
+    pendingClaimAttemptedAt: nextPendingClaimAttemptedAt
+  };
 }
 async function handleWithdrawRequest(client, walletSync, bridge, withdrawLocked, currencyState, lastSuccessfulPayments, logger) {
   logger.info("Processing withdraw request");
@@ -4724,7 +4938,7 @@ async function handleClaimRequest(client, bridge, claimProjectsLocked, claimRequ
   }
   logger.debug(`Claim project result page URL: ${result.pageUrl || ""}`);
 }
-var createPersistentNotification, saveAutoAcceptState2, convertPaymentsForCurrency, retainNextWithdrawalAt2, buildClaimNotReadyMessage2, buildClaimProjectsLockedMessage2, buildWithdrawalLockedMessage2, buildWithdrawalNotReadyMessage2, parseDate3, AUTO_ACCEPT_STATE_PATH;
+var createPersistentNotification, saveAutoAcceptState2, convertPaymentsForCurrency, retainNextWithdrawalAt2, buildClaimNotReadyMessage2, buildClaimProjectsLockedMessage2, buildWithdrawalLockedMessage2, buildWithdrawalNotReadyMessage2, parseDate3, AUTO_ACCEPT_STATE_PATH, AUTO_ACCEPT_MAX_ATTEMPTS, AUTO_ACCEPT_RETRY_WINDOW_MS;
 var init_commands = __esm({
   "src/app/commands.ts"() {
     "use strict";
@@ -4734,6 +4948,8 @@ var init_commands = __esm({
     ({ retainNextWithdrawalAt: retainNextWithdrawalAt2 } = (init_sync_policy(), __toCommonJS(sync_policy_exports)));
     ({ buildClaimNotReadyMessage: buildClaimNotReadyMessage2, buildClaimProjectsLockedMessage: buildClaimProjectsLockedMessage2, buildWithdrawalLockedMessage: buildWithdrawalLockedMessage2, buildWithdrawalNotReadyMessage: buildWithdrawalNotReadyMessage2, parseDate: parseDate3 } = (init_messages(), __toCommonJS(messages_exports)));
     AUTO_ACCEPT_STATE_PATH = "/data/auto-accept-state.json";
+    AUTO_ACCEPT_MAX_ATTEMPTS = 3;
+    AUTO_ACCEPT_RETRY_WINDOW_MS = 30 * 1e3;
   }
 });
 
@@ -4758,6 +4974,7 @@ function republishCurrencyViews(bridge, projects, payments, currencyState, scrap
 async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessfulProjectCount, lastSuccessfulTotalTaskCount, initialSyncCompleted, previousProjects, lastSuccessfulPayments, autoAcceptState, currencyState, withdrawLocked, includeFundsHistory, lastFundsHistorySnapshot, logger) {
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
   logger.info(`Starting sync at ${startedAt}`);
+  let autoAcceptResult = autoAcceptState;
   try {
     const projectStartedAt = Date.now();
     const result = await client.collectProjects();
@@ -4820,14 +5037,18 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
       logger.info(`New DataAnnotation task detected: "${event.name}" (+${event.added_tasks}, total ${event.current_tasks})${event.url ? ` ${event.url}` : ""}`);
     }
     const autoAcceptStartedAt = Date.now();
-    const autoAcceptResult = await maybeAutoAcceptNewTasks2({
+    autoAcceptResult = await maybeAutoAcceptNewTasks2({
       bridge,
       client,
       logger,
       autoAcceptEnabled: autoAcceptState.enabled,
       claimProjectsLocked: autoAcceptState.claimProjectsLocked,
+      currentProjects: projects,
       newTaskEvents,
       lastAttemptSignature: autoAcceptState.lastAttemptSignature,
+      pendingClaimTarget: autoAcceptState.pendingClaimTarget,
+      pendingClaimAttemptCount: autoAcceptState.pendingClaimAttemptCount,
+      pendingClaimAttemptedAt: autoAcceptState.pendingClaimAttemptedAt,
       taskStatus: result.taskStatus
     });
     autoAcceptState.enabled = autoAcceptResult.enabled;
@@ -4881,7 +5102,13 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
       projects: previousProjects,
       payments: null,
       currencyUnit: getDisplayCurrency(currencyState),
-      autoAcceptState,
+      autoAcceptState: autoAcceptResult || {
+        enabled: false,
+        lastAttemptSignature: null,
+        pendingClaimTarget: null,
+        pendingClaimAttemptCount: 0,
+        pendingClaimAttemptedAt: null
+      },
       fundsHistorySnapshot: null,
       includeFundsHistory: false,
       taskStatus: null,
@@ -5057,7 +5284,7 @@ var require_wallet_sync_state = __commonJS({
 var require_wallet_api_client = __commonJS({
   "src/clients/wallet_api_client.ts"(exports2, module2) {
     "use strict";
-    var { URL } = require("node:url");
+    var { URL: URL2 } = require("node:url");
     var WALLET_BASE_URL = "https://rest.budgetbakers.com/wallet/v1/api";
     var DEFAULT_TIMEOUT_MS = 3e4;
     var DEFAULT_MAX_PAGES = 50;
@@ -5161,7 +5388,7 @@ var require_wallet_api_client = __commonJS({
         return items;
       }
       async _request(method, resource, { query = {}, body = null } = {}) {
-        const url = new URL(`${this.baseUrl}${resource}`);
+        const url = new URL2(`${this.baseUrl}${resource}`);
         for (const [key, value] of Object.entries(query || {})) {
           if (value === void 0 || value === null || value === "") {
             continue;
@@ -6126,6 +6353,9 @@ var require_runtime_state = __commonJS({
       lastFundsHistorySnapshot = null;
       lastInProgressTask = null;
       lastAutoAcceptAttemptSignature = null;
+      lastAutoAcceptPendingTarget = null;
+      lastAutoAcceptPendingAttemptCount = 0;
+      lastAutoAcceptPendingAttemptedAt = null;
       nextRunAt = Date.now();
       nextCurrencyRateRefreshAt = Date.now();
       nextFundsHistoryAt = Date.now();
@@ -6285,6 +6515,14 @@ var require_dataannotation_app = __commonJS({
           bridge.publishAutoAcceptState(state.autoAcceptEnabled);
           if (state.autoAcceptEnabled) {
             state.lastAutoAcceptAttemptSignature = null;
+            state.lastAutoAcceptPendingTarget = null;
+            state.lastAutoAcceptPendingAttemptCount = 0;
+            state.lastAutoAcceptPendingAttemptedAt = null;
+          } else {
+            state.lastAutoAcceptAttemptSignature = null;
+            state.lastAutoAcceptPendingTarget = null;
+            state.lastAutoAcceptPendingAttemptCount = 0;
+            state.lastAutoAcceptPendingAttemptedAt = null;
           }
           logger.info(`Auto accept state updated: ${state.autoAcceptEnabled ? "enabled" : "disabled"}`);
         }
@@ -6383,7 +6621,10 @@ var require_dataannotation_app = __commonJS({
           {
             enabled: state.autoAcceptEnabled,
             claimProjectsLocked: state.claimProjectsLocked,
-            lastAttemptSignature: state.lastAutoAcceptAttemptSignature
+            lastAttemptSignature: state.lastAutoAcceptAttemptSignature,
+            pendingClaimTarget: state.lastAutoAcceptPendingTarget,
+            pendingClaimAttemptCount: state.lastAutoAcceptPendingAttemptCount,
+            pendingClaimAttemptedAt: state.lastAutoAcceptPendingAttemptedAt
           },
           state.currencyState,
           state.withdrawLocked,
@@ -6394,6 +6635,9 @@ var require_dataannotation_app = __commonJS({
         const currentInProgressTask = Boolean(syncResult.taskStatus?.in_progress_task);
         state.autoAcceptEnabled = syncResult.autoAcceptState.enabled;
         state.lastAutoAcceptAttemptSignature = syncResult.autoAcceptState.lastAttemptSignature;
+        state.lastAutoAcceptPendingTarget = syncResult.autoAcceptState.pendingClaimTarget || null;
+        state.lastAutoAcceptPendingAttemptCount = Number.isFinite(syncResult.autoAcceptState.pendingClaimAttemptCount) ? syncResult.autoAcceptState.pendingClaimAttemptCount : 0;
+        state.lastAutoAcceptPendingAttemptedAt = Number.isFinite(syncResult.autoAcceptState.pendingClaimAttemptedAt) ? syncResult.autoAcceptState.pendingClaimAttemptedAt : null;
         if (state.lastInProgressTask === true && currentInProgressTask === false) {
           const delayMinutes = Number(config.funds_history_after_task_delay_minutes ?? DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES);
           if (Number.isFinite(delayMinutes) && delayMinutes > 0) {
@@ -6472,7 +6716,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.3",
+      version: "0.7.6",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

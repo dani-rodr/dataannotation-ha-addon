@@ -1,7 +1,7 @@
 const fs = require('fs');
 // @ts-nocheck
 const { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require('../projects/project_claim.ts');
-const { extractProjects } = require('../scrapers/projects.ts');
+const { buildProjectSelectionUrl, buildProjectTasksUrl, buildProjectUrl, extractProjects } = require('../scrapers/projects.ts');
 const { extractTaskStatus } = require('../scrapers/task_status.ts');
 const { chooseWithdrawalButton, scrapePayments } = require('../scrapers/payments.ts');
 const { DataAnnotationBrowserSession, resolveExecutablePath } = require('./browser_session.ts');
@@ -154,6 +154,7 @@ class DataAnnotationClient {
     const page = await this._newPage();
 
     try {
+      const claimStartedAt = Date.now();
       this.logger.debug(`Opening DataAnnotation projects page for claim: ${projectSlug}`);
       await this._applyClaimViewport(page);
       await this._loadAuthenticatedPage(page, PROJECTS_URL, 'div[id="workers/WorkerProjectsTable-hybrid-root"][data-props]');
@@ -170,11 +171,37 @@ class DataAnnotationClient {
         };
       }
 
-      this.logger.debug(`Claim target fields: slug=${project.slug}, id=${project.id || ''}, name=${project.name}`);
-      await this._openProjectsTab(page, project.name);
+      const targetUrls = this._resolveProjectClaimUrls(project);
+      if (targetUrls.length === 0) {
+        this.logger.warning(`Claim target ${project.slug} has no canonical project URLs`);
+        return {
+          status: 'not_found',
+          pageUrl: page.url(),
+          project,
+        };
+      }
 
-      const clickResult = await this._clickProjectClaimTarget(page, project);
+      this.logger.debug(`Claim target fields: slug=${project.slug}, id=${project.id || ''}, name=${project.name}`);
+      this.logger.debug(`Claim target route priority: ${targetUrls.join(' -> ')}`);
+      let clickResult = await this._clickProjectClaimTarget(page, targetUrls);
       this.logger.debug(`Project row click result: ${clickResult.kind || 'none'}${clickResult.href ? ` (${clickResult.href})` : ''}`);
+
+      if (!clickResult.clicked) {
+        this.logger.debug('Project row not ready yet; opening the Projects tab and waiting for the exact link');
+        await this._openProjectsTab(page);
+        const targetReady = await this._waitForProjectClaimTarget(page, targetUrls, 7000);
+        if (!targetReady) {
+          this.logger.debug(`Exact claim link for ${project.slug} did not appear in time`);
+          return {
+            status: 'not_found',
+            pageUrl: page.url(),
+            project,
+          };
+        }
+
+        clickResult = await this._clickProjectClaimTarget(page, targetUrls);
+        this.logger.debug(`Project row retry result: ${clickResult.kind || 'none'}${clickResult.href ? ` (${clickResult.href})` : ''}`);
+      }
 
       if (!clickResult.clicked) {
         return {
@@ -184,13 +211,21 @@ class DataAnnotationClient {
         };
       }
 
-      await Promise.race([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 7000 }).catch(() => {}),
-        new Promise((resolve) => setTimeout(resolve, 2500)),
-      ]);
+      let pageState = await this._waitForClaimPageState(page, (state) =>
+        state.enterVisible || state.exitVisible || state.hasScreenWarning || /\/workers\/projects\/[^/]+\/report_time(?:\?|$)/.test(state.url),
+      7000);
 
-      const pageState = await this._readClaimPageState(page);
-      this.logger.debug(`Claim target landed on ${pageState.url}`);
+      if (!pageState) {
+        this.logger.warning(`Claim target state did not resolve for ${project.slug}`);
+        return {
+          status: 'not_available',
+          pageUrl: page.url(),
+          project,
+          pageState: null,
+        };
+      }
+
+      this.logger.debug(`Claim target landed on ${pageState.url} in ${Date.now() - claimStartedAt}ms`);
 
       if (pageState.hasScreenWarning) {
         return {
@@ -230,13 +265,10 @@ class DataAnnotationClient {
           };
         }
 
-        await Promise.race([
-          page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 7000 }).catch(() => {}),
-          new Promise((resolve) => setTimeout(resolve, 2500)),
-        ]);
+        const afterEnter = await this._waitForClaimPageState(page, (state) => state.exitVisible || state.hasScreenWarning || /\/workers\/projects\/[^/]+\/report_time(?:\?|$)/.test(state.url), 7000);
+        this.logger.debug(`Enter Work Mode readiness resolved in ${Date.now() - claimStartedAt}ms`);
 
-        const afterEnter = await this._readClaimPageState(page);
-        if (afterEnter.exitVisible) {
+        if (afterEnter?.exitVisible) {
           return {
             status: 'claimed',
             pageUrl: afterEnter.url,
@@ -247,9 +279,9 @@ class DataAnnotationClient {
 
         return {
           status: 'not_available',
-          pageUrl: afterEnter.url,
+          pageUrl: afterEnter?.url || page.url(),
           project,
-          pageState: afterEnter,
+          pageState: afterEnter || null,
         };
       }
 
@@ -430,50 +462,65 @@ class DataAnnotationClient {
     await page.setUserAgent(CLAIM_WORK_USER_AGENT);
   }
 
-  async _clickProjectClaimTarget(page, project) {
-    const target = buildClaimProjectTarget(project);
+  _resolveProjectClaimUrls(project) {
+    const routes = [
+      buildProjectTasksUrl(project?.id),
+      buildProjectSelectionUrl(project?.id),
+      buildProjectUrl(project?.id),
+    ]
+      .map((url) => String(url || '').trim())
+      .filter(Boolean);
 
-    return page.evaluate(({ slug, name, id }) => {
+    return [...new Set(routes)];
+  }
+
+  async _clickProjectClaimTarget(page, targetUrls) {
+    const targets = Array.isArray(targetUrls) ? targetUrls : [targetUrls];
+    const normalizedTargets = [...new Set(targets.map((url) => String(url || '').trim()).filter(Boolean))];
+
+    if (normalizedTargets.length === 0) {
+      return {
+        clicked: false,
+        kind: 'none',
+        href: '',
+      };
+    }
+
+    return page.evaluate((claimTargetUrls) => {
       const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
-      const exactName = normalize(name);
-      const exactSlug = normalize(slug);
-      const exactId = normalize(id);
-
-      const rows = Array.from(document.querySelectorAll('tr'));
-      for (const row of rows) {
-        const rowText = normalize(row.innerText || row.textContent || '');
-        if (!rowText) {
-          continue;
+      const toAbsoluteUrl = (value) => {
+        try {
+          return new URL(String(value || ''), window.location.href).href;
+        } catch {
+          return '';
         }
+      };
+      const isVisible = (node) => {
+        const style = window.getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+      };
 
-        const rowMatches = [exactName, exactSlug, exactId].filter(Boolean).some((needle) => rowText.includes(needle));
-        if (!rowMatches) {
-          continue;
-        }
+      const anchors = Array.from(document.querySelectorAll('a[href]')).filter((anchor) => isVisible(anchor));
+      for (const claimTargetUrl of claimTargetUrls) {
+        const matches = anchors.filter((anchor) => toAbsoluteUrl(anchor.getAttribute('href') || '') === claimTargetUrl);
 
-        const anchors = Array.from(row.querySelectorAll('a[href]'));
-        const preferredAnchor = anchors.find((anchor) => normalize(anchor.innerText || anchor.textContent || '') === exactName)
-          || anchors.find((anchor) => normalize(anchor.innerText || anchor.textContent || '').includes(exactName))
-          || anchors.find((anchor) => {
-            const href = normalize(anchor.getAttribute('href') || '');
-            return href && !/\/report_time(?:\?|$)/.test(href);
-          });
-
-        if (preferredAnchor) {
-          preferredAnchor.click();
+        if (matches.length > 1) {
           return {
-            clicked: true,
-            kind: 'anchor',
-            href: preferredAnchor.getAttribute('href') || '',
+            clicked: false,
+            kind: 'ambiguous',
+            href: '',
           };
         }
 
-        row.click();
-        return {
-          clicked: true,
-          kind: 'row',
-          href: '',
-        };
+        if (matches.length === 1) {
+          matches[0].click();
+          return {
+            clicked: true,
+            kind: 'anchor',
+            href: normalize(matches[0].getAttribute('href') || ''),
+          };
+        }
       }
 
       return {
@@ -481,10 +528,10 @@ class DataAnnotationClient {
         kind: 'none',
         href: '',
       };
-    }, target);
+    }, normalizedTargets);
   }
 
-  async _openProjectsTab(page, projectName) {
+  async _openProjectsTab(page) {
     const clicked = await page.evaluate(() => {
       const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
       const candidates = Array.from(document.querySelectorAll('a,button,[role="tab"]')).filter((node) => {
@@ -506,17 +553,60 @@ class DataAnnotationClient {
       return true;
     });
 
-    if (clicked) {
-      await page.waitForFunction(
-        () => {
-          const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
-          return Array.from(document.querySelectorAll('[role="tab"][aria-selected="true"],button[aria-selected="true"]')).some((node) => /^Projects(?:\s+\d+)?$/i.test(normalize(node.innerText || node.textContent || node.getAttribute('aria-label') || '')));
-        },
-        { timeout: 10000 }
-      ).catch(() => {});
+    return clicked;
+  }
+
+  async _waitForProjectClaimTarget(page, targetUrls, timeoutMs = 7000) {
+    const startedAt = Date.now();
+    const normalizedTargets = Array.isArray(targetUrls)
+      ? [...new Set(targetUrls.map((url) => String(url || '').trim()).filter(Boolean))]
+      : [String(targetUrls || '').trim()].filter(Boolean);
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const targetReady = await page.evaluate((claimTargetUrls) => {
+        const toAbsoluteUrl = (value) => {
+          try {
+            return new URL(String(value || ''), window.location.href).href;
+          } catch {
+            return '';
+          }
+        };
+        const isVisible = (node) => {
+          const style = window.getComputedStyle(node);
+          const rect = node.getBoundingClientRect();
+          return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+        };
+
+        const anchors = Array.from(document.querySelectorAll('a[href]')).filter((anchor) => isVisible(anchor));
+        return claimTargetUrls.some((claimTargetUrl) => anchors.some((anchor) => toAbsoluteUrl(anchor.getAttribute('href') || '') === claimTargetUrl));
+      }, normalizedTargets).catch(() => false);
+
+      if (targetReady) {
+        return true;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
-    return clicked;
+    return null;
+  }
+
+  async _waitForClaimPageState(page, predicate, timeoutMs = 7000) {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const state = await this._readClaimPageState(page).catch((error) => {
+        this.logger.warning(`Claim page state read failed: ${error.message}`);
+        return null;
+      });
+      if (state && predicate(state)) {
+        return state;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    return null;
   }
 
   async _readClaimPageState(page) {

@@ -151,6 +151,14 @@ class DataAnnotationApp {
       bridge.publishAutoAcceptState(state.autoAcceptEnabled);
       if (state.autoAcceptEnabled) {
         state.lastAutoAcceptAttemptSignature = null;
+        state.lastAutoAcceptPendingTarget = null;
+        state.lastAutoAcceptPendingAttemptCount = 0;
+        state.lastAutoAcceptPendingAttemptedAt = null;
+      } else {
+        state.lastAutoAcceptAttemptSignature = null;
+        state.lastAutoAcceptPendingTarget = null;
+        state.lastAutoAcceptPendingAttemptCount = 0;
+        state.lastAutoAcceptPendingAttemptedAt = null;
       }
       logger.info(`Auto accept state updated: ${state.autoAcceptEnabled ? 'enabled' : 'disabled'}`);
     }
@@ -259,6 +267,9 @@ class DataAnnotationApp {
         enabled: state.autoAcceptEnabled,
         claimProjectsLocked: state.claimProjectsLocked,
         lastAttemptSignature: state.lastAutoAcceptAttemptSignature,
+        pendingClaimTarget: state.lastAutoAcceptPendingTarget,
+        pendingClaimAttemptCount: state.lastAutoAcceptPendingAttemptCount,
+        pendingClaimAttemptedAt: state.lastAutoAcceptPendingAttemptedAt,
       },
       state.currencyState,
       state.withdrawLocked,
@@ -270,6 +281,13 @@ class DataAnnotationApp {
     const currentInProgressTask = Boolean(syncResult.taskStatus?.in_progress_task);
     state.autoAcceptEnabled = syncResult.autoAcceptState.enabled;
     state.lastAutoAcceptAttemptSignature = syncResult.autoAcceptState.lastAttemptSignature;
+    state.lastAutoAcceptPendingTarget = syncResult.autoAcceptState.pendingClaimTarget || null;
+    state.lastAutoAcceptPendingAttemptCount = Number.isFinite(syncResult.autoAcceptState.pendingClaimAttemptCount)
+      ? syncResult.autoAcceptState.pendingClaimAttemptCount
+      : 0;
+    state.lastAutoAcceptPendingAttemptedAt = Number.isFinite(syncResult.autoAcceptState.pendingClaimAttemptedAt)
+      ? syncResult.autoAcceptState.pendingClaimAttemptedAt
+      : null;
 
     if (state.lastInProgressTask === true && currentInProgressTask === false) {
       const delayMinutes = Number(config.funds_history_after_task_delay_minutes ?? DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES);
