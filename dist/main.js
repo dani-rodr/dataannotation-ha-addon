@@ -3632,7 +3632,7 @@ var require_dataannotation_client = __commonJS({
         const targetId = String(targetProject?.id || "").trim();
         try {
           const claimStartedAt = Date.now();
-          this.logger.debug(`Opening DataAnnotation projects page for claim: ${targetId || targetSlug}`);
+          this.logger.debug(`Opening DataAnnotation claim route for: ${targetId || targetSlug}`);
           await this._applyClaimViewport(page);
           let project = targetProject;
           if (!project) {
@@ -3660,8 +3660,9 @@ var require_dataannotation_client = __commonJS({
           }
           this.logger.debug(`Claim target fields: slug=${project.slug}, id=${project.id || ""}, name=${project.name}`);
           this.logger.debug(`Claim target route priority: ${targetUrls.join(" -> ")}`);
+          const directClaim = Boolean(targetProject);
           if (targetProject) {
-            const directUrl = buildProjectUrl2(targetId) || null;
+            const directUrl = buildProjectTasksUrl2(targetId) || null;
             if (!directUrl) {
               return {
                 status: "not_found",
@@ -3669,7 +3670,14 @@ var require_dataannotation_client = __commonJS({
                 project
               };
             }
-            await this._loadAuthenticatedPage(page, directUrl, "body");
+            const directLoad = await this._loadAuthenticatedPage(page, directUrl, "body");
+            if (directLoad?.status === 404) {
+              return {
+                status: "not_found",
+                pageUrl: page.url(),
+                project
+              };
+            }
           } else {
             const clickResult = await this._clickProjectClaimTarget(page, targetUrls);
             this.logger.debug(`Project row click result: ${clickResult.kind || "none"}${clickResult.href ? ` (${clickResult.href})` : ""}`);
@@ -3698,7 +3706,7 @@ var require_dataannotation_client = __commonJS({
           }
           let pageState = await this._waitForClaimPageState(
             page,
-            (state) => state.enterVisible || state.exitVisible || state.hasScreenWarning || /\/workers\/projects\/[^/]+\/report_time(?:\?|$)/.test(state.url),
+            (state) => state.enterVisible || state.exitVisible || state.hasScreenWarning || /\/workers\/projects\/[^/]+\/report_time(?:\?|$)/.test(state.url) || directClaim && /\/workers\/projects(?:\?|$)/.test(state.url),
             7e3
           );
           if (!pageState) {
@@ -3714,6 +3722,14 @@ var require_dataannotation_client = __commonJS({
           if (pageState.hasScreenWarning) {
             return {
               status: "screen_too_small",
+              pageUrl: pageState.url,
+              project,
+              pageState
+            };
+          }
+          if (directClaim && /\/workers\/projects(?:\?|$)/.test(pageState.url)) {
+            return {
+              status: "not_available",
               pageUrl: pageState.url,
               project,
               pageState
@@ -3745,11 +3761,19 @@ var require_dataannotation_client = __commonJS({
                 pageState
               };
             }
-            const afterEnter = await this._waitForClaimPageState(page, (state) => state.exitVisible || state.hasScreenWarning || /\/workers\/projects\/[^/]+\/report_time(?:\?|$)/.test(state.url), 7e3);
+            const afterEnter = await this._waitForClaimPageState(page, (state) => state.exitVisible || state.hasScreenWarning || directClaim && /\/workers\/projects(?:\?|$)/.test(state.url) || /\/workers\/projects\/[^/]+\/report_time(?:\?|$)/.test(state.url), 7e3);
             this.logger.debug(`Enter Work Mode readiness resolved in ${Date.now() - claimStartedAt}ms`);
             if (afterEnter?.exitVisible) {
               return {
                 status: "claimed",
+                pageUrl: afterEnter.url,
+                project,
+                pageState: afterEnter
+              };
+            }
+            if (directClaim && afterEnter && /\/workers\/projects(?:\?|$)/.test(afterEnter.url)) {
+              return {
+                status: "not_available",
                 pageUrl: afterEnter.url,
                 project,
                 pageState: afterEnter
@@ -3794,7 +3818,7 @@ var require_dataannotation_client = __commonJS({
         return "authenticated";
       }
       async _loadAuthenticatedPage(page, url, readySelector) {
-        await page.goto(url, { waitUntil: "domcontentloaded" });
+        let response = await page.goto(url, { waitUntil: "domcontentloaded" });
         await page.waitForFunction(
           (selector) => Boolean(document.querySelector(selector)) || Boolean(window.location.href.includes("/users/sign_in")),
           { timeout: 3e4 },
@@ -3804,15 +3828,15 @@ var require_dataannotation_client = __commonJS({
         if (this._looksLoggedOut(page)) {
           this.logger.debug(`Detected sign-in page while loading ${url}, refreshing session`);
           await this._login(page);
-          await page.goto(url, { waitUntil: "domcontentloaded" });
+          response = await page.goto(url, { waitUntil: "domcontentloaded" });
           await page.waitForSelector(readySelector, { timeout: 3e4 });
           await this._handleNotificationPrompt(page, `authenticated load for ${url}`);
-          return "authenticated";
+          return { authenticated: true, status: response?.status?.() ?? null };
         }
         this.logger.debug(`Authenticated session detected, waiting for payload at ${url}`);
         await page.waitForSelector(readySelector, { timeout: 3e4 });
         await this._handleNotificationPrompt(page, `authenticated load for ${url}`);
-        return "authenticated";
+        return { authenticated: true, status: response?.status?.() ?? null };
       }
       _looksLoggedOut(page) {
         return page.url().includes("/users/sign_in");
@@ -7035,7 +7059,7 @@ var require_dataannotation_app = __commonJS({
         state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
           projects: [],
           cache: state.autoAcceptProjectCache,
-          autoAcceptEnabled: false,
+          autoAcceptEnabled: state.autoAcceptEnabled,
           now: /* @__PURE__ */ new Date()
         });
         saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);

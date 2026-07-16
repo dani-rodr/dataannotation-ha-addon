@@ -119,7 +119,7 @@ class DataAnnotationApp {
     state.autoAcceptProjectCache = bridge.publishAutoAcceptProjectPreferences({
       projects: [],
       cache: state.autoAcceptProjectCache,
-      autoAcceptEnabled: false,
+      autoAcceptEnabled: state.autoAcceptEnabled,
       now: new Date(),
     });
     saveAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH, state.autoAcceptProjectCache);

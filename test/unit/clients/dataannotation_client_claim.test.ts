@@ -231,7 +231,7 @@ test('claimProject returns null when claim page state does not resolve before ti
   assert.equal(result, null);
 });
 
-test('claimProject uses the canonical project url for object-based claims', async () => {
+test('claimProject uses the task query url for object-based claims', async () => {
   const client = new DataAnnotationClient({
     email: 'user@example.com',
     password: 'secret',
@@ -251,14 +251,127 @@ test('claimProject uses the canonical project url for object-based claims', asyn
     loaded.push(url);
   };
   client._waitForClaimPageState = async () => ({
-    url: 'https://app.dataannotation.tech/workers/projects/project-alpha',
+    url: 'https://app.dataannotation.tech/workers/tasks?project_id=project-alpha',
     enterVisible: false,
     exitVisible: true,
     hasScreenWarning: false,
+    hasPageNotFound: false,
+    bodyText: 'Exit Work Mode',
   });
 
   const result = await client.claimProject({ slug: 'alpha', id: 'project-alpha', name: 'Alpha' });
 
-  assert.deepEqual(loaded, ['https://app.dataannotation.tech/workers/projects/project-alpha']);
+  assert.deepEqual(loaded, ['https://app.dataannotation.tech/workers/tasks?project_id=project-alpha']);
   assert.equal(result.status, 'already_in_work_mode');
+});
+
+test('claimProject returns not_found immediately for a 404 task route', async () => {
+  const client = new DataAnnotationClient({
+    email: 'user@example.com',
+    password: 'secret',
+    executablePath: '/usr/bin/google-chrome',
+    logger: createLogger(),
+  });
+
+  let clicked = false;
+  const loaded = [];
+  client._newPage = async () => ({
+    url() {
+      return 'https://app.dataannotation.tech/workers/projects';
+    },
+    goto: async (url) => {
+      loaded.push(url);
+      return { status: () => 404 };
+    },
+    waitForFunction: async () => {},
+    waitForSelector: async () => {},
+    close: async () => {},
+  });
+  client._applyClaimViewport = async () => {};
+  client._waitForClaimPageState = async () => {
+    clicked = true;
+    return null;
+  };
+
+  const result = await client.claimProject({ slug: 'alpha', id: 'project-alpha', name: 'Alpha' });
+
+  assert.deepEqual(loaded, ['https://app.dataannotation.tech/workers/tasks?project_id=project-alpha']);
+  assert.equal(clicked, false);
+  assert.equal(result.status, 'not_found');
+});
+
+test('claimProject does not treat Page not found text inside a valid task as missing', async () => {
+  const client = new DataAnnotationClient({
+    email: 'user@example.com',
+    password: 'secret',
+    executablePath: '/usr/bin/google-chrome',
+    logger: createLogger(),
+  });
+
+  const loaded = [];
+  client._newPage = async () => ({
+    url() {
+      return 'https://app.dataannotation.tech/workers/projects';
+    },
+    close: async () => {},
+  });
+  client._applyClaimViewport = async () => {};
+  client._loadAuthenticatedPage = async (_page, url) => {
+    loaded.push(url);
+    return { status: 200 };
+  };
+  client._waitForClaimPageState = async () => ({
+    url: 'https://app.dataannotation.tech/workers/tasks?project_id=project-alpha',
+    title: 'DataAnnotation',
+    bodyText: 'This task says Page not found in the prompt content',
+    hasScreenWarning: false,
+    enterVisible: false,
+    exitVisible: false,
+  });
+
+  const result = await client.claimProject({ slug: 'alpha', id: 'project-alpha', name: 'Alpha' });
+
+  assert.deepEqual(loaded, ['https://app.dataannotation.tech/workers/tasks?project_id=project-alpha']);
+  assert.equal(result.status, 'not_available');
+});
+
+test('claimProject returns not_available when the task route redirects to the projects dashboard', async () => {
+  const client = new DataAnnotationClient({
+    email: 'user@example.com',
+    password: 'secret',
+    executablePath: '/usr/bin/google-chrome',
+    logger: createLogger(),
+  });
+
+  let clicked = false;
+  const loaded = [];
+  client._newPage = async () => ({
+    url() {
+      return 'https://app.dataannotation.tech/workers/projects';
+    },
+    close: async () => {},
+  });
+  client._applyClaimViewport = async () => {};
+  client._loadAuthenticatedPage = async (_page, url) => {
+    loaded.push(url);
+  };
+  client._waitForClaimPageState = async () => ({
+    url: 'https://app.dataannotation.tech/workers/projects?project_id=project-alpha',
+    title: 'DataAnnotation',
+    bodyText: 'DataAnnotation',
+    hasScreenWarning: false,
+    hasPageNotFound: false,
+    enterVisible: false,
+    exitVisible: false,
+  });
+  client._clickExactVisibleButton = async () => {
+    clicked = true;
+    return false;
+  };
+
+  const result = await client.claimProject({ slug: 'alpha', id: 'project-alpha', name: 'Alpha' });
+
+  assert.deepEqual(loaded, ['https://app.dataannotation.tech/workers/tasks?project_id=project-alpha']);
+  assert.equal(clicked, false);
+  assert.equal(result.status, 'not_available');
 });
