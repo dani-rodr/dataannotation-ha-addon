@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.11
+
+- Refresh Funds History when its scheduled deadline arrives, even while Fast Polling is enabled.
+- Prevent expired retained payout details from being published or included in Next Withdrawal amounts.
+- Preserve Last Payout amounts from paid Funds History rows and recover matching amounts from local Wallet sync state across restarts without guessing or writing to Wallet.
+- Keep top-level Next Payout source and confidence metadata aligned with the underlying observations.
+
 ## 0.7.10
 
 - Correct active DataAnnotation Wallet income records with the settlement-adjusted PHP rate while preventing duplicate imports and unsafe updates to historical, transferred, or unrelated records.

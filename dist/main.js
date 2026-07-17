@@ -646,7 +646,7 @@ var require_auto_accept_projects = __commonJS({
       const payload = value && typeof value === "object" ? value : {};
       const projects = payload.projects && typeof payload.projects === "object" ? payload.projects : {};
       const normalizedProjects = {};
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       for (const [projectId, project] of Object.entries(projects)) {
         const normalized = normalizeAutoAcceptProject(projectId, project, current);
         if (!normalized || isProjectExpired(normalized, current)) {
@@ -668,7 +668,7 @@ var require_auto_accept_projects = __commonJS({
       if (!normalizedProjectId) {
         return null;
       }
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       return {
         project_id: normalizedProjectId,
         enabled: Boolean(project.enabled),
@@ -685,7 +685,7 @@ var require_auto_accept_projects = __commonJS({
       if (!projectId) {
         return normalized;
       }
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       const existing = normalized.projects[projectId] || null;
       normalized.projects[projectId] = {
         project_id: projectId,
@@ -705,7 +705,7 @@ var require_auto_accept_projects = __commonJS({
       if (!resolvedProjectId || !normalized.projects[resolvedProjectId]) {
         return normalized;
       }
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       normalized.projects[resolvedProjectId] = {
         ...normalized.projects[resolvedProjectId],
         enabled: Boolean(enabled),
@@ -715,7 +715,7 @@ var require_auto_accept_projects = __commonJS({
       return normalized;
     }
     function clearAutoAcceptProjectCache(_projects, now = /* @__PURE__ */ new Date()) {
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       return {
         version: 1,
         projects: {},
@@ -733,17 +733,17 @@ var require_auto_accept_projects = __commonJS({
       return Object.values(normalized.projects).filter((project) => project.enabled).map((project) => project.project_id);
     }
     function isProjectExpired(project, now = /* @__PURE__ */ new Date()) {
-      const lastSeenAt = normalizeDate2(project?.last_seen_at);
+      const lastSeenAt = normalizeDate3(project?.last_seen_at);
       if (!lastSeenAt) {
         return false;
       }
       return now.getTime() - lastSeenAt.getTime() > AUTO_ACCEPT_PROJECT_RETENTION_MS;
     }
     function normalizeIsoDate(value) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       return date ? date.toISOString() : null;
     }
-    function normalizeDate2(value) {
+    function normalizeDate3(value) {
       if (!value) {
         return null;
       }
@@ -1939,7 +1939,7 @@ var require_funds_history_observations = __commonJS({
       fs7.writeFileSync(filePath, JSON.stringify(normalized, null, 2));
     }
     function applyFundsHistoryObservations(entries, observations = null, now = /* @__PURE__ */ new Date()) {
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       const state = normalizeObservations(observations);
       const seenObservationIds = /* @__PURE__ */ new Set();
       const matchedStableKeys = /* @__PURE__ */ new Map();
@@ -1971,13 +1971,13 @@ var require_funds_history_observations = __commonJS({
           if (existing?.observation_id) {
             delete state.entries[existing.observation_id];
             seenObservationIds.add(existing.observation_id);
-            continue;
           }
           if (fingerprint && byFingerprint.has(fingerprint)) {
             const observation = byFingerprint.get(fingerprint);
             delete state.entries[observation.observation_id];
             seenObservationIds.add(observation.observation_id);
           }
+          mergedEntries.push(entry);
           continue;
         }
         if (existing?.observation_id) {
@@ -2015,7 +2015,7 @@ var require_funds_history_observations = __commonJS({
           delete state.entries[observationId];
           continue;
         }
-        const payoutAt = normalizeDate2(observation.estimated_payout_at);
+        const payoutAt = normalizeDate3(observation.estimated_payout_at);
         if (payoutAt && payoutAt.getTime() <= current.getTime()) {
           delete state.entries[observationId];
         }
@@ -2027,11 +2027,11 @@ var require_funds_history_observations = __commonJS({
       };
     }
     function estimateFundsHistoryEntry(entry, now = /* @__PURE__ */ new Date()) {
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       const ageUnit = String(entry?.relative_age_unit || "").toLowerCase();
       const ageValue = numberOrZero3(entry?.relative_age_value);
       const dueDays = numberOrZero3(entry?.due_days) || (entry?.kind === "task" ? 3 : 7);
-      const entryDate = normalizeDate2(entry?.entry_date);
+      const entryDate = normalizeDate3(entry?.entry_date);
       let estimatedWorkAt = null;
       let estimateSource = null;
       let estimateConfidence = null;
@@ -2126,8 +2126,8 @@ var require_funds_history_observations = __commonJS({
         if (leftKey !== rightKey) {
           return leftKey.localeCompare(rightKey);
         }
-        const leftDate = normalizeDate2(left.entry?.first_seen_at)?.getTime() || 0;
-        const rightDate = normalizeDate2(right.entry?.first_seen_at)?.getTime() || 0;
+        const leftDate = normalizeDate3(left.entry?.first_seen_at)?.getTime() || 0;
+        const rightDate = normalizeDate3(right.entry?.first_seen_at)?.getTime() || 0;
         if (leftDate !== rightDate) {
           return leftDate - rightDate;
         }
@@ -2173,10 +2173,10 @@ var require_funds_history_observations = __commonJS({
       return repairObservationEntry(normalized);
     }
     function normalizeIsoDate(value) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       return date ? date.toISOString() : null;
     }
-    function normalizeDate2(value) {
+    function normalizeDate3(value) {
       if (!value) {
         return null;
       }
@@ -2184,7 +2184,7 @@ var require_funds_history_observations = __commonJS({
       return Number.isNaN(date.getTime()) ? null : date;
     }
     function nextLocalMidnight(value, daysOffset) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       if (!date) {
         return null;
       }
@@ -2197,7 +2197,7 @@ var require_funds_history_observations = __commonJS({
       return nextLocalMidnight(value, daysOffset);
     }
     function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = /* @__PURE__ */ new Date()) {
-      const baseDate = normalizeDate2(entryDate);
+      const baseDate = normalizeDate3(entryDate);
       if (!baseDate) {
         return null;
       }
@@ -2210,28 +2210,28 @@ var require_funds_history_observations = __commonJS({
         0,
         0
       );
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       if (payoutDate <= current) {
         payoutDate.setDate(payoutDate.getDate() + 1);
       }
       return payoutDate;
     }
     function estimatePayoutAtFromWorkAt(workAt, dueDays, now = /* @__PURE__ */ new Date()) {
-      const baseDate = normalizeDate2(workAt);
+      const baseDate = normalizeDate3(workAt);
       if (!baseDate) {
         return null;
       }
       const payoutDate = new Date(baseDate.getTime() + numberOrZero3(dueDays) * DAY_MS);
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       if (payoutDate <= current) {
         payoutDate.setDate(payoutDate.getDate() + 1);
       }
       return payoutDate;
     }
     function repairObservationEntry(entry) {
-      const current = normalizeDate2(entry.last_seen_at || entry.first_seen_at || /* @__PURE__ */ new Date()) || /* @__PURE__ */ new Date();
-      const payoutAt = normalizeDate2(entry.estimated_payout_at);
-      const workAt = normalizeDate2(entry.estimated_work_at);
+      const current = normalizeDate3(entry.last_seen_at || entry.first_seen_at || /* @__PURE__ */ new Date()) || /* @__PURE__ */ new Date();
+      const payoutAt = normalizeDate3(entry.estimated_payout_at);
+      const workAt = normalizeDate3(entry.estimated_work_at);
       const dueDays = numberOrZero3(entry.due_days) || (entry.kind === "task" ? 3 : 7);
       const shouldRepairMidnightFallback = Boolean(
         payoutAt && workAt && payoutAt.getUTCHours() === 0 && payoutAt.getUTCMinutes() === 0 && payoutAt.getUTCSeconds() === 0 && payoutAt.getUTCMilliseconds() === 0
@@ -2340,8 +2340,8 @@ var require_funds_history_observations = __commonJS({
       }
       for (const observations of byStableKey.values()) {
         observations.sort((left, right) => {
-          const leftSeen = normalizeDate2(left?.first_seen_at)?.getTime() || 0;
-          const rightSeen = normalizeDate2(right?.first_seen_at)?.getTime() || 0;
+          const leftSeen = normalizeDate3(left?.first_seen_at)?.getTime() || 0;
+          const rightSeen = normalizeDate3(right?.first_seen_at)?.getTime() || 0;
           if (leftSeen !== rightSeen) {
             return leftSeen - rightSeen;
           }
@@ -2496,10 +2496,10 @@ var require_funds_history = __commonJS({
       const normalizedAgeUnit = relativeAgeUnit.toLowerCase();
       const dueDays = kind === "hourly" ? 7 : 3;
       const ageDays = normalizedAgeUnit === "minute" ? normalizedAgeValue / (24 * 60) : normalizedAgeUnit === "hour" ? normalizedAgeValue / 24 : normalizedAgeUnit === "week" ? normalizedAgeValue * 7 : normalizedAgeValue;
-      const normalizedEntryDate = normalizeDate2(entryDate);
+      const normalizedEntryDate = normalizeDate3(entryDate);
       const entryDateValue = normalizedEntryDate ? normalizedEntryDate.toISOString() : null;
       const isPreciseEstimate = (normalizedAgeUnit === "minute" || normalizedAgeUnit === "hour") && Number.isFinite(normalizedAgeValue) && normalizedAgeValue > 0;
-      const estimatedWorkAt = isPreciseEstimate ? estimateWorkAt(now, normalizedAgeValue, normalizedAgeUnit, entryDateValue) : entryDateValue || normalizeDate2(now)?.toISOString() || (/* @__PURE__ */ new Date()).toISOString();
+      const estimatedWorkAt = isPreciseEstimate ? estimateWorkAt(now, normalizedAgeValue, normalizedAgeUnit, entryDateValue) : entryDateValue || normalizeDate3(now)?.toISOString() || (/* @__PURE__ */ new Date()).toISOString();
       const estimatedPayoutAt = isPreciseEstimate ? estimatePayoutAt(estimatedWorkAt, dueDays, now) : estimatePayoutAtFromEntryDate(entryDateValue, dueDays, now) || toLocalMidnightAtOffset(now, dueDays);
       return {
         project: project || null,
@@ -2536,7 +2536,7 @@ var require_funds_history = __commonJS({
       if (monthIndex === -1) {
         return null;
       }
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       const year = inferYearForMonth(monthIndex, current);
       return new Date(year, monthIndex, Number(match[2]), 0, 0, 0, 0);
     }
@@ -2581,17 +2581,17 @@ var require_funds_history = __commonJS({
       return {
         amount_cents: amountCents,
         amount: centsToNumber(amountCents),
-        amount_formatted: formatCents2(amountCents)
+        amount_formatted: formatCents3(amountCents)
       };
     }
     function normalizePayoutGroupKey(entry) {
-      const entryDate = normalizeDate2(entry?.entry_date) || normalizeDate2(entry?.estimated_payout_at);
+      const entryDate = normalizeDate3(entry?.entry_date) || normalizeDate3(entry?.estimated_payout_at);
       return entryDate ? entryDate.getTime() : null;
     }
     function centsToNumber(value) {
       return numberOrZero3(value) / 100;
     }
-    function formatCents2(value) {
+    function formatCents3(value) {
       return `$${new Intl.NumberFormat("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -2608,7 +2608,7 @@ var require_funds_history = __commonJS({
       if (!entry || entry.status !== "pending") {
         return null;
       }
-      const entryDate = normalizeDate2(entry.entry_date);
+      const entryDate = normalizeDate3(entry.entry_date);
       if (entryDate && Number.isFinite(Number(entry.due_days))) {
         const payoutDate = new Date(
           entryDate.getFullYear(),
@@ -2619,7 +2619,7 @@ var require_funds_history = __commonJS({
           0,
           0
         );
-        const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+        const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
         if (payoutDate <= current) {
           payoutDate.setDate(payoutDate.getDate() + 1);
         }
@@ -2631,7 +2631,7 @@ var require_funds_history = __commonJS({
       return null;
     }
     function estimateWorkAt(now, ageValue, ageUnit, fallbackEntryDate) {
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       if (Number.isFinite(ageValue) && ageValue > 0) {
         const ms = ageValue * relativeAgeUnitToMs(ageUnit);
         return new Date(current.getTime() - ms).toISOString();
@@ -2639,7 +2639,7 @@ var require_funds_history = __commonJS({
       return fallbackEntryDate || current.toISOString();
     }
     function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = /* @__PURE__ */ new Date()) {
-      const baseDate = normalizeDate2(entryDate);
+      const baseDate = normalizeDate3(entryDate);
       if (!baseDate) {
         return null;
       }
@@ -2652,19 +2652,19 @@ var require_funds_history = __commonJS({
         0,
         0
       );
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       if (payoutDate <= current) {
         payoutDate.setDate(payoutDate.getDate() + 1);
       }
       return payoutDate.toISOString();
     }
     function estimatePayoutAt(estimatedWorkAt, dueDays, now = /* @__PURE__ */ new Date()) {
-      const workAt = normalizeDate2(estimatedWorkAt);
+      const workAt = normalizeDate3(estimatedWorkAt);
       if (!workAt) {
         return null;
       }
       const payoutAt = new Date(workAt.getTime() + numberOrZero3(dueDays) * 24 * 60 * 60 * 1e3);
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       if (payoutAt <= current) {
         return toLocalMidnightAtOffset(current, 1);
       }
@@ -2692,7 +2692,7 @@ var require_funds_history = __commonJS({
       return Number(dollarsRaw.replace(/,/g, "")) * 100 + Number(centsRaw);
     }
     function toLocalMidnightAtOffset(now, daysOffset) {
-      const date = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const date = normalizeDate3(now) || /* @__PURE__ */ new Date();
       const localMidnight = new Date(
         date.getFullYear(),
         date.getMonth(),
@@ -2782,7 +2782,7 @@ var require_funds_history = __commonJS({
     function normalizeText2(value) {
       return String(value || "").trim().replace(/\s+/g, " ");
     }
-    function normalizeDate2(value) {
+    function normalizeDate3(value) {
       if (!value) {
         return null;
       }
@@ -2790,7 +2790,7 @@ var require_funds_history = __commonJS({
       return Number.isNaN(date.getTime()) ? null : date;
     }
     function formatHumanTimestamp(value) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       if (!date) {
         return null;
       }
@@ -2803,7 +2803,7 @@ var require_funds_history = __commonJS({
       }).format(date);
     }
     function normalizeIsoDate(value) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       return date ? date.toISOString() : null;
     }
     function numberOrZero3(value) {
@@ -2832,7 +2832,8 @@ var require_withdrawal_amount = __commonJS({
     function buildWithdrawalAmountSnapshot2(payments, nextWithdrawalAt, now = /* @__PURE__ */ new Date()) {
       const availableAmountCents = toCents(payments?.available_amount_cents, payments?.available_amount);
       const cutoff = parseDate4(nextWithdrawalAt);
-      if (!cutoff || cutoff <= normalizeDate2(now)) {
+      const currentTime = normalizeDate3(now);
+      if (!cutoff || cutoff <= currentTime) {
         return formatWithdrawalAmount(availableAmountCents);
       }
       const entries = Array.isArray(payments?.next_payout_entries) ? payments.next_payout_entries : Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : [];
@@ -2841,7 +2842,7 @@ var require_withdrawal_amount = __commonJS({
           return sum;
         }
         const payoutAt = parseDate4(entry.estimated_payout_at);
-        if (!payoutAt || payoutAt > cutoff) {
+        if (!payoutAt || payoutAt <= currentTime || payoutAt > cutoff) {
           return sum;
         }
         return sum + toCents(entry.amount_cents, entry.amount);
@@ -2852,10 +2853,10 @@ var require_withdrawal_amount = __commonJS({
       return {
         next_withdrawal_amount_cents: cents,
         next_withdrawal_amount: cents / 100,
-        next_withdrawal_amount_formatted: formatCents2(cents)
+        next_withdrawal_amount_formatted: formatCents3(cents)
       };
     }
-    function formatCents2(value) {
+    function formatCents3(value) {
       return `$${new Intl.NumberFormat("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -2879,7 +2880,7 @@ var require_withdrawal_amount = __commonJS({
       const date = value instanceof Date ? value : new Date(value);
       return Number.isNaN(date.getTime()) ? null : date;
     }
-    function normalizeDate2(value) {
+    function normalizeDate3(value) {
       const date = parseDate4(value);
       return date || /* @__PURE__ */ new Date(0);
     }
@@ -2945,7 +2946,7 @@ var require_payments = __commonJS({
       return {
         available_amount_cents: availableAmountCents,
         available_amount: centsToNumber(availableAmountCents),
-        available_amount_formatted: formatCents2(availableAmountCents),
+        available_amount_formatted: formatCents3(availableAmountCents),
         can_withdraw: canWithdraw,
         button_enabled: normalizedWithdrawButton.enabled,
         button_text: normalizedWithdrawButton.text,
@@ -2960,20 +2961,20 @@ var require_payments = __commonJS({
         payment_status: pageProps?.paymentStatus?.type || null,
         total_earnings_cents: totalEarningsCents,
         total_earnings: centsToNumber(totalEarningsCents),
-        total_earnings_formatted: formatCents2(totalEarningsCents),
+        total_earnings_formatted: formatCents3(totalEarningsCents),
         total_paid_out_cents: totalPaidOutCents,
         total_paid_out: centsToNumber(totalPaidOutCents),
-        total_paid_out_formatted: formatCents2(totalPaidOutCents),
+        total_paid_out_formatted: formatCents3(totalPaidOutCents),
         this_month_cents: thisMonthCents,
         this_month: centsToNumber(thisMonthCents),
-        this_month_formatted: formatCents2(thisMonthCents),
+        this_month_formatted: formatCents3(thisMonthCents),
         best_month_cents: bestMonthSource.cents,
         best_month: centsToNumber(bestMonthSource.cents),
         best_month_label: bestMonthSource.label,
-        best_month_formatted: formatCents2(bestMonthSource.cents),
+        best_month_formatted: formatCents3(bestMonthSource.cents),
         pending_approval_cents: pendingApprovalCents,
         pending_approval: centsToNumber(pendingApprovalCents),
-        pending_approval_formatted: formatCents2(pendingApprovalCents),
+        pending_approval_formatted: formatCents3(pendingApprovalCents),
         last_payout_at: pageProps?.lastPayoutAt || earningsSummary?.lastPayoutAt || null,
         next_payout_days: numberOrZero3(next_payout_days),
         next_payout_at: normalizeIsoDate(next_payout_at),
@@ -2985,8 +2986,8 @@ var require_payments = __commonJS({
         next_payout_entries: nextPayoutEntries,
         next_payout_entries_public: formatPublicPayoutEntries(nextPayoutEntries),
         next_payout_amount: nextPayoutEntry?.amount || null,
-        next_payout_source: nextPayoutEntry?.source || null,
-        next_payout_confidence: nextPayoutEntry?.confidence || null,
+        next_payout_source: nextPayoutEntry?.estimate_source || nextPayoutEntry?.source || null,
+        next_payout_confidence: nextPayoutEntry?.estimate_confidence || nextPayoutEntry?.confidence || null,
         scraped_at: normalizeIsoDate(scrapedAt) || null
       };
     }
@@ -3030,7 +3031,7 @@ var require_payments = __commonJS({
         count: 1
       };
     }
-    function formatCents2(value) {
+    function formatCents3(value) {
       return `$${new Intl.NumberFormat("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -3051,7 +3052,7 @@ var require_payments = __commonJS({
       }).format(date);
     }
     function formatHumanTimestamp(value) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       if (!date) {
         return null;
       }
@@ -3087,7 +3088,7 @@ var require_payments = __commonJS({
         return parsed.toISOString();
       }
       const availableAmount = numberOrZero3(availableAmountCents);
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       if (canWithdraw && availableAmount > 0) {
         return addMinutes(current, 5).toISOString();
       }
@@ -3116,7 +3117,7 @@ var require_payments = __commonJS({
       if (availableAmount > 0) {
         return canWithdraw ? "button" : "estimated";
       }
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       if (estimateFutureWithdrawalAt(lastPayoutAt, current)) {
         return "estimated";
       }
@@ -3124,30 +3125,30 @@ var require_payments = __commonJS({
     }
     function estimateFutureWithdrawalAt(lastPayoutAt, now) {
       const estimated = estimateNextWithdrawalAt(lastPayoutAt, now);
-      const estimatedDate = normalizeDate2(estimated);
+      const estimatedDate = normalizeDate3(estimated);
       return estimatedDate && estimatedDate > now ? estimated : null;
     }
     function estimateNextWithdrawalAt(lastPayoutAt, now = /* @__PURE__ */ new Date()) {
-      const lastPayout = normalizeDate2(lastPayoutAt);
+      const lastPayout = normalizeDate3(lastPayoutAt);
       if (!lastPayout) {
         return null;
       }
       const estimatedAt = new Date(lastPayout.getTime() + 3 * 24 * 60 * 60 * 1e3);
-      const current = normalizeDate2(now);
+      const current = normalizeDate3(now);
       if (!current) {
         return estimatedAt.toISOString();
       }
       return estimatedAt < current ? current.toISOString() : estimatedAt.toISOString();
     }
     function addMinutes(value, minutes) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       if (!date) {
         return null;
       }
       return new Date(date.getTime() + numberOrZero3(minutes) * 60 * 1e3);
     }
     function nextLocalMidnight(value, daysOffset) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       if (!date) {
         return null;
       }
@@ -3166,13 +3167,13 @@ var require_payments = __commonJS({
       return midnight.toISOString();
     }
     function normalizeIsoDate(value) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       if (!date) {
         return null;
       }
       return date.toISOString();
     }
-    function normalizeDate2(value) {
+    function normalizeDate3(value) {
       if (!value) {
         return null;
       }
@@ -3373,7 +3374,7 @@ var require_payments = __commonJS({
       if (button.disabled || button.ariaDisabled === "true") {
         return false;
       }
-      const exactAmount = availableAmountCents === null ? null : formatCents2(availableAmountCents);
+      const exactAmount = availableAmountCents === null ? null : formatCents3(availableAmountCents);
       const matchesLegacyText = WITHDRAW_BUTTON_TEXT_PATTERN.test(button.text) && (exactAmount === null || button.text === `${exactAmount} available`);
       if (matchesLegacyText) {
         return true;
@@ -3391,7 +3392,7 @@ var require_payments = __commonJS({
       scrapePayments,
       chooseWithdrawalButton,
       formatMonthLabel,
-      formatCents: formatCents2,
+      formatCents: formatCents3,
       estimateNextWithdrawalAt,
       normalizeNextWithdrawalAt,
       resolveNextWithdrawalSource,
@@ -4405,7 +4406,7 @@ var require_currency_conversion = __commonJS({
       };
     }
     function shouldRefreshCurrencyRate(state, now = /* @__PURE__ */ new Date()) {
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       const currentUtcDate = utcDateString(current);
       const threshold = nextFxRateRefreshWindow(current);
       if (!Number.isFinite(Number(state?.usd_php_rate)) || !state?.usd_php_rate_date) {
@@ -4417,7 +4418,7 @@ var require_currency_conversion = __commonJS({
       return state.usd_php_rate_date !== currentUtcDate;
     }
     function computeNextFxRateRefreshAt(now = /* @__PURE__ */ new Date()) {
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       const threshold = nextFxRateRefreshWindow(current);
       if (current < threshold) {
         return threshold.toISOString();
@@ -4425,7 +4426,7 @@ var require_currency_conversion = __commonJS({
       return new Date(threshold.getTime() + 24 * 60 * 60 * 1e3).toISOString();
     }
     function nextFxRateRefreshWindow(now = /* @__PURE__ */ new Date()) {
-      const current = normalizeDate2(now) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
       const threshold = new Date(Date.UTC(
         current.getUTCFullYear(),
         current.getUTCMonth(),
@@ -4630,7 +4631,7 @@ var require_currency_conversion = __commonJS({
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? null : date.toISOString();
     }
-    function normalizeDate2(value) {
+    function normalizeDate3(value) {
       if (!value) {
         return null;
       }
@@ -4638,7 +4639,7 @@ var require_currency_conversion = __commonJS({
       return Number.isNaN(date.getTime()) ? null : date;
     }
     function utcDateString(date) {
-      const current = normalizeDate2(date) || /* @__PURE__ */ new Date();
+      const current = normalizeDate3(date) || /* @__PURE__ */ new Date();
       return current.toISOString().slice(0, 10);
     }
     function parseMoneyText(value) {
@@ -4777,17 +4778,23 @@ function saveNextWithdrawalState(filePath, payments) {
 }
 function normalizeNextWithdrawalState(value) {
   const payload = value && typeof value === "object" ? value : null;
-  if (!payload?.next_withdrawal_at) {
+  if (!payload) {
     return null;
   }
-  const date = new Date(payload.next_withdrawal_at);
-  if (Number.isNaN(date.getTime())) {
+  const nextWithdrawalAt = normalizeDate2(payload.next_withdrawal_at);
+  const lastPayoutAt = normalizeDate2(payload.last_payout_at);
+  if (!nextWithdrawalAt && !lastPayoutAt) {
     return null;
   }
+  const lastPayoutAmountCents = normalizeCents(payload.last_payout_amount_cents, payload.last_payout_amount);
   return {
-    next_withdrawal_at: date.toISOString(),
+    next_withdrawal_at: nextWithdrawalAt,
     next_withdrawal_text: normalizeText(payload.next_withdrawal_text),
-    next_withdrawal_source: normalizeText(payload.next_withdrawal_source)
+    next_withdrawal_source: normalizeText(payload.next_withdrawal_source),
+    last_payout_at: lastPayoutAt,
+    last_payout_amount_cents: lastPayoutAmountCents,
+    last_payout_amount: lastPayoutAmountCents === null ? null : lastPayoutAmountCents / 100,
+    last_payout_amount_formatted: lastPayoutAmountCents === null ? null : normalizeText(payload.last_payout_amount_formatted) || formatCents(lastPayoutAmountCents)
   };
 }
 function normalizeText(value) {
@@ -4797,12 +4804,256 @@ function normalizeText(value) {
   const text = String(value).trim();
   return text || null;
 }
+function normalizeDate2(value) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+function normalizeCents(centsValue, amountValue) {
+  if (centsValue !== void 0 && centsValue !== null && centsValue !== "") {
+    const cents = Number(centsValue);
+    if (Number.isFinite(cents)) {
+      return Math.round(cents);
+    }
+  }
+  if (amountValue !== void 0 && amountValue !== null && amountValue !== "") {
+    const amount = Number(amountValue);
+    if (Number.isFinite(amount)) {
+      return Math.round(amount * 100);
+    }
+  }
+  return null;
+}
+function formatCents(value) {
+  return `$${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value / 100)}`;
+}
 var import_fs5, import_path4;
 var init_next_withdrawal_state = __esm({
   "src/state/next_withdrawal_state.ts"() {
     "use strict";
     import_fs5 = __toESM(require("fs"));
     import_path4 = __toESM(require("path"));
+  }
+});
+
+// src/state/wallet_sync_state.ts
+var require_wallet_sync_state = __commonJS({
+  "src/state/wallet_sync_state.ts"(exports2, module2) {
+    "use strict";
+    var fs7 = require("node:fs");
+    var path6 = require("node:path");
+    var DEFAULT_WALLET_SYNC_STATE = {
+      version: 4,
+      created_at: null,
+      updated_at: null,
+      first_sync_completed_at: null,
+      wallet_api_retry_after_at: null,
+      wallet_api_failure_count: 0,
+      wallet_api_last_error: null,
+      last_seen_last_payout_at: null,
+      last_seen_last_payout_amount_cents: null,
+      last_seen_available_amount_cents: null,
+      last_seen_available_amount: null,
+      last_applied_settlement_rate: null,
+      pending_revaluation: null,
+      imported_funds_entries: {},
+      withdrawal_events: {}
+    };
+    function loadWalletSyncState(filePath) {
+      if (!filePath || !fs7.existsSync(filePath)) {
+        return cloneWalletSyncState(DEFAULT_WALLET_SYNC_STATE);
+      }
+      try {
+        return normalizeWalletSyncState(JSON.parse(fs7.readFileSync(filePath, "utf8")));
+      } catch {
+        return cloneWalletSyncState(DEFAULT_WALLET_SYNC_STATE);
+      }
+    }
+    function saveWalletSyncState(filePath, state) {
+      if (!filePath) {
+        return;
+      }
+      const normalized = normalizeWalletSyncState(state);
+      fs7.mkdirSync(path6.dirname(filePath), { recursive: true });
+      const tempPath = `${filePath}.tmp`;
+      fs7.writeFileSync(tempPath, JSON.stringify(normalized, null, 2));
+      fs7.renameSync(tempPath, filePath);
+    }
+    function normalizeWalletSyncState(value) {
+      const payload = value && typeof value === "object" ? value : {};
+      const sourceVersion = normalizeNumber(payload.version) || 2;
+      const version2 = Math.max(4, sourceVersion);
+      return {
+        version: version2,
+        created_at: normalizeIsoDate(payload.created_at) || null,
+        updated_at: normalizeIsoDate(payload.updated_at) || null,
+        first_sync_completed_at: normalizeIsoDate(payload.first_sync_completed_at) || null,
+        wallet_api_retry_after_at: normalizeIsoDate(payload.wallet_api_retry_after_at) || null,
+        wallet_api_failure_count: normalizeNumber(payload.wallet_api_failure_count) || 0,
+        wallet_api_last_error: normalizeText2(payload.wallet_api_last_error),
+        last_seen_last_payout_at: normalizeIsoDate(payload.last_seen_last_payout_at) || null,
+        last_seen_last_payout_amount_cents: normalizeNumber(payload.last_seen_last_payout_amount_cents),
+        last_seen_available_amount_cents: normalizeNumber(payload.last_seen_available_amount_cents),
+        last_seen_available_amount: normalizeNumber(payload.last_seen_available_amount),
+        last_applied_settlement_rate: normalizeNumber(payload.last_applied_settlement_rate),
+        pending_revaluation: normalizePendingRevaluation(payload.pending_revaluation),
+        imported_funds_entries: normalizeEntryMap(payload.imported_funds_entries, sourceVersion),
+        withdrawal_events: normalizeEntryMap(payload.withdrawal_events)
+      };
+    }
+    function normalizeEntryMap(value, sourceVersion = 4) {
+      const entries = value && typeof value === "object" ? value : {};
+      const normalized = {};
+      for (const [key, entry] of Object.entries(entries)) {
+        const normalizedEntry = normalizeLedgerEntry(key, entry, sourceVersion);
+        if (normalizedEntry) {
+          normalized[key] = normalizedEntry;
+        }
+      }
+      return normalized;
+    }
+    function normalizeLedgerEntry(key, value, sourceVersion = 4) {
+      if (!value || typeof value !== "object") {
+        return null;
+      }
+      const feeRecordId = normalizeText2(value.fee_record_id) || normalizeText2(value.record_id);
+      const transferRecordId = normalizeText2(value.transfer_record_id) || normalizeText2(value.mirror_record_id);
+      const sourceType = normalizeText2(value.source_type);
+      let status = normalizeText2(value.status);
+      let sourceRate = normalizeNumber(value.source_rate);
+      if (sourceType === "income" && sourceVersion < 4 && !status) {
+        status = "unclassified";
+      }
+      if (sourceType === "income" && sourceVersion < 4 && status !== "historical_locked" && status !== "transferred") {
+        sourceRate = null;
+      }
+      return {
+        key: String(value.key || key || "").trim(),
+        note_marker: normalizeText2(value.note_marker),
+        source_marker: normalizeText2(value.source_marker),
+        source_observation_id: normalizeText2(value.source_observation_id),
+        source_project: normalizeText2(value.source_project),
+        fee_record_id: feeRecordId,
+        transfer_record_id: transferRecordId,
+        record_id: feeRecordId,
+        mirror_record_id: transferRecordId,
+        source_fingerprint: normalizeText2(value.source_fingerprint),
+        source_type: sourceType,
+        source_amount_usd_cents: normalizeNumber(value.source_amount_usd_cents),
+        source_amount_php_cents: normalizeNumber(value.source_amount_php_cents),
+        source_fee_usd_cents: normalizeNumber(value.source_fee_usd_cents),
+        source_fee_php_cents: normalizeNumber(value.source_fee_php_cents),
+        source_net_usd_cents: normalizeNumber(value.source_net_usd_cents),
+        source_net_php_cents: normalizeNumber(value.source_net_php_cents),
+        source_rate: sourceRate,
+        payout_at: normalizeIsoDate(value.payout_at) || null,
+        status: status || (sourceType === "income" ? "unclassified" : "historical_locked"),
+        status_updated_at: normalizeIsoDate(value.status_updated_at) || null,
+        withdrawal_marker: normalizeText2(value.withdrawal_marker),
+        transferred_at: normalizeIsoDate(value.transferred_at) || null,
+        created_at: normalizeIsoDate(value.created_at) || null,
+        completed_at: normalizeIsoDate(value.completed_at) || null,
+        last_attempt_at: normalizeIsoDate(value.last_attempt_at) || null,
+        attempt_count: normalizeNumber(value.attempt_count) || 0,
+        last_error: normalizeText2(value.last_error)
+      };
+    }
+    function normalizePendingRevaluation(value) {
+      if (!value || typeof value !== "object") {
+        return null;
+      }
+      return {
+        queued_at: normalizeIsoDate(value.queued_at) || null,
+        reason: normalizeText2(value.reason),
+        reference_rate: normalizeNumber(value.reference_rate),
+        settlement_rate: normalizeNumber(value.settlement_rate),
+        source: normalizeText2(value.source)
+      };
+    }
+    function cloneWalletSyncState(value) {
+      return normalizeWalletSyncState(JSON.parse(JSON.stringify(value)));
+    }
+    function normalizeIsoDate(value) {
+      const date = normalizeDate3(value);
+      return date ? date.toISOString() : null;
+    }
+    function normalizeDate3(value) {
+      if (!value) {
+        return null;
+      }
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    function normalizeText2(value) {
+      if (value === void 0 || value === null) {
+        return null;
+      }
+      const text = String(value).trim();
+      return text || null;
+    }
+    function normalizeNumber(value) {
+      if (value === void 0 || value === null || value === "") {
+        return null;
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    function loadLastPayoutState(filePath) {
+      const state = loadWalletSyncState(filePath);
+      const payoutAt = state.last_seen_last_payout_at;
+      if (!payoutAt) {
+        return null;
+      }
+      let amountCents = state.last_seen_last_payout_amount_cents;
+      if (!Number.isFinite(amountCents) || amountCents <= 0) {
+        const payoutDate = new Date(payoutAt);
+        const candidates = Object.values(state.withdrawal_events || {}).filter((event) => {
+          if (normalizeText2(event?.source_type) !== "withdrawal") {
+            return false;
+          }
+          const eventPayoutAt = normalizeIsoDate(event?.payout_at);
+          if (eventPayoutAt) {
+            return eventPayoutAt === payoutAt;
+          }
+          const completedAt = normalizeIsoDate(event?.completed_at);
+          const sourceAmountCents = Number(event?.source_amount_usd_cents);
+          if (!completedAt || !Number.isFinite(sourceAmountCents) || sourceAmountCents <= 0) {
+            return false;
+          }
+          const distance = Math.abs(new Date(completedAt).getTime() - payoutDate.getTime());
+          return distance <= 5 * 60 * 1e3;
+        });
+        if (candidates.length !== 1) {
+          return null;
+        }
+        amountCents = Number(candidates[0].source_amount_usd_cents);
+      }
+      if (!Number.isFinite(amountCents) || amountCents <= 0) {
+        return null;
+      }
+      const normalizedAmountCents = Math.round(amountCents);
+      return {
+        last_payout_at: payoutAt,
+        last_payout_amount_cents: normalizedAmountCents,
+        last_payout_amount: normalizedAmountCents / 100,
+        last_payout_amount_formatted: `$${new Intl.NumberFormat("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(normalizedAmountCents / 100)}`
+      };
+    }
+    module2.exports = {
+      DEFAULT_WALLET_SYNC_STATE,
+      loadWalletSyncState,
+      loadLastPayoutState,
+      saveWalletSyncState,
+      normalizeWalletSyncState
+    };
   }
 });
 
@@ -4873,6 +5124,7 @@ var init_withdraw_lock_state = __esm({
 // src/state/sync_policy.ts
 var sync_policy_exports = {};
 __export(sync_policy_exports, {
+  clearExpiredPayoutDetails: () => clearExpiredPayoutDetails,
   mergePaymentsWithFundsHistory: () => mergePaymentsWithFundsHistory,
   pickFundsHistoryFields: () => pickFundsHistoryFields,
   retainNextWithdrawalAt: () => retainNextWithdrawalAt,
@@ -4900,10 +5152,10 @@ function shouldIncludeFundsHistory({
   if (Number.isFinite(nextExpeditedFundsHistoryAt) && now >= nextExpeditedFundsHistoryAt) {
     return true;
   }
-  if (fastPollingEnabled) {
-    return false;
+  if (Number.isFinite(nextFundsHistoryAt) && now >= nextFundsHistoryAt) {
+    return true;
   }
-  return Number.isFinite(nextFundsHistoryAt) ? now >= nextFundsHistoryAt : true;
+  return Number.isFinite(nextFundsHistoryAt) ? false : !fastPollingEnabled;
 }
 function pickFundsHistoryFields(payments) {
   return {
@@ -4937,6 +5189,40 @@ function mergePaymentsWithFundsHistory(payments, fundsHistorySnapshot) {
   }
   return merged;
 }
+function clearExpiredPayoutDetails(payments, now = /* @__PURE__ */ new Date()) {
+  const current = { ...payments || {} };
+  const currentTime = parseDate(now) || /* @__PURE__ */ new Date();
+  const nextPayoutAt = parseDate(current.next_payout_at);
+  const nextPayoutEntries = Array.isArray(current.next_payout_entries) ? current.next_payout_entries : [];
+  const nextPayoutEntriesPublic = Array.isArray(current.next_payout_entries_public) ? current.next_payout_entries_public : [];
+  const pendingPayoutEntries = Array.isArray(current.pending_payout_entries) ? current.pending_payout_entries : [];
+  const pendingPayoutEntriesPublic = Array.isArray(current.pending_payout_entries_public) ? current.pending_payout_entries_public : [];
+  const hasNextPayoutAtValue = current.next_payout_at !== void 0 && current.next_payout_at !== null && current.next_payout_at !== "";
+  const hasInvalidEntry = [...nextPayoutEntries, ...pendingPayoutEntries].some((entry) => !parseDate(entry?.estimated_payout_at));
+  const hasOrphanedPublicEntries = nextPayoutEntriesPublic.length > 0 && nextPayoutEntries.length === 0 || pendingPayoutEntriesPublic.length > 0 && pendingPayoutEntries.length === 0;
+  const hasExpiredEntry = [...nextPayoutEntries, ...pendingPayoutEntries].some((entry) => {
+    const payoutAt = parseDate(entry?.estimated_payout_at);
+    return Boolean(payoutAt && payoutAt <= currentTime);
+  });
+  if (!hasExpiredEntry && !hasInvalidEntry && !hasOrphanedPublicEntries && (nextPayoutAt && nextPayoutAt > currentTime || !hasNextPayoutAtValue && nextPayoutEntries.length === 0 && pendingPayoutEntries.length === 0)) {
+    return current;
+  }
+  return {
+    ...current,
+    next_payout_days: 0,
+    next_payout_at: null,
+    next_payout_at_human: null,
+    next_payout_entries_count: 0,
+    next_payout_entries: [],
+    next_payout_entries_public: [],
+    pending_payout_entries: [],
+    pending_payout_entries_public: [],
+    next_payout_amount: null,
+    next_payout_source: null,
+    next_payout_confidence: null,
+    funds_history_complete: false
+  };
+}
 function retainNextWithdrawalAt(currentPayments, previousPayments, now = /* @__PURE__ */ new Date()) {
   const current = { ...currentPayments || {} };
   const previousNextWithdrawalAt = parseDate(previousPayments?.next_withdrawal_at);
@@ -4961,16 +5247,27 @@ function retainLastPayoutAmount(currentPayments, previousPayments) {
   if (currentPayments.last_payout_amount_cents !== null && currentPayments.last_payout_amount_cents !== void 0 && currentPayments.last_payout_amount !== null && currentPayments.last_payout_amount !== void 0) {
     return;
   }
-  const previousAvailableAmountCents = normalizeCents(previousPayments?.available_amount_cents, previousPayments?.available_amount);
-  const currentAvailableAmountCents = normalizeCents(currentPayments.available_amount_cents, currentPayments.available_amount);
+  const currentLastPayoutAt = parseDate(currentPayments.last_payout_at);
+  const previousLastPayoutAt = parseDate(previousPayments?.last_payout_at);
+  if (currentLastPayoutAt && previousLastPayoutAt && currentLastPayoutAt.getTime() === previousLastPayoutAt.getTime()) {
+    const previousLastPayoutAmountCents = normalizeCents2(previousPayments?.last_payout_amount_cents, previousPayments?.last_payout_amount);
+    if (previousLastPayoutAmountCents !== null) {
+      currentPayments.last_payout_amount_cents = previousLastPayoutAmountCents;
+      currentPayments.last_payout_amount = previousLastPayoutAmountCents / 100;
+      currentPayments.last_payout_amount_formatted = previousPayments?.last_payout_amount_formatted || formatCents2(previousLastPayoutAmountCents);
+      return;
+    }
+  }
+  const previousAvailableAmountCents = normalizeCents2(previousPayments?.available_amount_cents, previousPayments?.available_amount);
+  const currentAvailableAmountCents = normalizeCents2(currentPayments.available_amount_cents, currentPayments.available_amount);
   if (previousAvailableAmountCents === null || previousAvailableAmountCents <= 0 || currentAvailableAmountCents !== null && currentAvailableAmountCents > 0) {
     return;
   }
   currentPayments.last_payout_amount_cents = previousAvailableAmountCents;
   currentPayments.last_payout_amount = previousAvailableAmountCents / 100;
-  currentPayments.last_payout_amount_formatted = formatCents(previousAvailableAmountCents);
+  currentPayments.last_payout_amount_formatted = formatCents2(previousAvailableAmountCents);
 }
-function normalizeCents(centsValue, amountValue) {
+function normalizeCents2(centsValue, amountValue) {
   if (centsValue !== void 0 && centsValue !== null && centsValue !== "") {
     const cents = Number(centsValue);
     if (Number.isFinite(cents)) {
@@ -4985,7 +5282,7 @@ function normalizeCents(centsValue, amountValue) {
   }
   return null;
 }
-function formatCents(value) {
+function formatCents2(value) {
   return `$${new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -5647,7 +5944,7 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
     });
     logger.debug(`Payments scrape completed in ${Date.now() - paymentsStartedAt}ms`);
     const mergedPayments = includeFundsHistory ? payments : mergePaymentsWithFundsHistory2(payments, lastFundsHistorySnapshot);
-    const paymentsForPublish = retainNextWithdrawalAt3(mergedPayments, lastSuccessfulPayments, /* @__PURE__ */ new Date());
+    const paymentsForPublish = retainNextWithdrawalAt3(clearExpiredPayoutDetails2(mergedPayments, /* @__PURE__ */ new Date()), lastSuccessfulPayments, /* @__PURE__ */ new Date());
     logger.info(`Payments snapshot complete: available=${paymentsForPublish.available_amount_formatted}, canWithdraw=${paymentsForPublish.can_withdraw}`);
     logger.debug(`Payments page URL: ${paymentsForPublish.pageUrl}`);
     if (!includeFundsHistory) {
@@ -5663,7 +5960,7 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
       payments: paymentsForPublish,
       currencyUnit: displayCurrency,
       autoAcceptState: autoAcceptResult,
-      fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields2(mergedPayments) : null,
+      fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields2(paymentsForPublish) : null,
       includeFundsHistory,
       taskStatus: result.taskStatus,
       newTaskEvents
@@ -5719,7 +6016,7 @@ function describeProjectList(projects, limit = 5) {
   }).join(" | ");
   return `${preview}${items.length < total ? ` (+${total - items.length} more)` : ""}`;
 }
-var convertPaymentsForCurrency2, convertProjectsForCurrency, getDisplayCurrency, detectNewTaskProjects2, filterExcludedProjects2, summarizeProjects2, mergePaymentsWithFundsHistory2, pickFundsHistoryFields2, retainNextWithdrawalAt3, maybeAutoAcceptNewTasks2, FUNDS_HISTORY_OBSERVATIONS_PATH;
+var convertPaymentsForCurrency2, convertProjectsForCurrency, getDisplayCurrency, detectNewTaskProjects2, filterExcludedProjects2, summarizeProjects2, clearExpiredPayoutDetails2, mergePaymentsWithFundsHistory2, pickFundsHistoryFields2, retainNextWithdrawalAt3, maybeAutoAcceptNewTasks2, FUNDS_HISTORY_OBSERVATIONS_PATH;
 var init_sync = __esm({
   "src/app/sync.ts"() {
     "use strict";
@@ -5727,177 +6024,9 @@ var init_sync = __esm({
     ({ detectNewTaskProjects: detectNewTaskProjects2 } = (init_project_delta(), __toCommonJS(project_delta_exports)));
     ({ filterExcludedProjects: filterExcludedProjects2 } = (init_project_filters(), __toCommonJS(project_filters_exports)));
     ({ summarizeProjects: summarizeProjects2 } = (init_projects(), __toCommonJS(projects_exports)));
-    ({ mergePaymentsWithFundsHistory: mergePaymentsWithFundsHistory2, pickFundsHistoryFields: pickFundsHistoryFields2, retainNextWithdrawalAt: retainNextWithdrawalAt3 } = (init_sync_policy(), __toCommonJS(sync_policy_exports)));
+    ({ clearExpiredPayoutDetails: clearExpiredPayoutDetails2, mergePaymentsWithFundsHistory: mergePaymentsWithFundsHistory2, pickFundsHistoryFields: pickFundsHistoryFields2, retainNextWithdrawalAt: retainNextWithdrawalAt3 } = (init_sync_policy(), __toCommonJS(sync_policy_exports)));
     ({ maybeAutoAcceptNewTasks: maybeAutoAcceptNewTasks2 } = (init_commands(), __toCommonJS(commands_exports)));
     FUNDS_HISTORY_OBSERVATIONS_PATH = "/data/funds-history-observations.json";
-  }
-});
-
-// src/state/wallet_sync_state.ts
-var require_wallet_sync_state = __commonJS({
-  "src/state/wallet_sync_state.ts"(exports2, module2) {
-    "use strict";
-    var fs7 = require("node:fs");
-    var path6 = require("node:path");
-    var DEFAULT_WALLET_SYNC_STATE = {
-      version: 4,
-      created_at: null,
-      updated_at: null,
-      first_sync_completed_at: null,
-      wallet_api_retry_after_at: null,
-      wallet_api_failure_count: 0,
-      wallet_api_last_error: null,
-      last_seen_last_payout_at: null,
-      last_seen_available_amount_cents: null,
-      last_seen_available_amount: null,
-      last_applied_settlement_rate: null,
-      pending_revaluation: null,
-      imported_funds_entries: {},
-      withdrawal_events: {}
-    };
-    function loadWalletSyncState(filePath) {
-      if (!filePath || !fs7.existsSync(filePath)) {
-        return cloneWalletSyncState(DEFAULT_WALLET_SYNC_STATE);
-      }
-      try {
-        return normalizeWalletSyncState(JSON.parse(fs7.readFileSync(filePath, "utf8")));
-      } catch {
-        return cloneWalletSyncState(DEFAULT_WALLET_SYNC_STATE);
-      }
-    }
-    function saveWalletSyncState(filePath, state) {
-      if (!filePath) {
-        return;
-      }
-      const normalized = normalizeWalletSyncState(state);
-      fs7.mkdirSync(path6.dirname(filePath), { recursive: true });
-      const tempPath = `${filePath}.tmp`;
-      fs7.writeFileSync(tempPath, JSON.stringify(normalized, null, 2));
-      fs7.renameSync(tempPath, filePath);
-    }
-    function normalizeWalletSyncState(value) {
-      const payload = value && typeof value === "object" ? value : {};
-      const sourceVersion = normalizeNumber(payload.version) || 2;
-      const version2 = Math.max(4, sourceVersion);
-      return {
-        version: version2,
-        created_at: normalizeIsoDate(payload.created_at) || null,
-        updated_at: normalizeIsoDate(payload.updated_at) || null,
-        first_sync_completed_at: normalizeIsoDate(payload.first_sync_completed_at) || null,
-        wallet_api_retry_after_at: normalizeIsoDate(payload.wallet_api_retry_after_at) || null,
-        wallet_api_failure_count: normalizeNumber(payload.wallet_api_failure_count) || 0,
-        wallet_api_last_error: normalizeText2(payload.wallet_api_last_error),
-        last_seen_last_payout_at: normalizeIsoDate(payload.last_seen_last_payout_at) || null,
-        last_seen_available_amount_cents: normalizeNumber(payload.last_seen_available_amount_cents),
-        last_seen_available_amount: normalizeNumber(payload.last_seen_available_amount),
-        last_applied_settlement_rate: normalizeNumber(payload.last_applied_settlement_rate),
-        pending_revaluation: normalizePendingRevaluation(payload.pending_revaluation),
-        imported_funds_entries: normalizeEntryMap(payload.imported_funds_entries, sourceVersion),
-        withdrawal_events: normalizeEntryMap(payload.withdrawal_events)
-      };
-    }
-    function normalizeEntryMap(value, sourceVersion = 4) {
-      const entries = value && typeof value === "object" ? value : {};
-      const normalized = {};
-      for (const [key, entry] of Object.entries(entries)) {
-        const normalizedEntry = normalizeLedgerEntry(key, entry, sourceVersion);
-        if (normalizedEntry) {
-          normalized[key] = normalizedEntry;
-        }
-      }
-      return normalized;
-    }
-    function normalizeLedgerEntry(key, value, sourceVersion = 4) {
-      if (!value || typeof value !== "object") {
-        return null;
-      }
-      const feeRecordId = normalizeText2(value.fee_record_id) || normalizeText2(value.record_id);
-      const transferRecordId = normalizeText2(value.transfer_record_id) || normalizeText2(value.mirror_record_id);
-      const sourceType = normalizeText2(value.source_type);
-      let status = normalizeText2(value.status);
-      let sourceRate = normalizeNumber(value.source_rate);
-      if (sourceType === "income" && sourceVersion < 4 && !status) {
-        status = "unclassified";
-      }
-      if (sourceType === "income" && sourceVersion < 4 && status !== "historical_locked" && status !== "transferred") {
-        sourceRate = null;
-      }
-      return {
-        key: String(value.key || key || "").trim(),
-        note_marker: normalizeText2(value.note_marker),
-        source_marker: normalizeText2(value.source_marker),
-        source_observation_id: normalizeText2(value.source_observation_id),
-        source_project: normalizeText2(value.source_project),
-        fee_record_id: feeRecordId,
-        transfer_record_id: transferRecordId,
-        record_id: feeRecordId,
-        mirror_record_id: transferRecordId,
-        source_fingerprint: normalizeText2(value.source_fingerprint),
-        source_type: sourceType,
-        source_amount_usd_cents: normalizeNumber(value.source_amount_usd_cents),
-        source_amount_php_cents: normalizeNumber(value.source_amount_php_cents),
-        source_fee_usd_cents: normalizeNumber(value.source_fee_usd_cents),
-        source_fee_php_cents: normalizeNumber(value.source_fee_php_cents),
-        source_net_usd_cents: normalizeNumber(value.source_net_usd_cents),
-        source_net_php_cents: normalizeNumber(value.source_net_php_cents),
-        source_rate: sourceRate,
-        status: status || (sourceType === "income" ? "unclassified" : "historical_locked"),
-        status_updated_at: normalizeIsoDate(value.status_updated_at) || null,
-        withdrawal_marker: normalizeText2(value.withdrawal_marker),
-        transferred_at: normalizeIsoDate(value.transferred_at) || null,
-        created_at: normalizeIsoDate(value.created_at) || null,
-        completed_at: normalizeIsoDate(value.completed_at) || null,
-        last_attempt_at: normalizeIsoDate(value.last_attempt_at) || null,
-        attempt_count: normalizeNumber(value.attempt_count) || 0,
-        last_error: normalizeText2(value.last_error)
-      };
-    }
-    function normalizePendingRevaluation(value) {
-      if (!value || typeof value !== "object") {
-        return null;
-      }
-      return {
-        queued_at: normalizeIsoDate(value.queued_at) || null,
-        reason: normalizeText2(value.reason),
-        reference_rate: normalizeNumber(value.reference_rate),
-        settlement_rate: normalizeNumber(value.settlement_rate),
-        source: normalizeText2(value.source)
-      };
-    }
-    function cloneWalletSyncState(value) {
-      return normalizeWalletSyncState(JSON.parse(JSON.stringify(value)));
-    }
-    function normalizeIsoDate(value) {
-      const date = normalizeDate2(value);
-      return date ? date.toISOString() : null;
-    }
-    function normalizeDate2(value) {
-      if (!value) {
-        return null;
-      }
-      const date = value instanceof Date ? value : new Date(value);
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-    function normalizeText2(value) {
-      if (value === void 0 || value === null) {
-        return null;
-      }
-      const text = String(value).trim();
-      return text || null;
-    }
-    function normalizeNumber(value) {
-      if (value === void 0 || value === null || value === "") {
-        return null;
-      }
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : null;
-    }
-    module2.exports = {
-      DEFAULT_WALLET_SYNC_STATE,
-      loadWalletSyncState,
-      saveWalletSyncState,
-      normalizeWalletSyncState
-    };
   }
 });
 
@@ -6179,7 +6308,7 @@ var require_wallet_sync = __commonJS({
             });
             changed = changed || revalued.changed;
           }
-          state.last_seen_available_amount_cents = normalizeCents2(payments.available_amount_cents, payments.available_amount);
+          state.last_seen_available_amount_cents = normalizeCents3(payments.available_amount_cents, payments.available_amount);
           state.last_seen_available_amount = normalizeMoney(payments.available_amount);
           state.updated_at = now.toISOString();
           clearWalletApiBackoff(state);
@@ -6322,7 +6451,7 @@ var require_wallet_sync = __commonJS({
               categoryId: referenceData.incomeCategory.id
             });
             if (existingRecord) {
-              const sourceAmountUsdCents = normalizeCents2(entry.amount_cents, entry.amount);
+              const sourceAmountUsdCents = normalizeCents3(entry.amount_cents, entry.amount);
               const nextProject = normalizeText2(entry.project) || existing.source_project || null;
               const nextStatusUpdatedAt = now.toISOString();
               if (existing.status !== "pending" || !normalizeText2(existing.status_updated_at) || Number.isFinite(sourceAmountUsdCents) && existing.source_amount_usd_cents !== sourceAmountUsdCents || existing.source_project !== nextProject) {
@@ -6353,7 +6482,7 @@ var require_wallet_sync = __commonJS({
               record_id: existingRecords[0].id || null,
               source_type: "income",
               source_fingerprint: sourceFingerprint,
-              source_amount_usd_cents: normalizeCents2(entry.amount_cents, entry.amount),
+              source_amount_usd_cents: normalizeCents3(entry.amount_cents, entry.amount),
               source_amount_php_cents: null,
               source_fee_usd_cents: null,
               source_fee_php_cents: null,
@@ -6367,7 +6496,7 @@ var require_wallet_sync = __commonJS({
             changed = true;
             continue;
           }
-          const usdCents = normalizeCents2(entry.amount_cents, entry.amount);
+          const usdCents = normalizeCents3(entry.amount_cents, entry.amount);
           if (usdCents <= 0) {
             continue;
           }
@@ -6401,7 +6530,7 @@ var require_wallet_sync = __commonJS({
         const reconciliation = this._reconcileIncomeStatuses({
           state,
           currentPendingMarkers,
-          availableAmountCents: normalizeCents2(
+          availableAmountCents: normalizeCents3(
             fundsHistorySnapshot?.available_amount_cents ?? payments?.available_amount_cents,
             fundsHistorySnapshot?.available_amount ?? payments?.available_amount
           ),
@@ -6477,7 +6606,7 @@ var require_wallet_sync = __commonJS({
           changed = markUnmatchedIncomeEntriesUnclassified(missingEntries, now) || changed;
           return { changed };
         }
-        const availableCents = normalizeCents2(availableAmountCents, null);
+        const availableCents = normalizeCents3(availableAmountCents, null);
         if (!Number.isFinite(availableCents)) {
           changed = markUnmatchedIncomeEntriesUnclassified(missingEntries, now) || changed;
           return { changed };
@@ -6593,7 +6722,7 @@ var require_wallet_sync = __commonJS({
             markIncomeHistoricalLocked(entry, now);
             continue;
           }
-          const usdCents = normalizeCents2(entry.source_amount_usd_cents, null);
+          const usdCents = normalizeCents3(entry.source_amount_usd_cents, null);
           const phpCents = roundToCents(usdCents * targetRate);
           const phpAmount = phpCents / 100;
           const currentPhpCents = Number.isFinite(Number(record?.amount?.value)) ? Math.round(Number(record.amount.value) * 100) : null;
@@ -6907,11 +7036,13 @@ var require_wallet_sync = __commonJS({
             source_net_usd_cents: netUsdCents,
             source_net_php_cents: netPhpCents,
             source_rate: fx.settlementRate,
+            payout_at: payoutAt,
             created_at: withdrawalState.created_at || now.toISOString(),
             completed_at: now.toISOString()
           };
           this._markTransferredIncomeEntries(state, withdrawalMarker, grossUsdCents, now);
           state.last_seen_last_payout_at = payoutAt;
+          state.last_seen_last_payout_amount_cents = grossUsdCents;
           state.first_sync_completed_at = state.first_sync_completed_at || now.toISOString();
           saveWalletSyncState(this.statePath, state);
           return { changed: true };
@@ -6927,6 +7058,7 @@ var require_wallet_sync = __commonJS({
         withdrawalState.source_net_usd_cents = netUsdCents;
         withdrawalState.source_net_php_cents = netPhpCents;
         withdrawalState.source_rate = fx.settlementRate;
+        withdrawalState.payout_at = payoutAt;
         withdrawalState.created_at = withdrawalState.created_at || now.toISOString();
         withdrawalState.last_attempt_at = now.toISOString();
         withdrawalState.attempt_count = (withdrawalState.attempt_count || 0) + 1;
@@ -7210,6 +7342,7 @@ var require_wallet_sync = __commonJS({
         source_net_usd_cents: null,
         source_net_php_cents: null,
         source_rate: null,
+        payout_at: null,
         created_at: null,
         completed_at: null,
         last_attempt_at: null,
@@ -7238,7 +7371,7 @@ var require_wallet_sync = __commonJS({
       state.wallet_api_last_error = null;
     }
     function isFutureIsoDate(value, now = /* @__PURE__ */ new Date()) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       return Boolean(date && date > now);
     }
     function hashText(value) {
@@ -7256,17 +7389,17 @@ var require_wallet_sync = __commonJS({
       return String(value).trim();
     }
     function normalizeIsoDate(value) {
-      const date = normalizeDate2(value);
+      const date = normalizeDate3(value);
       return date ? date.toISOString() : null;
     }
-    function normalizeDate2(value) {
+    function normalizeDate3(value) {
       if (!value) {
         return null;
       }
       const date = value instanceof Date ? value : new Date(value);
       return Number.isNaN(date.getTime()) ? null : date;
     }
-    function normalizeCents2(centsValue, amountValue) {
+    function normalizeCents3(centsValue, amountValue) {
       if (centsValue !== void 0 && centsValue !== null && centsValue !== "") {
         const cents = Number(centsValue);
         if (Number.isFinite(cents)) {
@@ -7289,7 +7422,7 @@ var require_wallet_sync = __commonJS({
       return Number.isFinite(amount) ? amount : null;
     }
     function positiveCents(centsValue, amountValue) {
-      const cents = normalizeCents2(centsValue, amountValue);
+      const cents = normalizeCents3(centsValue, amountValue);
       return Number.isFinite(cents) && cents > 0 ? cents : 0;
     }
     function normalizeNumber(value, fallback) {
@@ -7419,6 +7552,7 @@ var require_dataannotation_app = __commonJS({
     } = require_currency_conversion();
     var { loadFastPollingState: loadFastPollingState2, saveFastPollingState: saveFastPollingState2 } = (init_fast_polling_state(), __toCommonJS(fast_polling_state_exports));
     var { loadNextWithdrawalState: loadNextWithdrawalState2, saveNextWithdrawalState: saveNextWithdrawalState2 } = (init_next_withdrawal_state(), __toCommonJS(next_withdrawal_state_exports));
+    var { loadLastPayoutState } = require_wallet_sync_state();
     var { clearAutoAcceptProjectCache, loadAutoAcceptProjects, pruneExpiredAutoAcceptProjects, saveAutoAcceptProjects, setAutoAcceptProjectEnabled } = require_auto_accept_projects();
     var { loadWithdrawLockState: loadWithdrawLockState2, saveWithdrawLockState: saveWithdrawLockState2 } = (init_withdraw_lock_state(), __toCommonJS(withdraw_lock_state_exports));
     var { shouldIncludeFundsHistory: shouldIncludeFundsHistory2 } = (init_sync_policy(), __toCommonJS(sync_policy_exports));
@@ -7442,6 +7576,7 @@ var require_dataannotation_app = __commonJS({
     var AUTO_ACCEPT_PROJECTS_STATE_PATH = "/data/auto-accept-projects.json";
     var CURRENCY_STATE_PATH = "/data/currency-state.json";
     var NEXT_WITHDRAWAL_STATE_PATH = "/data/next-withdrawal-state.json";
+    var WALLET_SYNC_STATE_PATH = "/data/wallet-sync-state.json";
     var DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES = 2;
     var DataAnnotationApp2 = class {
       config;
@@ -7507,7 +7642,9 @@ var require_dataannotation_app = __commonJS({
         this.state.autoAcceptEnabled = loadAutoAcceptState2(AUTO_ACCEPT_STATE_PATH2);
         this.state.autoAcceptProjectCache = loadAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH);
         this.state.currencyState = loadCurrencyState(CURRENCY_STATE_PATH);
-        this.state.persistedNextWithdrawalState = loadNextWithdrawalState2(NEXT_WITHDRAWAL_STATE_PATH);
+        const persistedNextWithdrawalState = loadNextWithdrawalState2(NEXT_WITHDRAWAL_STATE_PATH);
+        const persistedLastPayoutState = loadLastPayoutState(WALLET_SYNC_STATE_PATH);
+        this.state.persistedNextWithdrawalState = persistedNextWithdrawalState || persistedLastPayoutState ? { ...persistedNextWithdrawalState || {}, ...persistedLastPayoutState || {} } : null;
       }
       async _connectAndPublishStartupState() {
         const { config, state, bridge } = this;
@@ -7800,7 +7937,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.9",
+      version: "0.7.11",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

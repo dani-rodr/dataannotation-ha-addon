@@ -2,7 +2,8 @@
 function buildWithdrawalAmountSnapshot(payments: any, nextWithdrawalAt: string | null, now = new Date()) {
   const availableAmountCents = toCents(payments?.available_amount_cents, payments?.available_amount);
   const cutoff = parseDate(nextWithdrawalAt);
-  if (!cutoff || cutoff <= normalizeDate(now)) {
+  const currentTime = normalizeDate(now);
+  if (!cutoff || cutoff <= currentTime) {
     return formatWithdrawalAmount(availableAmountCents);
   }
 
@@ -18,7 +19,7 @@ function buildWithdrawalAmountSnapshot(payments: any, nextWithdrawalAt: string |
     }
 
     const payoutAt = parseDate(entry.estimated_payout_at);
-    if (!payoutAt || payoutAt > cutoff) {
+    if (!payoutAt || payoutAt <= currentTime || payoutAt > cutoff) {
       return sum;
     }
 

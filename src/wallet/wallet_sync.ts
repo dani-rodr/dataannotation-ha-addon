@@ -947,11 +947,13 @@ class WalletSync {
         source_net_usd_cents: netUsdCents,
         source_net_php_cents: netPhpCents,
         source_rate: fx.settlementRate,
+        payout_at: payoutAt,
         created_at: withdrawalState.created_at || now.toISOString(),
         completed_at: now.toISOString(),
       };
       this._markTransferredIncomeEntries(state, withdrawalMarker, grossUsdCents, now);
       state.last_seen_last_payout_at = payoutAt;
+      state.last_seen_last_payout_amount_cents = grossUsdCents;
       state.first_sync_completed_at = state.first_sync_completed_at || now.toISOString();
       saveWalletSyncState(this.statePath, state);
       return { changed: true };
@@ -968,6 +970,7 @@ class WalletSync {
     withdrawalState.source_net_usd_cents = netUsdCents;
     withdrawalState.source_net_php_cents = netPhpCents;
     withdrawalState.source_rate = fx.settlementRate;
+    withdrawalState.payout_at = payoutAt;
     withdrawalState.created_at = withdrawalState.created_at || now.toISOString();
     withdrawalState.last_attempt_at = now.toISOString();
     withdrawalState.attempt_count = (withdrawalState.attempt_count || 0) + 1;
@@ -1307,6 +1310,7 @@ function normalizeWithdrawalState(withdrawalMarker) {
     source_net_usd_cents: null,
     source_net_php_cents: null,
     source_rate: null,
+    payout_at: null,
     created_at: null,
     completed_at: null,
     last_attempt_at: null,

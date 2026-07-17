@@ -11,6 +11,7 @@ const DEFAULT_WALLET_SYNC_STATE = {
   wallet_api_failure_count: 0,
   wallet_api_last_error: null,
   last_seen_last_payout_at: null,
+  last_seen_last_payout_amount_cents: null,
   last_seen_available_amount_cents: null,
   last_seen_available_amount: null,
   last_applied_settlement_rate: null,
@@ -56,6 +57,7 @@ function normalizeWalletSyncState(value) {
     wallet_api_failure_count: normalizeNumber(payload.wallet_api_failure_count) || 0,
     wallet_api_last_error: normalizeText(payload.wallet_api_last_error),
     last_seen_last_payout_at: normalizeIsoDate(payload.last_seen_last_payout_at) || null,
+    last_seen_last_payout_amount_cents: normalizeNumber(payload.last_seen_last_payout_amount_cents),
     last_seen_available_amount_cents: normalizeNumber(payload.last_seen_available_amount_cents),
     last_seen_available_amount: normalizeNumber(payload.last_seen_available_amount),
     last_applied_settlement_rate: normalizeNumber(payload.last_applied_settlement_rate),
@@ -116,6 +118,7 @@ function normalizeLedgerEntry(key, value, sourceVersion = 4) {
     source_net_usd_cents: normalizeNumber(value.source_net_usd_cents),
     source_net_php_cents: normalizeNumber(value.source_net_php_cents),
     source_rate: sourceRate,
+    payout_at: normalizeIsoDate(value.payout_at) || null,
     status: status || (sourceType === 'income' ? 'unclassified' : 'historical_locked'),
     status_updated_at: normalizeIsoDate(value.status_updated_at) || null,
     withdrawal_marker: normalizeText(value.withdrawal_marker),
@@ -178,9 +181,63 @@ function normalizeNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function loadLastPayoutState(filePath) {
+  const state = loadWalletSyncState(filePath);
+  const payoutAt = state.last_seen_last_payout_at;
+  if (!payoutAt) {
+    return null;
+  }
+
+  let amountCents = state.last_seen_last_payout_amount_cents;
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    const payoutDate = new Date(payoutAt);
+    const candidates = Object.values(state.withdrawal_events || {}).filter((event) => {
+      if (normalizeText(event?.source_type) !== 'withdrawal') {
+        return false;
+      }
+
+      const eventPayoutAt = normalizeIsoDate(event?.payout_at);
+      if (eventPayoutAt) {
+        return eventPayoutAt === payoutAt;
+      }
+
+      const completedAt = normalizeIsoDate(event?.completed_at);
+      const sourceAmountCents = Number(event?.source_amount_usd_cents);
+      if (!completedAt || !Number.isFinite(sourceAmountCents) || sourceAmountCents <= 0) {
+        return false;
+      }
+
+      const distance = Math.abs(new Date(completedAt).getTime() - payoutDate.getTime());
+      return distance <= 5 * 60 * 1000;
+    });
+
+    if (candidates.length !== 1) {
+      return null;
+    }
+
+    amountCents = Number(candidates[0].source_amount_usd_cents);
+  }
+
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    return null;
+  }
+
+  const normalizedAmountCents = Math.round(amountCents);
+  return {
+    last_payout_at: payoutAt,
+    last_payout_amount_cents: normalizedAmountCents,
+    last_payout_amount: normalizedAmountCents / 100,
+    last_payout_amount_formatted: `$${new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(normalizedAmountCents / 100)}`,
+  };
+}
+
 module.exports = {
   DEFAULT_WALLET_SYNC_STATE,
   loadWalletSyncState,
+  loadLastPayoutState,
   saveWalletSyncState,
   normalizeWalletSyncState,
 };

@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  clearExpiredPayoutDetails,
   mergePaymentsWithFundsHistory,
   pickFundsHistoryFields,
   retainNextWithdrawalAt,
@@ -63,6 +64,32 @@ test('shouldIncludeFundsHistory only runs when the slow schedule is due', () => 
       nextExpeditedFundsHistoryAt: 15_000,
     }),
     true
+  );
+
+  assert.equal(
+    shouldIncludeFundsHistory({
+      includePayments: true,
+      manualSyncRequested: false,
+      initialSyncCompleted: true,
+      fastPollingEnabled: true,
+      now: 20_000,
+      nextFundsHistoryAt: 20_000,
+      nextExpeditedFundsHistoryAt: Number.POSITIVE_INFINITY,
+    }),
+    true
+  );
+
+  assert.equal(
+    shouldIncludeFundsHistory({
+      includePayments: true,
+      manualSyncRequested: false,
+      initialSyncCompleted: true,
+      fastPollingEnabled: true,
+      now: 10_000,
+      nextFundsHistoryAt: 20_000,
+      nextExpeditedFundsHistoryAt: Number.POSITIVE_INFINITY,
+    }),
+    false
   );
 });
 
@@ -145,6 +172,101 @@ test('mergePaymentsWithFundsHistory keeps current summary and prior history fiel
   assert.equal(merged.last_payout_amount_formatted, '$12.34');
 });
 
+test('clearExpiredPayoutDetails clears the complete stale payout schedule atomically', () => {
+  const payments = {
+    available_amount_cents: 2998218,
+    pending_approval_cents: 255227,
+    next_payout_days: 0,
+    next_payout_at: '2026-07-17T08:07:25.000Z',
+    next_payout_at_human: 'July 17, 2026, 4:07 PM',
+    next_payout_entries_count: 7,
+    next_payout_entries: Array.from({ length: 7 }, (_, index) => ({
+      amount: index === 0 ? '$481.25' : '$10.00',
+      estimated_payout_at: index === 0 ? '2026-07-17T08:07:25.000Z' : '2026-07-18T10:16:15.000Z',
+    })),
+    next_payout_entries_public: [{ amount: '$481.25' }],
+    pending_payout_entries: [{ amount: '$481.25' }],
+    pending_payout_entries_public: [{ amount: '$481.25' }],
+    next_payout_amount: '$481.25',
+    next_payout_source: 'observed_minutes',
+    next_payout_confidence: 'high',
+    funds_history_complete: true,
+  };
+
+  const sanitized = clearExpiredPayoutDetails(payments, new Date('2026-07-17T15:08:00.000Z'));
+
+  assert.equal(sanitized.available_amount_cents, 2998218);
+  assert.equal(sanitized.pending_approval_cents, 255227);
+  assert.equal(sanitized.next_payout_days, 0);
+  assert.equal(sanitized.next_payout_at, null);
+  assert.equal(sanitized.next_payout_at_human, null);
+  assert.equal(sanitized.next_payout_entries_count, 0);
+  assert.deepEqual(sanitized.next_payout_entries, []);
+  assert.deepEqual(sanitized.next_payout_entries_public, []);
+  assert.deepEqual(sanitized.pending_payout_entries, []);
+  assert.deepEqual(sanitized.pending_payout_entries_public, []);
+  assert.equal(sanitized.next_payout_amount, null);
+  assert.equal(sanitized.next_payout_source, null);
+  assert.equal(sanitized.next_payout_confidence, null);
+  assert.equal(sanitized.funds_history_complete, false);
+  assert.equal(payments.next_payout_entries.length, 7);
+});
+
+test('clearExpiredPayoutDetails clears an expired entry even when the summary timestamp is future', () => {
+  const sanitized = clearExpiredPayoutDetails({
+    next_payout_at: '2026-07-18T10:16:15.000Z',
+    next_payout_entries: [
+      { estimated_payout_at: '2026-07-17T08:07:25.000Z' },
+      { estimated_payout_at: '2026-07-18T10:16:15.000Z' },
+    ],
+    pending_payout_entries: [],
+    next_payout_entries_count: 2,
+    next_payout_amount: '$20.00',
+  }, new Date('2026-07-17T15:08:00.000Z'));
+
+  assert.equal(sanitized.next_payout_at, null);
+  assert.deepEqual(sanitized.next_payout_entries, []);
+  assert.equal(sanitized.next_payout_entries_count, 0);
+  assert.equal(sanitized.next_payout_amount, null);
+  assert.equal(sanitized.funds_history_complete, false);
+});
+
+test('clearExpiredPayoutDetails preserves a future schedule without mutating it', () => {
+  const payments = {
+    next_payout_at: '2026-07-18T10:16:15.000Z',
+    next_payout_entries: [{ estimated_payout_at: '2026-07-18T10:16:15.000Z' }],
+    pending_payout_entries: [{ estimated_payout_at: '2026-07-18T10:16:15.000Z' }],
+    next_payout_entries_count: 1,
+    next_payout_amount: '$20.00',
+    funds_history_complete: true,
+  };
+
+  assert.deepEqual(clearExpiredPayoutDetails(payments, new Date('2026-07-17T15:08:00.000Z')), payments);
+});
+
+test('clearExpiredPayoutDetails clears invalid or orphaned retained details', () => {
+  const invalid = clearExpiredPayoutDetails({
+    next_payout_at: 'not-a-date',
+    next_payout_entries: [{ estimated_payout_at: null }],
+    next_payout_entries_public: [{ amount: '$20.00' }],
+    pending_payout_entries: [],
+  }, new Date('2026-07-17T15:08:00.000Z'));
+  assert.equal(invalid.next_payout_at, null);
+  assert.deepEqual(invalid.next_payout_entries, []);
+  assert.deepEqual(invalid.next_payout_entries_public, []);
+  assert.equal(invalid.funds_history_complete, false);
+
+  const orphaned = clearExpiredPayoutDetails({
+    next_payout_at: '2026-07-18T10:16:15.000Z',
+    next_payout_entries: [],
+    next_payout_entries_public: [{ amount: '$20.00' }],
+    pending_payout_entries: [],
+  }, new Date('2026-07-17T15:08:00.000Z'));
+  assert.equal(orphaned.next_payout_at, null);
+  assert.deepEqual(orphaned.next_payout_entries_public, []);
+  assert.equal(orphaned.funds_history_complete, false);
+});
+
 test('retainNextWithdrawalAt keeps a future withdrawal timestamp while funds are available', () => {
   const retained = retainNextWithdrawalAt(
     {
@@ -173,7 +295,7 @@ test('retainNextWithdrawalAt keeps a future withdrawal timestamp while funds are
   assert.equal(retained.next_withdrawal_amount_formatted, '$125.00');
 });
 
-test('retainNextWithdrawalAt leaves a fresh button-based estimate alone when there is no prior future timestamp', () => {
+test('retainNextWithdrawalAt excludes payout entries that are already expired', () => {
   const retained = retainNextWithdrawalAt(
     {
       can_withdraw: true,
@@ -194,9 +316,9 @@ test('retainNextWithdrawalAt leaves a fresh button-based estimate alone when the
 
   assert.equal(retained.next_withdrawal_at, '2026-07-08T10:00:00.000Z');
   assert.equal(retained.next_withdrawal_text, 'Next withdrawal: July 8, 2026 at 10:00 AM GMT+0');
-  assert.equal(retained.next_withdrawal_amount_cents, 12500);
-  assert.equal(retained.next_withdrawal_amount, 125);
-  assert.equal(retained.next_withdrawal_amount_formatted, '$125.00');
+  assert.equal(retained.next_withdrawal_amount_cents, 10000);
+  assert.equal(retained.next_withdrawal_amount, 100);
+  assert.equal(retained.next_withdrawal_amount_formatted, '$100.00');
 });
 
 test('retainNextWithdrawalAt keeps a known future withdrawal timestamp after a non-direct refresh', () => {
@@ -291,4 +413,46 @@ test('retainNextWithdrawalAt falls back to the previous available amount when ce
 
   assert.equal(retained.last_payout_amount_cents, 1234);
   assert.equal(retained.last_payout_amount, 12.34);
+});
+
+test('retainNextWithdrawalAt restores a persisted last payout amount only for the same payout timestamp', () => {
+  const retained = retainNextWithdrawalAt(
+    {
+      last_payout_at: '2026-07-16T11:17:37.000Z',
+      last_payout_amount_cents: null,
+      last_payout_amount: null,
+      last_payout_amount_formatted: null,
+      available_amount_cents: 48625,
+      next_withdrawal_at: null,
+    },
+    {
+      last_payout_at: '2026-07-16T11:17:37.000Z',
+      last_payout_amount_cents: 50500,
+      last_payout_amount: 505,
+      last_payout_amount_formatted: '$505.00',
+    },
+    new Date('2026-07-17T00:00:00.000Z')
+  );
+
+  assert.equal(retained.last_payout_amount_cents, 50500);
+  assert.equal(retained.last_payout_amount, 505);
+  assert.equal(retained.last_payout_amount_formatted, '$505.00');
+
+  const differentPayout = retainNextWithdrawalAt(
+    {
+      last_payout_at: '2026-07-17T11:17:37.000Z',
+      last_payout_amount_cents: null,
+      last_payout_amount: null,
+      available_amount_cents: 48625,
+      next_withdrawal_at: null,
+    },
+    {
+      last_payout_at: '2026-07-16T11:17:37.000Z',
+      last_payout_amount_cents: 50500,
+      last_payout_amount: 505,
+    },
+    new Date('2026-07-17T12:00:00.000Z')
+  );
+
+  assert.equal(differentPayout.last_payout_amount_cents, null);
 });

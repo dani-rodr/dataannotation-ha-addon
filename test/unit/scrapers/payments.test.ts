@@ -183,6 +183,8 @@ test('extractPaymentsSnapshot estimates next withdrawal from last payout instead
   assert.equal(snapshot.next_withdrawal_amount, 0);
   assert.equal(snapshot.next_withdrawal_amount_formatted, '$0.00');
   assert.equal(snapshot.next_payout_entries_count, 1);
+  assert.equal(snapshot.next_payout_source, 'row_date_fallback');
+  assert.equal(snapshot.next_payout_confidence, 'low');
   assert.equal(snapshot.next_payout_entries[0].project, 'Example Project');
   assert.equal(snapshot.next_payout_entries[0].kind, 'hourly');
   assert.equal(snapshot.next_payout_entries[0].amount, '$0.00');

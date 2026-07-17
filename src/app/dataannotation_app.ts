@@ -14,6 +14,7 @@ const {
 } = require('../state/currency_conversion.ts');
 const { loadFastPollingState, saveFastPollingState } = require('../state/fast_polling_state.ts');
 const { loadNextWithdrawalState, saveNextWithdrawalState } = require('../state/next_withdrawal_state.ts');
+const { loadLastPayoutState } = require('../state/wallet_sync_state.ts');
 const { clearAutoAcceptProjectCache, loadAutoAcceptProjects, pruneExpiredAutoAcceptProjects, saveAutoAcceptProjects, setAutoAcceptProjectEnabled } = require('../state/auto_accept_projects.ts');
 const { loadWithdrawLockState, saveWithdrawLockState } = require('../state/withdraw_lock_state.ts');
 const { shouldIncludeFundsHistory } = require('../state/sync_policy.ts');
@@ -39,6 +40,7 @@ const AUTO_ACCEPT_STATE_PATH = '/data/auto-accept-state.json';
 const AUTO_ACCEPT_PROJECTS_STATE_PATH = '/data/auto-accept-projects.json';
 const CURRENCY_STATE_PATH = '/data/currency-state.json';
 const NEXT_WITHDRAWAL_STATE_PATH = '/data/next-withdrawal-state.json';
+const WALLET_SYNC_STATE_PATH = '/data/wallet-sync-state.json';
 const DEFAULT_EXPEDITED_FUNDS_HISTORY_DELAY_MINUTES = 2;
 
 class DataAnnotationApp {
@@ -108,7 +110,11 @@ class DataAnnotationApp {
     this.state.autoAcceptEnabled = loadAutoAcceptState(AUTO_ACCEPT_STATE_PATH);
     this.state.autoAcceptProjectCache = loadAutoAcceptProjects(AUTO_ACCEPT_PROJECTS_STATE_PATH);
     this.state.currencyState = loadCurrencyState(CURRENCY_STATE_PATH);
-    this.state.persistedNextWithdrawalState = loadNextWithdrawalState(NEXT_WITHDRAWAL_STATE_PATH);
+    const persistedNextWithdrawalState = loadNextWithdrawalState(NEXT_WITHDRAWAL_STATE_PATH);
+    const persistedLastPayoutState = loadLastPayoutState(WALLET_SYNC_STATE_PATH);
+    this.state.persistedNextWithdrawalState = persistedNextWithdrawalState || persistedLastPayoutState
+      ? { ...(persistedNextWithdrawalState || {}), ...(persistedLastPayoutState || {}) }
+      : null;
   }
 
   async _connectAndPublishStartupState() {

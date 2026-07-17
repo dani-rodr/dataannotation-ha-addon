@@ -34,11 +34,11 @@ export function shouldIncludeFundsHistory({
     return true;
   }
 
-  if (fastPollingEnabled) {
-    return false;
+  if (Number.isFinite(nextFundsHistoryAt) && now >= nextFundsHistoryAt) {
+    return true;
   }
 
-  return Number.isFinite(nextFundsHistoryAt) ? now >= nextFundsHistoryAt : true;
+  return Number.isFinite(nextFundsHistoryAt) ? false : !fastPollingEnabled;
 }
 
 export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefined): Pick<PaymentSnapshot, 'available_amount_cents' | 'available_amount' | 'next_payout_days' | 'next_payout_at' | 'next_payout_entries_count' | 'next_payout_at_human' | 'next_payout_entries' | 'next_payout_amount' | 'next_payout_source' | 'next_payout_confidence' | 'pending_payout_entries' | 'funds_history_complete' | 'last_payout_amount_cents' | 'last_payout_amount' | 'last_payout_amount_formatted'> {
@@ -78,6 +78,44 @@ export function mergePaymentsWithFundsHistory(payments: PaymentSnapshot | null |
   return merged;
 }
 
+export function clearExpiredPayoutDetails(payments: PaymentSnapshot | null | undefined, now: Date = new Date()): PaymentSnapshot {
+  const current: any = { ...(payments || {}) };
+  const currentTime = parseDate(now) || new Date();
+  const nextPayoutAt = parseDate(current.next_payout_at);
+  const nextPayoutEntries = Array.isArray(current.next_payout_entries) ? current.next_payout_entries : [];
+  const nextPayoutEntriesPublic = Array.isArray(current.next_payout_entries_public) ? current.next_payout_entries_public : [];
+  const pendingPayoutEntries = Array.isArray(current.pending_payout_entries) ? current.pending_payout_entries : [];
+  const pendingPayoutEntriesPublic = Array.isArray(current.pending_payout_entries_public) ? current.pending_payout_entries_public : [];
+  const hasNextPayoutAtValue = current.next_payout_at !== undefined && current.next_payout_at !== null && current.next_payout_at !== '';
+  const hasInvalidEntry = [...nextPayoutEntries, ...pendingPayoutEntries].some((entry: any) => !parseDate(entry?.estimated_payout_at));
+  const hasOrphanedPublicEntries = (nextPayoutEntriesPublic.length > 0 && nextPayoutEntries.length === 0)
+    || (pendingPayoutEntriesPublic.length > 0 && pendingPayoutEntries.length === 0);
+  const hasExpiredEntry = [...nextPayoutEntries, ...pendingPayoutEntries].some((entry: any) => {
+    const payoutAt = parseDate(entry?.estimated_payout_at);
+    return Boolean(payoutAt && payoutAt <= currentTime);
+  });
+
+  if (!hasExpiredEntry && !hasInvalidEntry && !hasOrphanedPublicEntries && ((nextPayoutAt && nextPayoutAt > currentTime) || (!hasNextPayoutAtValue && nextPayoutEntries.length === 0 && pendingPayoutEntries.length === 0))) {
+    return current;
+  }
+
+  return {
+    ...current,
+    next_payout_days: 0,
+    next_payout_at: null,
+    next_payout_at_human: null,
+    next_payout_entries_count: 0,
+    next_payout_entries: [],
+    next_payout_entries_public: [],
+    pending_payout_entries: [],
+    pending_payout_entries_public: [],
+    next_payout_amount: null,
+    next_payout_source: null,
+    next_payout_confidence: null,
+    funds_history_complete: false,
+  };
+}
+
 export function retainNextWithdrawalAt(currentPayments: PaymentSnapshot | null | undefined, previousPayments: PaymentSnapshot | null | undefined, now: Date = new Date()): PaymentSnapshot {
   const current = { ...(currentPayments || {}) };
   const previousNextWithdrawalAt = parseDate(previousPayments?.next_withdrawal_at);
@@ -107,6 +145,18 @@ function parseDate(value: unknown): Date | null {
 function retainLastPayoutAmount(currentPayments: PaymentSnapshot, previousPayments: PaymentSnapshot | null | undefined) {
   if (currentPayments.last_payout_amount_cents !== null && currentPayments.last_payout_amount_cents !== undefined && currentPayments.last_payout_amount !== null && currentPayments.last_payout_amount !== undefined) {
     return;
+  }
+
+  const currentLastPayoutAt = parseDate(currentPayments.last_payout_at);
+  const previousLastPayoutAt = parseDate(previousPayments?.last_payout_at);
+  if (currentLastPayoutAt && previousLastPayoutAt && currentLastPayoutAt.getTime() === previousLastPayoutAt.getTime()) {
+    const previousLastPayoutAmountCents = normalizeCents(previousPayments?.last_payout_amount_cents, previousPayments?.last_payout_amount);
+    if (previousLastPayoutAmountCents !== null) {
+      currentPayments.last_payout_amount_cents = previousLastPayoutAmountCents;
+      currentPayments.last_payout_amount = previousLastPayoutAmountCents / 100;
+      currentPayments.last_payout_amount_formatted = previousPayments?.last_payout_amount_formatted || formatCents(previousLastPayoutAmountCents);
+      return;
+    }
   }
 
   const previousAvailableAmountCents = normalizeCents(previousPayments?.available_amount_cents, previousPayments?.available_amount);

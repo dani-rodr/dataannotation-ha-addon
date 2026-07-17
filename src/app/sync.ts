@@ -2,7 +2,7 @@ const { convertPaymentsForCurrency, convertProjectsForCurrency, getDisplayCurren
 const { detectNewTaskProjects } = require('../projects/project_delta.ts');
 const { filterExcludedProjects } = require('../projects/project_filters.ts');
 const { summarizeProjects } = require('../scrapers/projects.ts');
-const { mergePaymentsWithFundsHistory, pickFundsHistoryFields, retainNextWithdrawalAt } = require('../state/sync_policy.ts');
+const { clearExpiredPayoutDetails, mergePaymentsWithFundsHistory, pickFundsHistoryFields, retainNextWithdrawalAt } = require('../state/sync_policy.ts');
 const { maybeAutoAcceptNewTasks } = require('./commands.ts');
 
 const FUNDS_HISTORY_OBSERVATIONS_PATH = '/data/funds-history-observations.json';
@@ -137,7 +137,7 @@ export async function doSync(
     const mergedPayments = includeFundsHistory
       ? payments
       : mergePaymentsWithFundsHistory(payments, lastFundsHistorySnapshot);
-    const paymentsForPublish = retainNextWithdrawalAt(mergedPayments, lastSuccessfulPayments, new Date());
+    const paymentsForPublish = retainNextWithdrawalAt(clearExpiredPayoutDetails(mergedPayments, new Date()), lastSuccessfulPayments, new Date());
     logger.info(`Payments snapshot complete: available=${paymentsForPublish.available_amount_formatted}, canWithdraw=${paymentsForPublish.can_withdraw}`);
     logger.debug(`Payments page URL: ${paymentsForPublish.pageUrl}`);
     if (!includeFundsHistory) {
@@ -154,7 +154,7 @@ export async function doSync(
       payments: paymentsForPublish,
       currencyUnit: displayCurrency,
       autoAcceptState: autoAcceptResult,
-      fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(mergedPayments) : null,
+      fundsHistorySnapshot: includeFundsHistory ? pickFundsHistoryFields(paymentsForPublish) : null,
       includeFundsHistory,
       taskStatus: result.taskStatus,
       newTaskEvents,

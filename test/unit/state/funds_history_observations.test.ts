@@ -41,6 +41,23 @@ test('funds history observations persist and reuse the original payout estimate'
   assert.equal(secondResult.entries[0].observation_id, firstResult.entries[0].observation_id);
 });
 
+test('funds history observations keep paid rows for the current payout summary without persisting them as pending', () => {
+  const paidEntry = {
+    project: 'Example Project',
+    kind: 'task',
+    status: 'paid',
+    amount: '$505.00',
+    amount_cents: 50500,
+    entry_date: '2026-07-16T00:00:00.000Z',
+    estimated_payout_at: '2026-07-16T11:17:37.000Z',
+  };
+
+  const result = applyFundsHistoryObservations([paidEntry], null, new Date('2026-07-17T00:00:00.000Z'));
+
+  assert.deepEqual(result.entries, [paidEntry]);
+  assert.deepEqual(result.observations.entries, {});
+});
+
 test('funds history observations keep a stable observation id when the project text changes', () => {
   const now = new Date('2026-07-15T19:45:00.000Z');
   const laterNow = new Date('2026-07-15T20:10:00.000Z');

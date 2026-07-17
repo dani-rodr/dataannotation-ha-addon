@@ -69,7 +69,6 @@ function applyFundsHistoryObservations(entries: any, observations: any = null, n
       if (existing?.observation_id) {
         delete state.entries[existing.observation_id];
         seenObservationIds.add(existing.observation_id);
-        continue;
       }
 
       if (fingerprint && byFingerprint.has(fingerprint)) {
@@ -77,6 +76,8 @@ function applyFundsHistoryObservations(entries: any, observations: any = null, n
         delete state.entries[observation.observation_id];
         seenObservationIds.add(observation.observation_id);
       }
+
+      mergedEntries.push(entry);
       continue;
     }
 

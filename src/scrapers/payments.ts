@@ -93,8 +93,8 @@ function extractPaymentsSnapshot({
     next_payout_entries: nextPayoutEntries,
     next_payout_entries_public: formatPublicPayoutEntries(nextPayoutEntries),
     next_payout_amount: nextPayoutEntry?.amount || null,
-    next_payout_source: nextPayoutEntry?.source || null,
-    next_payout_confidence: nextPayoutEntry?.confidence || null,
+    next_payout_source: nextPayoutEntry?.estimate_source || nextPayoutEntry?.source || null,
+    next_payout_confidence: nextPayoutEntry?.estimate_confidence || nextPayoutEntry?.confidence || null,
     scraped_at: normalizeIsoDate(scrapedAt) || null,
   };
 }
