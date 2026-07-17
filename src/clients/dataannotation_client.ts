@@ -3,8 +3,9 @@ const fs = require('fs');
 const { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require('../projects/project_claim.ts');
 const { buildProjectSelectionUrl, buildProjectTasksUrl, buildProjectUrl, extractProjects } = require('../scrapers/projects.ts');
 const { extractTaskStatus } = require('../scrapers/task_status.ts');
-const { chooseWithdrawalButton, scrapePayments } = require('../scrapers/payments.ts');
+const { chooseWithdrawalButton, extractPaymentsSnapshot, scrapePayments } = require('../scrapers/payments.ts');
 const { DataAnnotationBrowserSession, resolveExecutablePath } = require('./browser_session.ts');
+const { DataAnnotationHttpClient } = require('./dataannotation_http_client.ts');
 
 const NULL_LOGGER = {
   debug() {},
@@ -30,6 +31,11 @@ class DataAnnotationClient {
       executablePath: this.executablePath,
       logger: this.logger,
     });
+    this.httpClient = options.httpClient || new DataAnnotationHttpClient({
+      email: this.email,
+      password: this.password,
+      logger: this.logger,
+    });
     this.notificationPromptHandled = false;
   }
 
@@ -38,6 +44,33 @@ class DataAnnotationClient {
   }
 
   async collectProjects() {
+    try {
+      const result = await this._collectProjectsWithHttp();
+      this.logger.debug('Collected DataAnnotation projects through HTTP');
+      return result;
+    } catch (error) {
+      this.logger.warning(`HTTP project read failed; falling back to browser: ${error.message}`);
+      return this._collectProjectsWithBrowser();
+    }
+  }
+
+  async _collectProjectsWithHttp() {
+    const page = await this.httpClient.getProjects();
+    const projects = extractProjects(page.props);
+    const taskStatus = extractTaskStatus(page.props, page.pageUrl);
+    this.logger.debug(`Scraped ${projects.length} DataAnnotation projects`);
+
+    return {
+      authenticated: true,
+      loginState: 'authenticated',
+      projects,
+      taskStatus,
+      count: projects.length,
+      pageUrl: page.pageUrl,
+    };
+  }
+
+  async _collectProjectsWithBrowser() {
     const page = await this._newPage();
 
     try {
@@ -69,6 +102,47 @@ class DataAnnotationClient {
   }
 
   async collectPayments(options = {}) {
+    if (options.includeFundsHistory === false) {
+      try {
+        const result = await this._collectPaymentsWithHttp();
+        this.logger.debug('Collected DataAnnotation payments through HTTP');
+        return result;
+      } catch (error) {
+        this.logger.warning(`HTTP payment read failed; falling back to browser: ${error.message}`);
+      }
+    }
+
+    return this._collectPaymentsWithBrowser(options);
+  }
+
+  async _collectPaymentsWithHttp() {
+    const page = await this.httpClient.getPayments();
+    const availableAmountCents = numberOrZero(page.props?.paymentStatus?.amountInCents);
+    const withdrawButton = chooseWithdrawalButton(page.buttons, availableAmountCents);
+    const scrapedAt = new Date().toISOString();
+    const payments = extractPaymentsSnapshot({
+      pageProps: page.props,
+      earningsSummary: page.earningsSummary,
+      withdrawButton,
+      buttonText: withdrawButton.text,
+      buttonDisabled: withdrawButton.disabled,
+      nextWithdrawalText: page.nextWithdrawalText,
+      scrapedAt,
+    });
+
+    this.logger.debug(
+      `Scraped payments snapshot: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`
+    );
+
+    return {
+      authenticated: true,
+      loginState: 'authenticated',
+      pageUrl: page.pageUrl,
+      ...payments,
+    };
+  }
+
+  async _collectPaymentsWithBrowser(options = {}) {
     const page = await this._newPage();
 
     try {
@@ -746,6 +820,11 @@ class DataAnnotationClient {
   async _newPage() {
     return this.browserSession.newPage();
   }
+}
+
+function numberOrZero(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function countItems(value) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.12
+
+- Use authenticated HTTP reads for routine Projects and Payments polling to reduce browser startup and page-rendering overhead.
+- Keep scheduled Funds History, claiming, auto-claim actions, withdrawals, and notification-prompt handling on the existing browser path.
+- Fall back to browser reads when HTTP authentication, response validation, or parsing fails.
+
 ## 0.7.11
 
 - Refresh Funds History when its scheduled deadline arrives, even while Fast Polling is enabled.
