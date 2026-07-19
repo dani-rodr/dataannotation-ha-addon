@@ -228,11 +228,10 @@ class DataAnnotationClient {
     const page = await this._newPage();
     const targetProject = projectSlug && typeof projectSlug === 'object' ? projectSlug : null;
     const targetSlug = String(targetProject?.slug || projectSlug || '').trim();
-    const targetId = String(targetProject?.id || '').trim();
 
     try {
       const claimStartedAt = Date.now();
-      this.logger.debug(`Opening DataAnnotation claim route for: ${targetId || targetSlug}`);
+      this.logger.debug(`Opening DataAnnotation claim route for: ${targetProject?.id || targetSlug}`);
       await this._applyClaimViewport(page);
       let project = targetProject;
       if (!project) {
@@ -251,6 +250,7 @@ class DataAnnotationClient {
         }
       }
 
+      const targetId = String(project?.id || '').trim();
       const targetUrls = this._resolveProjectClaimUrls(project);
       if (targetUrls.length === 0) {
         this.logger.warning(`Claim target ${project.slug} has no canonical project URLs`);
@@ -263,8 +263,8 @@ class DataAnnotationClient {
 
       this.logger.debug(`Claim target fields: slug=${project.slug}, id=${project.id || ''}, name=${project.name}`);
       this.logger.debug(`Claim target route priority: ${targetUrls.join(' -> ')}`);
-      const directClaim = Boolean(targetProject);
-      if (targetProject) {
+      const directClaim = Boolean(targetId);
+      if (directClaim) {
         const directUrl = buildProjectTasksUrl(targetId) || null;
         if (!directUrl) {
           return {

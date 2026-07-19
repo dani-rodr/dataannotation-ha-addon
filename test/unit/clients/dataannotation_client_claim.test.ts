@@ -265,6 +265,48 @@ test('claimProject uses the task query url for object-based claims', async () =>
   assert.equal(result.status, 'already_in_work_mode');
 });
 
+test('claimProject reuses the direct task route after resolving a slug', async () => {
+  const client = new DataAnnotationClient({
+    email: 'user@example.com',
+    password: 'secret',
+    executablePath: '/usr/bin/google-chrome',
+    logger: createLogger(),
+  });
+
+  const loaded = [];
+  let clickedProjectLink = false;
+  client._newPage = async () => ({
+    url() {
+      return 'https://app.dataannotation.tech/workers/projects';
+    },
+    close: async () => {},
+  });
+  client._applyClaimViewport = async () => {};
+  client._loadAuthenticatedPage = async (_page, url) => {
+    loaded.push(url);
+  };
+  client._scrapeProjects = async () => [{ slug: 'alpha', id: 'project-alpha', name: 'Alpha' }];
+  client._clickProjectClaimTarget = async () => {
+    clickedProjectLink = true;
+    return { clicked: false, kind: 'ambiguous', href: '' };
+  };
+  client._waitForClaimPageState = async () => ({
+    url: 'https://app.dataannotation.tech/workers/tasks?project_id=project-alpha',
+    enterVisible: false,
+    exitVisible: true,
+    hasScreenWarning: false,
+  });
+
+  const result = await client.claimProject('alpha');
+
+  assert.deepEqual(loaded, [
+    'https://app.dataannotation.tech/workers/projects',
+    'https://app.dataannotation.tech/workers/tasks?project_id=project-alpha',
+  ]);
+  assert.equal(clickedProjectLink, false);
+  assert.equal(result.status, 'already_in_work_mode');
+});
+
 test('claimProject returns not_found immediately for a 404 task route', async () => {
   const client = new DataAnnotationClient({
     email: 'user@example.com',

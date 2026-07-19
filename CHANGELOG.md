@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.13
+
+- Reuse the verified project-ID task route for manual claim requests after resolving the project slug, avoiding false ambiguity from duplicate project links while preserving the exact Enter Work Mode safety checks.
+
 ## 0.7.12
 
 - Use authenticated HTTP reads for routine Projects and Payments polling to reduce browser startup and page-rendering overhead.
