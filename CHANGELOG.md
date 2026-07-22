@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.14
+
+- Keep Can Withdraw ON during HTTP polling when DataAnnotation reports an eligible positive-balance withdrawal route that is rendered only after browser hydration.
+- Keep actual withdrawal submission browser-only with the existing exact-button, lock, and POST-form safeguards.
+
 ## 0.7.13
 
 - Reuse the verified project-ID task route for manual claim requests after resolving the project slug, avoiding false ambiguity from duplicate project links while preserving the exact Enter Work Mode safety checks.

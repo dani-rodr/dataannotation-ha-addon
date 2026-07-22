@@ -3772,7 +3772,7 @@ var require_dataannotation_client = __commonJS({
     var { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require_project_claim();
     var { buildProjectSelectionUrl: buildProjectSelectionUrl2, buildProjectTasksUrl: buildProjectTasksUrl2, buildProjectUrl: buildProjectUrl2, extractProjects: extractProjects2 } = (init_projects(), __toCommonJS(projects_exports));
     var { extractTaskStatus } = require_task_status();
-    var { chooseWithdrawalButton, extractPaymentsSnapshot, scrapePayments } = require_payments();
+    var { chooseWithdrawalButton, extractPaymentsSnapshot, formatCents: formatCents3, scrapePayments } = require_payments();
     var { DataAnnotationBrowserSession, resolveExecutablePath } = require_browser_session();
     var { DataAnnotationHttpClient } = require_dataannotation_http_client();
     var NULL_LOGGER = {
@@ -3879,7 +3879,16 @@ var require_dataannotation_client = __commonJS({
       async _collectPaymentsWithHttp() {
         const page = await this.httpClient.getPayments();
         const availableAmountCents = numberOrZero3(page.props?.paymentStatus?.amountInCents);
-        const withdrawButton = chooseWithdrawalButton(page.buttons, availableAmountCents);
+        let withdrawButton = chooseWithdrawalButton(page.buttons, availableAmountCents);
+        if (!withdrawButton.present && isHttpWithdrawalEligible(page.props?.paymentStatus, availableAmountCents)) {
+          withdrawButton = {
+            present: true,
+            enabled: true,
+            disabled: false,
+            text: `Get paid ${formatCents3(availableAmountCents)}`,
+            count: 1
+          };
+        }
         const scrapedAt = (/* @__PURE__ */ new Date()).toISOString();
         const payments = extractPaymentsSnapshot({
           pageProps: page.props,
@@ -4488,6 +4497,9 @@ var require_dataannotation_client = __commonJS({
     function numberOrZero3(value) {
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : 0;
+    }
+    function isHttpWithdrawalEligible(paymentStatus, availableAmountCents) {
+      return String(paymentStatus?.type || "").toLowerCase() === "eligible" && availableAmountCents > 0 && String(paymentStatus?.getPayUrl || "").trim() === "/workers/payments/get_paid";
     }
     function countItems(value) {
       return Array.isArray(value) ? value.length : 0;
@@ -8282,7 +8294,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.13",
+      version: "0.7.14",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

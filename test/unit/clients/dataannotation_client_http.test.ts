@@ -8,6 +8,30 @@ function createLogger() {
   return { debug() {}, info() {}, warning() {}, error() {} };
 }
 
+function createHttpPaymentClient(paymentStatus) {
+  return new DataAnnotationClient({
+    email: 'user@example.com',
+    password: 'secret',
+    executablePath: '/usr/bin/google-chrome',
+    logger: createLogger(),
+    httpClient: {
+      async getPayments() {
+        return {
+          pageUrl: 'https://app.dataannotation.tech/workers/payments',
+          props: {
+            paymentStatus,
+            totalLifetimeEarnings: 50000,
+            unapprovedAmount: 2000,
+          },
+          buttons: [],
+          nextWithdrawalText: '',
+          earningsSummary: { totalPaidOut: 30000, currentMonthEarnings: 20000 },
+        };
+      },
+    },
+  });
+}
+
 test('routine project reads use HTTP without creating a browser page', async () => {
   let browserPages = 0;
   const client = new DataAnnotationClient({
@@ -82,6 +106,36 @@ test('HTTP payment read uses the existing payment normalizer without a browser p
   assert.equal(result.pending_approval, 20);
   assert.equal(result.can_withdraw, true);
   assert.equal(browserPages, 0);
+});
+
+test('HTTP payment read uses eligible payment status when the withdrawal button is browser-rendered', async () => {
+  const client = createHttpPaymentClient({
+    type: 'eligible',
+    amountInCents: 12500,
+    getPayUrl: '/workers/payments/get_paid',
+  });
+
+  const result = await client.collectPayments({ includeFundsHistory: false });
+
+  assert.equal(result.can_withdraw, true);
+  assert.equal(result.withdraw_button_present, true);
+  assert.equal(result.button_enabled, true);
+  assert.equal(result.button_text, 'Get paid $125.00');
+});
+
+test('HTTP payment read fails closed for ineligible or unexpected payment status', async () => {
+  const cases = [
+    { type: 'cooldown', amountInCents: 12500, getPayUrl: '/workers/payments/get_paid' },
+    { type: 'eligible', amountInCents: 12500, getPayUrl: '/workers/payments/other' },
+    { type: 'eligible', amountInCents: 0, getPayUrl: '/workers/payments/get_paid' },
+  ];
+
+  for (const paymentStatus of cases) {
+    const client = createHttpPaymentClient(paymentStatus);
+    const result = await client.collectPayments({ includeFundsHistory: false });
+    assert.equal(result.can_withdraw, false);
+    assert.equal(result.withdraw_button_present, false);
+  }
 });
 
 test('HTTP project failure falls back to the existing browser reader', async () => {

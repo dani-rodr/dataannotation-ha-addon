@@ -3,7 +3,7 @@ const fs = require('fs');
 const { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require('../projects/project_claim.ts');
 const { buildProjectSelectionUrl, buildProjectTasksUrl, buildProjectUrl, extractProjects } = require('../scrapers/projects.ts');
 const { extractTaskStatus } = require('../scrapers/task_status.ts');
-const { chooseWithdrawalButton, extractPaymentsSnapshot, scrapePayments } = require('../scrapers/payments.ts');
+const { chooseWithdrawalButton, extractPaymentsSnapshot, formatCents, scrapePayments } = require('../scrapers/payments.ts');
 const { DataAnnotationBrowserSession, resolveExecutablePath } = require('./browser_session.ts');
 const { DataAnnotationHttpClient } = require('./dataannotation_http_client.ts');
 
@@ -118,7 +118,16 @@ class DataAnnotationClient {
   async _collectPaymentsWithHttp() {
     const page = await this.httpClient.getPayments();
     const availableAmountCents = numberOrZero(page.props?.paymentStatus?.amountInCents);
-    const withdrawButton = chooseWithdrawalButton(page.buttons, availableAmountCents);
+    let withdrawButton = chooseWithdrawalButton(page.buttons, availableAmountCents);
+    if (!withdrawButton.present && isHttpWithdrawalEligible(page.props?.paymentStatus, availableAmountCents)) {
+      withdrawButton = {
+        present: true,
+        enabled: true,
+        disabled: false,
+        text: `Get paid ${formatCents(availableAmountCents)}`,
+        count: 1,
+      };
+    }
     const scrapedAt = new Date().toISOString();
     const payments = extractPaymentsSnapshot({
       pageProps: page.props,
@@ -825,6 +834,12 @@ class DataAnnotationClient {
 function numberOrZero(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isHttpWithdrawalEligible(paymentStatus, availableAmountCents) {
+  return String(paymentStatus?.type || '').toLowerCase() === 'eligible'
+    && availableAmountCents > 0
+    && String(paymentStatus?.getPayUrl || '').trim() === '/workers/payments/get_paid';
 }
 
 function countItems(value) {
