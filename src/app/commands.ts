@@ -321,31 +321,6 @@ export async function handleWithdrawRequest(client: any, walletSync: any, bridge
   logger.debug('Scheduling sync after withdrawal request');
 }
 
-export async function handleRecoverLastPayoutRequest(walletSync: any, bridge: any, currencyState: any, lastSuccessfulPayments: any, logger: any) {
-  logger.info('Processing explicit last payout Wallet recovery request');
-
-  if (!walletSync?.recoverLastPayout) {
-    logger.warning('Last payout Wallet recovery is unavailable');
-    return;
-  }
-
-  const result = await walletSync.recoverLastPayout({
-    payments: lastSuccessfulPayments,
-    currencyState,
-    now: new Date(),
-  });
-
-  if (result?.reason === 'last_payout_unavailable') {
-    logger.warning('Last payout Wallet recovery skipped because no complete payout amount is available');
-  } else if (result?.changed) {
-    logger.info('Last payout Wallet recovery completed');
-  } else {
-    logger.info(`Last payout Wallet recovery did not change records${result?.reason ? `: ${result.reason}` : ''}`);
-  }
-
-  bridge.scanRequested.value = true;
-}
-
 export async function handleClaimRequest(client: any, bridge: any, claimProjectsLocked: boolean, claimRequest: any, logger: any) {
   logger.info(`Processing claim project request${claimRequest?.slug ? ` for ${claimRequest.slug}` : ''}`);
 

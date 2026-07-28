@@ -35,7 +35,6 @@ function buildDiscoveryNames() {
     currency_mode: 'Currency to PHP',
     usd_php_rate: 'USD to PHP Rate',
     withdraw_funds: 'Withdraw Funds',
-    recover_last_payout: 'Sync Last Payout to Wallet',
     rebuild_discovery: 'Rebuild Discovery',
     next_payout: 'Next Payout',
     auto_accept_project: 'Auto Accept Priority',

@@ -557,7 +557,6 @@ var require_mqtt_discovery = __commonJS({
         currency_mode: "Currency to PHP",
         usd_php_rate: "USD to PHP Rate",
         withdraw_funds: "Withdraw Funds",
-        recover_last_payout: "Sync Last Payout to Wallet",
         rebuild_discovery: "Rebuild Discovery",
         next_payout: "Next Payout",
         auto_accept_project: "Auto Accept Priority"
@@ -809,7 +808,6 @@ var require_mqtt_bridge = __commonJS({
         this.logger = options.logger || NULL_LOGGER;
         this.scanRequested = { value: false };
         this.withdrawRequested = { value: false };
-        this.recoverLastPayoutRequested = { value: false };
         this.withdrawLockChange = { value: null };
         this.claimProjectsLockChange = { value: null };
         this.fastPollingChange = { value: null };
@@ -844,12 +842,11 @@ var require_mqtt_bridge = __commonJS({
           this.connected = true;
           this.logger.info("Connected to MQTT broker");
           this.client.subscribe(
-            [this._topic("command/sync"), this._topic("command/withdraw"), this._topic("command/recover_last_payout"), this._topic("command/rebuild_discovery"), this._topic("withdraw/lock/set"), this._topic("fast/poll/set"), this._topic("claim/lock/set"), this._topic("auto_accept/set"), this._topic("currency/mode/set"), this._topic("auto_accept/projects/clear"), this._topic("auto_accept/projects/+/set"), this._topic("claim/+")],
+            [this._topic("command/sync"), this._topic("command/withdraw"), this._topic("command/rebuild_discovery"), this._topic("withdraw/lock/set"), this._topic("fast/poll/set"), this._topic("claim/lock/set"), this._topic("auto_accept/set"), this._topic("currency/mode/set"), this._topic("auto_accept/projects/clear"), this._topic("auto_accept/projects/+/set"), this._topic("claim/+")],
             { qos: 1 }
           );
           this.logger.debug(`Subscribed to ${this._topic("command/sync")}`);
           this.logger.debug(`Subscribed to ${this._topic("command/withdraw")}`);
-          this.logger.debug(`Subscribed to ${this._topic("command/recover_last_payout")}`);
           this.logger.debug(`Subscribed to ${this._topic("command/rebuild_discovery")}`);
           this.logger.debug(`Subscribed to ${this._topic("withdraw/lock/set")}`);
           this.logger.debug(`Subscribed to ${this._topic("fast/poll/set")}`);
@@ -875,9 +872,6 @@ var require_mqtt_bridge = __commonJS({
           } else if (topic === this._topic("command/withdraw") && message === "withdraw") {
             this.logger.info("Received withdraw request via MQTT");
             this.withdrawRequested.value = true;
-          } else if (topic === this._topic("command/recover_last_payout") && message === "recover") {
-            this.logger.info("Received last payout Wallet recovery request via MQTT");
-            this.recoverLastPayoutRequested.value = true;
           } else if (topic === this._topic("command/rebuild_discovery") && message === "rebuild") {
             this.logger.info("Received discovery rebuild request via MQTT");
             this.rebuildDiscoveryRequested.value = true;
@@ -972,6 +966,7 @@ var require_mqtt_bridge = __commonJS({
       }
       publishDiscovery({ currencyUnit = "USD" } = {}) {
         this.logger.debug("Publishing MQTT discovery payloads");
+        this._clearRemovedRecoveryDiscovery();
         const discoveryEntries = this._buildStaticDiscoveryEntries(currencyUnit);
         discoveryEntries.forEach((entry) => this._publishDiscovery(entry.component, entry.objectId, entry.payload));
       }
@@ -1035,10 +1030,14 @@ var require_mqtt_bridge = __commonJS({
       }
       rebuildDiscovery({ currencyUnit = "USD" } = {}) {
         this.logger.info("Rebuilding MQTT discovery payloads");
+        this._clearRemovedRecoveryDiscovery();
         const discoveryEntries = this._buildStaticDiscoveryEntries(currencyUnit);
         discoveryEntries.forEach((entry) => this._publish(`homeassistant/${entry.component}/${this.topicPrefix}_${entry.objectId}/config`, "", true));
         this._deleteAllAutoAcceptProjectEntities();
         discoveryEntries.forEach((entry) => this._publishDiscovery(entry.component, entry.objectId, entry.payload));
+      }
+      _clearRemovedRecoveryDiscovery() {
+        this._publish(`homeassistant/button/${this.topicPrefix}_recover_last_payout/config`, "", true);
       }
       _buildStaticDiscoveryEntries(currencyUnit) {
         const names = buildDiscoveryNames();
@@ -1202,22 +1201,6 @@ var require_mqtt_bridge = __commonJS({
               payload_available: "online",
               payload_not_available: "offline",
               icon: "mdi:cash-sync",
-              device: this.device
-            }
-          },
-          {
-            component: "button",
-            objectId: "recover_last_payout",
-            payload: {
-              name: names.recover_last_payout,
-              unique_id: `${this.topicPrefix}_recover_last_payout`,
-              entity_category: "config",
-              command_topic: this._topic("command/recover_last_payout"),
-              payload_press: "recover",
-              availability_topic: this._topic("availability"),
-              payload_available: "online",
-              payload_not_available: "offline",
-              icon: "mdi:wallet-sync",
               device: this.device
             }
           },
@@ -5887,7 +5870,6 @@ var commands_exports = {};
 __export(commands_exports, {
   buildAutoAcceptSignature: () => buildAutoAcceptSignature,
   handleClaimRequest: () => handleClaimRequest,
-  handleRecoverLastPayoutRequest: () => handleRecoverLastPayoutRequest,
   handleWithdrawRequest: () => handleWithdrawRequest,
   maybeAutoAcceptNewTasks: () => maybeAutoAcceptNewTasks
 });
@@ -6160,26 +6142,6 @@ async function handleWithdrawRequest(client, walletSync, bridge, withdrawLocked,
   bridge.publishPayments(publishedPayments);
   bridge.scanRequested.value = true;
   logger.debug("Scheduling sync after withdrawal request");
-}
-async function handleRecoverLastPayoutRequest(walletSync, bridge, currencyState, lastSuccessfulPayments, logger) {
-  logger.info("Processing explicit last payout Wallet recovery request");
-  if (!walletSync?.recoverLastPayout) {
-    logger.warning("Last payout Wallet recovery is unavailable");
-    return;
-  }
-  const result = await walletSync.recoverLastPayout({
-    payments: lastSuccessfulPayments,
-    currencyState,
-    now: /* @__PURE__ */ new Date()
-  });
-  if (result?.reason === "last_payout_unavailable") {
-    logger.warning("Last payout Wallet recovery skipped because no complete payout amount is available");
-  } else if (result?.changed) {
-    logger.info("Last payout Wallet recovery completed");
-  } else {
-    logger.info(`Last payout Wallet recovery did not change records${result?.reason ? `: ${result.reason}` : ""}`);
-  }
-  bridge.scanRequested.value = true;
 }
 async function handleClaimRequest(client, bridge, claimProjectsLocked, claimRequest, logger) {
   logger.info(`Processing claim project request${claimRequest?.slug ? ` for ${claimRequest.slug}` : ""}`);
@@ -6824,12 +6786,6 @@ var require_wallet_sync = __commonJS({
           this.logger.warning(`Wallet withdrawal skipped: ${error.message}`);
           return { enabled: true, changed: false, error: error.message };
         }
-      }
-      async recoverLastPayout({ payments, currencyState, now = /* @__PURE__ */ new Date() }) {
-        if (!payments || !normalizeIsoDate(payments.last_payout_at) || positiveCents(payments.last_payout_amount_cents, payments.last_payout_amount) <= 0) {
-          return { enabled: this.isEnabled(), changed: false, reason: "last_payout_unavailable" };
-        }
-        return this.recordWithdrawalSubmission({ payments, currencyState, now });
       }
       async _importNewIncomeEntries({ state, referenceData, payments, fundsHistorySnapshot, fx, now }) {
         const entries = Array.isArray(fundsHistorySnapshot?.pending_payout_entries) ? fundsHistorySnapshot.pending_payout_entries : [];
@@ -8013,7 +7969,7 @@ var require_dataannotation_app = __commonJS({
     var { loadWithdrawLockState: loadWithdrawLockState2, saveWithdrawLockState: saveWithdrawLockState2 } = (init_withdraw_lock_state(), __toCommonJS(withdraw_lock_state_exports));
     var { shouldIncludeFundsHistory: shouldIncludeFundsHistory2 } = (init_sync_policy(), __toCommonJS(sync_policy_exports));
     var { doSync: doSync2, getActivePollCron: getActivePollCron2, republishCurrencyViews: republishCurrencyViews2 } = (init_sync(), __toCommonJS(sync_exports));
-    var { handleClaimRequest: handleClaimRequest2, handleRecoverLastPayoutRequest: handleRecoverLastPayoutRequest2, handleWithdrawRequest: handleWithdrawRequest2 } = (init_commands(), __toCommonJS(commands_exports));
+    var { handleClaimRequest: handleClaimRequest2, handleWithdrawRequest: handleWithdrawRequest2 } = (init_commands(), __toCommonJS(commands_exports));
     var { purgeRecorderEntities } = require_ha_notifications();
     var { WalletSync } = require_wallet_sync();
     var { RuntimeState } = require_runtime_state();
@@ -8100,7 +8056,7 @@ var require_dataannotation_app = __commonJS({
         this.state.currencyState = loadCurrencyState(CURRENCY_STATE_PATH);
         const persistedNextWithdrawalState = loadNextWithdrawalState2(NEXT_WITHDRAWAL_STATE_PATH);
         const persistedLastPayoutState = loadLastPayoutState(WALLET_SYNC_STATE_PATH);
-        this.state.persistedNextWithdrawalState = persistedNextWithdrawalState || persistedLastPayoutState ? { ...persistedNextWithdrawalState || {}, ...persistedLastPayoutState || {} } : null;
+        this.state.persistedNextWithdrawalState = mergePersistedLastPayoutState(persistedNextWithdrawalState, persistedLastPayoutState);
       }
       async _connectAndPublishStartupState() {
         const { config, state, bridge } = this;
@@ -8224,10 +8180,6 @@ var require_dataannotation_app = __commonJS({
           bridge.withdrawRequested.value = false;
           await handleWithdrawRequest2(this.client, this.walletSync, bridge, state.withdrawLocked, state.currencyState, state.lastSuccessfulPayments, logger);
           bridge.scanRequested.value = true;
-        }
-        if (bridge.recoverLastPayoutRequested?.value) {
-          bridge.recoverLastPayoutRequested.value = false;
-          await handleRecoverLastPayoutRequest2(this.walletSync, bridge, state.currencyState, state.lastSuccessfulPayments, logger);
         }
       }
       async _refreshCurrencyRateIfDue() {
@@ -8386,8 +8338,74 @@ var require_dataannotation_app = __commonJS({
     function sleep(ms) {
       return new Promise((resolve) => setTimeout(resolve, ms));
     }
+    function mergePersistedLastPayoutState(nextWithdrawalState, walletPayoutState) {
+      const next = nextWithdrawalState && typeof nextWithdrawalState === "object" ? nextWithdrawalState : null;
+      const wallet = walletPayoutState && typeof walletPayoutState === "object" ? walletPayoutState : null;
+      if (!next && !wallet) {
+        return null;
+      }
+      const nextPayout = getPersistedPayout(next);
+      const walletPayout = getPersistedPayout(wallet);
+      let selected = nextPayout;
+      let merged = { ...next || {} };
+      if (!selected.at && walletPayout.at) {
+        selected = walletPayout;
+      } else if (nextPayout.at && walletPayout.at && walletPayout.at.getTime() > nextPayout.at.getTime()) {
+        selected = walletPayout;
+      } else if (nextPayout.at && walletPayout.at && walletPayout.at.getTime() === nextPayout.at.getTime()) {
+        if (nextPayout.amountCents !== null && walletPayout.amountCents !== null && nextPayout.amountCents !== walletPayout.amountCents) {
+          return clearPersistedPayoutAmount(merged, nextPayout.at.toISOString());
+        }
+        selected = {
+          ...nextPayout,
+          amountCents: nextPayout.amountCents ?? walletPayout.amountCents,
+          amount: nextPayout.amount ?? walletPayout.amount,
+          formatted: nextPayout.formatted || walletPayout.formatted
+        };
+      }
+      if (walletPayout.at && selected === walletPayout) {
+        merged = { ...merged, ...wallet };
+      }
+      if (selected.at) {
+        merged.last_payout_at = selected.at.toISOString();
+        merged.last_payout_amount_cents = selected.amountCents;
+        merged.last_payout_amount = selected.amount;
+        merged.last_payout_amount_formatted = selected.formatted;
+      }
+      return merged;
+    }
+    function getPersistedPayout(state) {
+      const at = parsePersistedDate(state?.last_payout_at);
+      const amountCentsValue = state?.last_payout_amount_cents;
+      const amountValue = state?.last_payout_amount;
+      const parsedCents = amountCentsValue === null || amountCentsValue === void 0 || amountCentsValue === "" ? null : Number(amountCentsValue);
+      const amountCents = parsedCents !== null && Number.isFinite(parsedCents) ? Math.round(parsedCents) : Number.isFinite(Number(amountValue)) ? Math.round(Number(amountValue) * 100) : null;
+      return {
+        at,
+        amountCents,
+        amount: amountCents === null ? null : amountCents / 100,
+        formatted: state?.last_payout_amount_formatted || null
+      };
+    }
+    function clearPersistedPayoutAmount(state, payoutAt) {
+      return {
+        ...state,
+        last_payout_at: payoutAt,
+        last_payout_amount_cents: null,
+        last_payout_amount: null,
+        last_payout_amount_formatted: null
+      };
+    }
+    function parsePersistedDate(value) {
+      if (!value) {
+        return null;
+      }
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
     module2.exports = {
-      DataAnnotationApp: DataAnnotationApp2
+      DataAnnotationApp: DataAnnotationApp2,
+      mergePersistedLastPayoutState
     };
   }
 });
@@ -8397,7 +8415,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.16",
+      version: "0.7.17",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

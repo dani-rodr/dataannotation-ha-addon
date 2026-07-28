@@ -29,7 +29,6 @@ test('discovery names stay short', () => {
     currency_mode: 'Currency to PHP',
     usd_php_rate: 'USD to PHP Rate',
     withdraw_funds: 'Withdraw Funds',
-    recover_last_payout: 'Sync Last Payout to Wallet',
     rebuild_discovery: 'Rebuild Discovery',
     next_payout: 'Next Payout',
     auto_accept_project: 'Auto Accept Priority',
@@ -80,9 +79,6 @@ test('configuration and diagnostic entities are categorized for the device page'
     assert.equal(parse('homeassistant/switch/dataannotation_currency_mode/config').entity_category, 'config');
     assert.equal(parse('homeassistant/switch/dataannotation_auto_accept/config').entity_category, 'config');
     assert.equal(parse('homeassistant/button/dataannotation_clear_auto_accept_project_cache/config').entity_category, 'config');
-    assert.equal(parse('homeassistant/button/dataannotation_recover_last_payout/config').entity_category, 'config');
-    assert.equal(parse('homeassistant/button/dataannotation_recover_last_payout/config').command_topic, 'dataannotation/command/recover_last_payout');
-    assert.equal(parse('homeassistant/button/dataannotation_recover_last_payout/config').payload_press, 'recover');
     assert.equal(parse('homeassistant/sensor/dataannotation_profile_name/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_usd_php_rate/config').entity_category, 'diagnostic');
     assert.equal(parse('homeassistant/sensor/dataannotation_total_earnings/config').entity_category, 'diagnostic');

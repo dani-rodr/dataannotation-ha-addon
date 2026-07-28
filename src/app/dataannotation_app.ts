@@ -19,7 +19,7 @@ const { clearAutoAcceptProjectCache, loadAutoAcceptProjects, pruneExpiredAutoAcc
 const { loadWithdrawLockState, saveWithdrawLockState } = require('../state/withdraw_lock_state.ts');
 const { shouldIncludeFundsHistory } = require('../state/sync_policy.ts');
 const { doSync, getActivePollCron, republishCurrencyViews } = require('./sync.ts');
-const { handleClaimRequest, handleRecoverLastPayoutRequest, handleWithdrawRequest } = require('./commands.ts');
+const { handleClaimRequest, handleWithdrawRequest } = require('./commands.ts');
 const { purgeRecorderEntities } = require('../integrations/ha_notifications.ts');
 const { WalletSync } = require('../wallet/wallet_sync.ts');
 const { RuntimeState } = require('./runtime_state.ts');
@@ -112,9 +112,7 @@ class DataAnnotationApp {
     this.state.currencyState = loadCurrencyState(CURRENCY_STATE_PATH);
     const persistedNextWithdrawalState = loadNextWithdrawalState(NEXT_WITHDRAWAL_STATE_PATH);
     const persistedLastPayoutState = loadLastPayoutState(WALLET_SYNC_STATE_PATH);
-    this.state.persistedNextWithdrawalState = persistedNextWithdrawalState || persistedLastPayoutState
-      ? { ...(persistedNextWithdrawalState || {}), ...(persistedLastPayoutState || {}) }
-      : null;
+    this.state.persistedNextWithdrawalState = mergePersistedLastPayoutState(persistedNextWithdrawalState, persistedLastPayoutState);
   }
 
   async _connectAndPublishStartupState() {
@@ -254,10 +252,6 @@ class DataAnnotationApp {
       bridge.scanRequested.value = true;
     }
 
-    if (bridge.recoverLastPayoutRequested?.value) {
-      bridge.recoverLastPayoutRequested.value = false;
-      await handleRecoverLastPayoutRequest(this.walletSync, bridge, state.currencyState, state.lastSuccessfulPayments, logger);
-    }
   }
 
   async _refreshCurrencyRateIfDue() {
@@ -432,6 +426,90 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function mergePersistedLastPayoutState(nextWithdrawalState: any, walletPayoutState: any) {
+  const next = nextWithdrawalState && typeof nextWithdrawalState === 'object' ? nextWithdrawalState : null;
+  const wallet = walletPayoutState && typeof walletPayoutState === 'object' ? walletPayoutState : null;
+  if (!next && !wallet) {
+    return null;
+  }
+
+  const nextPayout = getPersistedPayout(next);
+  const walletPayout = getPersistedPayout(wallet);
+  let selected = nextPayout;
+  let merged = { ...(next || {}) };
+
+  if (!selected.at && walletPayout.at) {
+    selected = walletPayout;
+  } else if (nextPayout.at && walletPayout.at && walletPayout.at.getTime() > nextPayout.at.getTime()) {
+    selected = walletPayout;
+  } else if (nextPayout.at && walletPayout.at && walletPayout.at.getTime() === nextPayout.at.getTime()) {
+    if (nextPayout.amountCents !== null && walletPayout.amountCents !== null && nextPayout.amountCents !== walletPayout.amountCents) {
+      return clearPersistedPayoutAmount(merged, nextPayout.at.toISOString());
+    }
+
+    selected = {
+      ...nextPayout,
+      amountCents: nextPayout.amountCents ?? walletPayout.amountCents,
+      amount: nextPayout.amount ?? walletPayout.amount,
+      formatted: nextPayout.formatted || walletPayout.formatted,
+    };
+  }
+
+  if (walletPayout.at && selected === walletPayout) {
+    merged = { ...merged, ...wallet };
+  }
+
+  if (selected.at) {
+    merged.last_payout_at = selected.at.toISOString();
+    merged.last_payout_amount_cents = selected.amountCents;
+    merged.last_payout_amount = selected.amount;
+    merged.last_payout_amount_formatted = selected.formatted;
+  }
+
+  return merged;
+}
+
+function getPersistedPayout(state: any) {
+  const at = parsePersistedDate(state?.last_payout_at);
+  const amountCentsValue = state?.last_payout_amount_cents;
+  const amountValue = state?.last_payout_amount;
+  const parsedCents = amountCentsValue === null || amountCentsValue === undefined || amountCentsValue === ''
+    ? null
+    : Number(amountCentsValue);
+  const amountCents = parsedCents !== null && Number.isFinite(parsedCents)
+    ? Math.round(parsedCents)
+    : Number.isFinite(Number(amountValue))
+      ? Math.round(Number(amountValue) * 100)
+      : null;
+
+  return {
+    at,
+    amountCents,
+    amount: amountCents === null ? null : amountCents / 100,
+    formatted: state?.last_payout_amount_formatted || null,
+  };
+}
+
+function clearPersistedPayoutAmount(state: any, payoutAt: string) {
+  return {
+    ...state,
+    last_payout_at: payoutAt,
+    last_payout_amount_cents: null,
+    last_payout_amount: null,
+    last_payout_amount_formatted: null,
+  };
+}
+
+function parsePersistedDate(value: any) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 module.exports = {
   DataAnnotationApp,
+  mergePersistedLastPayoutState,
 };

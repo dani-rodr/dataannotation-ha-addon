@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.17
+
+- Remove the unsafe manual Last Payout Wallet recovery control; ordinary sync no longer infers or recreates withdrawals from stale payout attributes.
+- Merge persisted Last Payout data by timestamp so an older Wallet amount cannot overwrite a newer payout.
+- Fail closed when two persisted sources report different amounts for the same payout timestamp.
+
 ## 0.7.16
 
 - Accept Wallet API records that omit `paymentType` while retaining strict account, category, currency, transfer, amount, bank-sync, and marker validation during income revaluation.
@@ -9,7 +15,6 @@
 
 - Fix Wallet marker recovery after the Wallet API stopped accepting the unsupported `paymentType` query parameter on `GET /records`.
 - Persist explicitly submitted withdrawal events before Wallet lookups so incomplete fee/transfer legs retry safely after transient or API failures.
-- Add an explicit `Sync Last Payout to Wallet` control for recovering a payout that was submitted before the fix; it never submits a DataAnnotation withdrawal.
 
 ## 0.7.14
 

@@ -215,14 +215,6 @@ class WalletSync {
     }
   }
 
-  async recoverLastPayout({ payments, currencyState, now = new Date() }) {
-    if (!payments || !normalizeIsoDate(payments.last_payout_at) || positiveCents(payments.last_payout_amount_cents, payments.last_payout_amount) <= 0) {
-      return { enabled: this.isEnabled(), changed: false, reason: 'last_payout_unavailable' };
-    }
-
-    return this.recordWithdrawalSubmission({ payments, currencyState, now });
-  }
-
   async _importNewIncomeEntries({ state, referenceData, payments, fundsHistorySnapshot, fx, now }) {
     const entries = Array.isArray(fundsHistorySnapshot?.pending_payout_entries)
       ? fundsHistorySnapshot.pending_payout_entries
