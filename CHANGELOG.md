@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.15
+
+- Fix Wallet marker recovery after the Wallet API stopped accepting the unsupported `paymentType` query parameter on `GET /records`.
+- Persist explicitly submitted withdrawal events before Wallet lookups so incomplete fee/transfer legs retry safely after transient or API failures.
+- Add an explicit `Sync Last Payout to Wallet` control for recovering a payout that was submitted before the fix; it never submits a DataAnnotation withdrawal.
+
 ## 0.7.14
 
 - Keep Can Withdraw ON during HTTP polling when DataAnnotation reports an eligible positive-balance withdrawal route that is rendered only after browser hydration.

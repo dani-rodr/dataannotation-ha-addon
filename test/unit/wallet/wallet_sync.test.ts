@@ -502,6 +502,83 @@ test('WalletSync records a confirmed withdrawal only after explicit submission',
   }
 });
 
+test('WalletSync persists an explicit withdrawal before lookup failure and retries it later', async () => {
+  const { sync, dir } = createWalletSync();
+  const createdRecords = [];
+  let findCallCount = 0;
+
+  sync.client = {
+    fetchAccounts: async () => [
+      { id: 'da', name: 'Data Annotation', currencyCode: 'PHP' },
+      { id: 'gt', name: 'GoTyme', currencyCode: 'PHP' },
+    ],
+    fetchCategories: async () => [
+      { id: 'income', name: 'Income', archived: false },
+      { id: 'fees', name: 'Charges, Fees', archived: false },
+    ],
+    findRecordsByNote: async () => {
+      findCallCount += 1;
+      if (findCallCount === 1) {
+        const error = new Error('Wallet API GET /records failed with 400');
+        error.status = 400;
+        throw error;
+      }
+
+      return [];
+    },
+    createRecords: async (records) => {
+      createdRecords.push(records);
+      return { results: records.map((record, index) => ({ success: true, id: `record-${createdRecords.length}-${index + 1}`, record })) };
+    },
+  };
+
+  const currencyState = {
+    convert_to_php: false,
+    usd_php_rate: 61.665,
+    usd_php_rate_date: '2026-07-28',
+    usd_php_rate_fetched_at: '2026-07-28T15:30:00.000Z',
+    usd_php_rate_source: 'frankfurter',
+  };
+  const payments = {
+    last_payout_at: '2026-07-28T15:31:49.000Z',
+    last_payout_amount_cents: 122625,
+    last_payout_amount: 1226.25,
+    available_amount_cents: 0,
+    available_amount: 0,
+  };
+
+  try {
+    const firstAttempt = await sync.recordWithdrawalSubmission({
+      payments,
+      currencyState,
+      now: new Date('2026-07-29T02:10:00.000Z'),
+    });
+
+    assert.equal(firstAttempt.changed, false);
+    const persisted = JSON.parse(fs.readFileSync(sync.statePath, 'utf8'));
+    const marker = Object.keys(persisted.withdrawal_events)[0];
+    assert.ok(marker);
+    assert.equal(persisted.withdrawal_events[marker].source_amount_usd_cents, 122625);
+    assert.equal(persisted.withdrawal_events[marker].payout_at, payments.last_payout_at);
+
+    const retry = await sync.processSync({
+      payments,
+      includeFundsHistory: false,
+      currencyState,
+      now: new Date('2026-07-29T02:11:00.000Z'),
+    });
+
+    assert.equal(retry.changed, true);
+    assert.equal(createdRecords.length, 2);
+    const completed = JSON.parse(fs.readFileSync(sync.statePath, 'utf8')).withdrawal_events[marker];
+    assert.ok(completed.fee_record_id);
+    assert.ok(completed.transfer_record_id);
+    assert.equal(completed.source_amount_usd_cents, 122625);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('WalletSync revalues current pending income and locks historical income outside the pending set', async () => {
   const { sync, dir } = createWalletSync();
   sync.config.wallet_settlement_adjustment = 1;

@@ -27,6 +27,7 @@ class DataAnnotationMqttBridge {
     this.logger = options.logger || NULL_LOGGER;
     this.scanRequested = { value: false };
     this.withdrawRequested = { value: false };
+    this.recoverLastPayoutRequested = { value: false };
     this.withdrawLockChange = { value: null };
     this.claimProjectsLockChange = { value: null };
     this.fastPollingChange = { value: null };
@@ -63,11 +64,12 @@ class DataAnnotationMqttBridge {
       this.connected = true;
       this.logger.info('Connected to MQTT broker');
       this.client.subscribe(
-        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('command/rebuild_discovery'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('auto_accept/set'), this._topic('currency/mode/set'), this._topic('auto_accept/projects/clear'), this._topic('auto_accept/projects/+/set'), this._topic('claim/+')],
+        [this._topic('command/sync'), this._topic('command/withdraw'), this._topic('command/recover_last_payout'), this._topic('command/rebuild_discovery'), this._topic('withdraw/lock/set'), this._topic('fast/poll/set'), this._topic('claim/lock/set'), this._topic('auto_accept/set'), this._topic('currency/mode/set'), this._topic('auto_accept/projects/clear'), this._topic('auto_accept/projects/+/set'), this._topic('claim/+')],
         { qos: 1 }
       );
       this.logger.debug(`Subscribed to ${this._topic('command/sync')}`);
       this.logger.debug(`Subscribed to ${this._topic('command/withdraw')}`);
+      this.logger.debug(`Subscribed to ${this._topic('command/recover_last_payout')}`);
       this.logger.debug(`Subscribed to ${this._topic('command/rebuild_discovery')}`);
       this.logger.debug(`Subscribed to ${this._topic('withdraw/lock/set')}`);
       this.logger.debug(`Subscribed to ${this._topic('fast/poll/set')}`);
@@ -93,6 +95,9 @@ class DataAnnotationMqttBridge {
       } else if (topic === this._topic('command/withdraw') && message === 'withdraw') {
         this.logger.info('Received withdraw request via MQTT');
         this.withdrawRequested.value = true;
+      } else if (topic === this._topic('command/recover_last_payout') && message === 'recover') {
+        this.logger.info('Received last payout Wallet recovery request via MQTT');
+        this.recoverLastPayoutRequested.value = true;
       } else if (topic === this._topic('command/rebuild_discovery') && message === 'rebuild') {
         this.logger.info('Received discovery rebuild request via MQTT');
         this.rebuildDiscoveryRequested.value = true;
@@ -436,6 +441,22 @@ class DataAnnotationMqttBridge {
           payload_available: 'online',
           payload_not_available: 'offline',
           icon: 'mdi:cash-sync',
+          device: this.device,
+        },
+      },
+      {
+        component: 'button',
+        objectId: 'recover_last_payout',
+        payload: {
+          name: names.recover_last_payout,
+          unique_id: `${this.topicPrefix}_recover_last_payout`,
+          entity_category: 'config',
+          command_topic: this._topic('command/recover_last_payout'),
+          payload_press: 'recover',
+          availability_topic: this._topic('availability'),
+          payload_available: 'online',
+          payload_not_available: 'offline',
+          icon: 'mdi:wallet-sync',
           device: this.device,
         },
       },

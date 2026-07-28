@@ -42,10 +42,6 @@ class WalletApiClient {
       limit: 20,
     };
 
-    if (paymentType) {
-      query.paymentType = paymentType;
-    }
-
     if (categoryId) {
       query.categoryId = categoryId;
     }

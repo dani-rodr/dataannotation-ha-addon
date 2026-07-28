@@ -34,7 +34,7 @@ test('WalletApiClient.findRecordsByNote builds the expected record query', async
     assert.match(requestedUrl, /\/records\?/);
     assert.match(requestedUrl, /accountId=account-1/);
     assert.match(requestedUrl, /note=contains\.DAWALLET%7Cinc%7Cabc123/);
-    assert.match(requestedUrl, /paymentType=web_payment/);
+    assert.doesNotMatch(requestedUrl, /paymentType=/);
     assert.match(requestedUrl, /categoryId=cat-1/);
     assert.match(requestedUrl, /recordDate=gte\.2026-07-14T00%3A00%3A00\.000Z/);
     assert.match(requestedUrl, /recordDate=lt\.2026-07-15T00%3A00%3A00\.000Z/);

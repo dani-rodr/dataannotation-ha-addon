@@ -557,6 +557,7 @@ var require_mqtt_discovery = __commonJS({
         currency_mode: "Currency to PHP",
         usd_php_rate: "USD to PHP Rate",
         withdraw_funds: "Withdraw Funds",
+        recover_last_payout: "Sync Last Payout to Wallet",
         rebuild_discovery: "Rebuild Discovery",
         next_payout: "Next Payout",
         auto_accept_project: "Auto Accept Priority"
@@ -808,6 +809,7 @@ var require_mqtt_bridge = __commonJS({
         this.logger = options.logger || NULL_LOGGER;
         this.scanRequested = { value: false };
         this.withdrawRequested = { value: false };
+        this.recoverLastPayoutRequested = { value: false };
         this.withdrawLockChange = { value: null };
         this.claimProjectsLockChange = { value: null };
         this.fastPollingChange = { value: null };
@@ -842,11 +844,12 @@ var require_mqtt_bridge = __commonJS({
           this.connected = true;
           this.logger.info("Connected to MQTT broker");
           this.client.subscribe(
-            [this._topic("command/sync"), this._topic("command/withdraw"), this._topic("command/rebuild_discovery"), this._topic("withdraw/lock/set"), this._topic("fast/poll/set"), this._topic("claim/lock/set"), this._topic("auto_accept/set"), this._topic("currency/mode/set"), this._topic("auto_accept/projects/clear"), this._topic("auto_accept/projects/+/set"), this._topic("claim/+")],
+            [this._topic("command/sync"), this._topic("command/withdraw"), this._topic("command/recover_last_payout"), this._topic("command/rebuild_discovery"), this._topic("withdraw/lock/set"), this._topic("fast/poll/set"), this._topic("claim/lock/set"), this._topic("auto_accept/set"), this._topic("currency/mode/set"), this._topic("auto_accept/projects/clear"), this._topic("auto_accept/projects/+/set"), this._topic("claim/+")],
             { qos: 1 }
           );
           this.logger.debug(`Subscribed to ${this._topic("command/sync")}`);
           this.logger.debug(`Subscribed to ${this._topic("command/withdraw")}`);
+          this.logger.debug(`Subscribed to ${this._topic("command/recover_last_payout")}`);
           this.logger.debug(`Subscribed to ${this._topic("command/rebuild_discovery")}`);
           this.logger.debug(`Subscribed to ${this._topic("withdraw/lock/set")}`);
           this.logger.debug(`Subscribed to ${this._topic("fast/poll/set")}`);
@@ -872,6 +875,9 @@ var require_mqtt_bridge = __commonJS({
           } else if (topic === this._topic("command/withdraw") && message === "withdraw") {
             this.logger.info("Received withdraw request via MQTT");
             this.withdrawRequested.value = true;
+          } else if (topic === this._topic("command/recover_last_payout") && message === "recover") {
+            this.logger.info("Received last payout Wallet recovery request via MQTT");
+            this.recoverLastPayoutRequested.value = true;
           } else if (topic === this._topic("command/rebuild_discovery") && message === "rebuild") {
             this.logger.info("Received discovery rebuild request via MQTT");
             this.rebuildDiscoveryRequested.value = true;
@@ -1196,6 +1202,22 @@ var require_mqtt_bridge = __commonJS({
               payload_available: "online",
               payload_not_available: "offline",
               icon: "mdi:cash-sync",
+              device: this.device
+            }
+          },
+          {
+            component: "button",
+            objectId: "recover_last_payout",
+            payload: {
+              name: names.recover_last_payout,
+              unique_id: `${this.topicPrefix}_recover_last_payout`,
+              entity_category: "config",
+              command_topic: this._topic("command/recover_last_payout"),
+              payload_press: "recover",
+              availability_topic: this._topic("availability"),
+              payload_available: "online",
+              payload_not_available: "offline",
+              icon: "mdi:wallet-sync",
               device: this.device
             }
           },
@@ -5865,6 +5887,7 @@ var commands_exports = {};
 __export(commands_exports, {
   buildAutoAcceptSignature: () => buildAutoAcceptSignature,
   handleClaimRequest: () => handleClaimRequest,
+  handleRecoverLastPayoutRequest: () => handleRecoverLastPayoutRequest,
   handleWithdrawRequest: () => handleWithdrawRequest,
   maybeAutoAcceptNewTasks: () => maybeAutoAcceptNewTasks
 });
@@ -6137,6 +6160,26 @@ async function handleWithdrawRequest(client, walletSync, bridge, withdrawLocked,
   bridge.publishPayments(publishedPayments);
   bridge.scanRequested.value = true;
   logger.debug("Scheduling sync after withdrawal request");
+}
+async function handleRecoverLastPayoutRequest(walletSync, bridge, currencyState, lastSuccessfulPayments, logger) {
+  logger.info("Processing explicit last payout Wallet recovery request");
+  if (!walletSync?.recoverLastPayout) {
+    logger.warning("Last payout Wallet recovery is unavailable");
+    return;
+  }
+  const result = await walletSync.recoverLastPayout({
+    payments: lastSuccessfulPayments,
+    currencyState,
+    now: /* @__PURE__ */ new Date()
+  });
+  if (result?.reason === "last_payout_unavailable") {
+    logger.warning("Last payout Wallet recovery skipped because no complete payout amount is available");
+  } else if (result?.changed) {
+    logger.info("Last payout Wallet recovery completed");
+  } else {
+    logger.info(`Last payout Wallet recovery did not change records${result?.reason ? `: ${result.reason}` : ""}`);
+  }
+  bridge.scanRequested.value = true;
 }
 async function handleClaimRequest(client, bridge, claimProjectsLocked, claimRequest, logger) {
   logger.info(`Processing claim project request${claimRequest?.slug ? ` for ${claimRequest.slug}` : ""}`);
@@ -6426,9 +6469,6 @@ var require_wallet_api_client = __commonJS({
           note: `contains.${noteMarker}`,
           limit: 20
         };
-        if (paymentType) {
-          query.paymentType = paymentType;
-        }
         if (categoryId) {
           query.categoryId = categoryId;
         }
@@ -6647,6 +6687,13 @@ var require_wallet_sync = __commonJS({
             return { enabled: true, changed: false, reason: "fx_unavailable" };
           }
           let changed = this._queueRevaluationIfNeeded(state, fx, now);
+          const retriedWithdrawals = await this._retryPendingWithdrawalEvents({
+            state,
+            referenceData,
+            fx,
+            now
+          });
+          changed = changed || retriedWithdrawals.changed;
           if (includeFundsHistory) {
             const imported = await this._importNewIncomeEntries({
               state,
@@ -6777,6 +6824,12 @@ var require_wallet_sync = __commonJS({
           this.logger.warning(`Wallet withdrawal skipped: ${error.message}`);
           return { enabled: true, changed: false, error: error.message };
         }
+      }
+      async recoverLastPayout({ payments, currencyState, now = /* @__PURE__ */ new Date() }) {
+        if (!payments || !normalizeIsoDate(payments.last_payout_at) || positiveCents(payments.last_payout_amount_cents, payments.last_payout_amount) <= 0) {
+          return { enabled: this.isEnabled(), changed: false, reason: "last_payout_unavailable" };
+        }
+        return this.recordWithdrawalSubmission({ payments, currencyState, now });
       }
       async _importNewIncomeEntries({ state, referenceData, payments, fundsHistorySnapshot, fx, now }) {
         const entries = Array.isArray(fundsHistorySnapshot?.pending_payout_entries) ? fundsHistorySnapshot.pending_payout_entries : [];
@@ -7339,6 +7392,25 @@ var require_wallet_sync = __commonJS({
         const grossPhpCents = roundToCents(grossUsdCents / 100 * fx.settlementRate * 100);
         const feePhpCents = roundToCents(feeUsdCents / 100 * fx.settlementRate * 100);
         const netPhpCents = Math.max(0, grossPhpCents - feePhpCents);
+        Object.assign(withdrawalState, {
+          key: withdrawalMarker,
+          note_marker: withdrawalMarker,
+          source_marker: withdrawalMarker,
+          source_type: "withdrawal",
+          source_amount_usd_cents: grossUsdCents,
+          source_amount_php_cents: grossPhpCents,
+          source_fee_usd_cents: feeUsdCents,
+          source_fee_php_cents: feePhpCents,
+          source_net_usd_cents: netUsdCents,
+          source_net_php_cents: netPhpCents,
+          source_rate: fx.settlementRate,
+          payout_at: payoutAt,
+          created_at: withdrawalState.created_at || now.toISOString(),
+          last_attempt_at: now.toISOString(),
+          attempt_count: (withdrawalState.attempt_count || 0) + 1
+        });
+        state.withdrawal_events[withdrawalMarker] = withdrawalState;
+        saveWalletSyncState(this.statePath, state);
         const commonContext = {
           payoutAt,
           grossUsdCents,
@@ -7422,6 +7494,24 @@ var require_wallet_sync = __commonJS({
         state.withdrawal_events[withdrawalMarker] = withdrawalState;
         saveWalletSyncState(this.statePath, state);
         return { changed: Boolean(feeRecord?.recordId || transferRecord?.recordId) };
+      }
+      async _retryPendingWithdrawalEvents({ state, referenceData, fx, now }) {
+        let changed = false;
+        const pendingEvents = Object.values(state.withdrawal_events || {}).filter((event) => event && event.source_type === "withdrawal" && !(event.fee_record_id && event.transfer_record_id) && Number(event.source_amount_usd_cents) > 0 && normalizeIsoDate(event.payout_at));
+        for (const event of pendingEvents) {
+          const result = await this._createConfirmedWithdrawal({
+            state,
+            referenceData,
+            payments: {
+              last_payout_at: event.payout_at,
+              last_payout_amount_cents: event.source_amount_usd_cents
+            },
+            fx,
+            now
+          });
+          changed = changed || result.changed;
+        }
+        return { changed };
       }
       async _processWithdrawalIfNeeded() {
         return false;
@@ -7914,7 +8004,7 @@ var require_dataannotation_app = __commonJS({
     var { loadWithdrawLockState: loadWithdrawLockState2, saveWithdrawLockState: saveWithdrawLockState2 } = (init_withdraw_lock_state(), __toCommonJS(withdraw_lock_state_exports));
     var { shouldIncludeFundsHistory: shouldIncludeFundsHistory2 } = (init_sync_policy(), __toCommonJS(sync_policy_exports));
     var { doSync: doSync2, getActivePollCron: getActivePollCron2, republishCurrencyViews: republishCurrencyViews2 } = (init_sync(), __toCommonJS(sync_exports));
-    var { handleClaimRequest: handleClaimRequest2, handleWithdrawRequest: handleWithdrawRequest2 } = (init_commands(), __toCommonJS(commands_exports));
+    var { handleClaimRequest: handleClaimRequest2, handleRecoverLastPayoutRequest: handleRecoverLastPayoutRequest2, handleWithdrawRequest: handleWithdrawRequest2 } = (init_commands(), __toCommonJS(commands_exports));
     var { purgeRecorderEntities } = require_ha_notifications();
     var { WalletSync } = require_wallet_sync();
     var { RuntimeState } = require_runtime_state();
@@ -8126,6 +8216,10 @@ var require_dataannotation_app = __commonJS({
           await handleWithdrawRequest2(this.client, this.walletSync, bridge, state.withdrawLocked, state.currencyState, state.lastSuccessfulPayments, logger);
           bridge.scanRequested.value = true;
         }
+        if (bridge.recoverLastPayoutRequested?.value) {
+          bridge.recoverLastPayoutRequested.value = false;
+          await handleRecoverLastPayoutRequest2(this.walletSync, bridge, state.currencyState, state.lastSuccessfulPayments, logger);
+        }
       }
       async _refreshCurrencyRateIfDue() {
         const { bridge, logger, state } = this;
@@ -8294,7 +8388,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.14",
+      version: "0.7.15",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

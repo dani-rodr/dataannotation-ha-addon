@@ -53,6 +53,14 @@ class WalletSync {
 
       let changed = this._queueRevaluationIfNeeded(state, fx, now);
 
+      const retriedWithdrawals = await this._retryPendingWithdrawalEvents({
+        state,
+        referenceData,
+        fx,
+        now,
+      });
+      changed = changed || retriedWithdrawals.changed;
+
       if (includeFundsHistory) {
         const imported = await this._importNewIncomeEntries({
           state,
@@ -205,6 +213,14 @@ class WalletSync {
       this.logger.warning(`Wallet withdrawal skipped: ${error.message}`);
       return { enabled: true, changed: false, error: error.message };
     }
+  }
+
+  async recoverLastPayout({ payments, currencyState, now = new Date() }) {
+    if (!payments || !normalizeIsoDate(payments.last_payout_at) || positiveCents(payments.last_payout_amount_cents, payments.last_payout_amount) <= 0) {
+      return { enabled: this.isEnabled(), changed: false, reason: 'last_payout_unavailable' };
+    }
+
+    return this.recordWithdrawalSubmission({ payments, currencyState, now });
   }
 
   async _importNewIncomeEntries({ state, referenceData, payments, fundsHistorySnapshot, fx, now }) {
@@ -887,6 +903,26 @@ class WalletSync {
     const feePhpCents = roundToCents((feeUsdCents / 100) * fx.settlementRate * 100);
     const netPhpCents = Math.max(0, grossPhpCents - feePhpCents);
 
+    Object.assign(withdrawalState, {
+      key: withdrawalMarker,
+      note_marker: withdrawalMarker,
+      source_marker: withdrawalMarker,
+      source_type: 'withdrawal',
+      source_amount_usd_cents: grossUsdCents,
+      source_amount_php_cents: grossPhpCents,
+      source_fee_usd_cents: feeUsdCents,
+      source_fee_php_cents: feePhpCents,
+      source_net_usd_cents: netUsdCents,
+      source_net_php_cents: netPhpCents,
+      source_rate: fx.settlementRate,
+      payout_at: payoutAt,
+      created_at: withdrawalState.created_at || now.toISOString(),
+      last_attempt_at: now.toISOString(),
+      attempt_count: (withdrawalState.attempt_count || 0) + 1,
+    });
+    state.withdrawal_events[withdrawalMarker] = withdrawalState;
+    saveWalletSyncState(this.statePath, state);
+
     const commonContext = {
       payoutAt,
       grossUsdCents,
@@ -978,6 +1014,33 @@ class WalletSync {
     saveWalletSyncState(this.statePath, state);
 
     return { changed: Boolean(feeRecord?.recordId || transferRecord?.recordId) };
+  }
+
+  async _retryPendingWithdrawalEvents({ state, referenceData, fx, now }) {
+    let changed = false;
+    const pendingEvents = Object.values(state.withdrawal_events || {}).filter((event) => (
+      event
+      && event.source_type === 'withdrawal'
+      && !(event.fee_record_id && event.transfer_record_id)
+      && Number(event.source_amount_usd_cents) > 0
+      && normalizeIsoDate(event.payout_at)
+    ));
+
+    for (const event of pendingEvents) {
+      const result = await this._createConfirmedWithdrawal({
+        state,
+        referenceData,
+        payments: {
+          last_payout_at: event.payout_at,
+          last_payout_amount_cents: event.source_amount_usd_cents,
+        },
+        fx,
+        now,
+      });
+      changed = changed || result.changed;
+    }
+
+    return { changed };
   }
 
   async _processWithdrawalIfNeeded() {

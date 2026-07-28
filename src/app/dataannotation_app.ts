@@ -19,7 +19,7 @@ const { clearAutoAcceptProjectCache, loadAutoAcceptProjects, pruneExpiredAutoAcc
 const { loadWithdrawLockState, saveWithdrawLockState } = require('../state/withdraw_lock_state.ts');
 const { shouldIncludeFundsHistory } = require('../state/sync_policy.ts');
 const { doSync, getActivePollCron, republishCurrencyViews } = require('./sync.ts');
-const { handleClaimRequest, handleWithdrawRequest } = require('./commands.ts');
+const { handleClaimRequest, handleRecoverLastPayoutRequest, handleWithdrawRequest } = require('./commands.ts');
 const { purgeRecorderEntities } = require('../integrations/ha_notifications.ts');
 const { WalletSync } = require('../wallet/wallet_sync.ts');
 const { RuntimeState } = require('./runtime_state.ts');
@@ -252,6 +252,11 @@ class DataAnnotationApp {
       bridge.withdrawRequested.value = false;
       await handleWithdrawRequest(this.client, this.walletSync, bridge, state.withdrawLocked, state.currencyState, state.lastSuccessfulPayments, logger);
       bridge.scanRequested.value = true;
+    }
+
+    if (bridge.recoverLastPayoutRequested?.value) {
+      bridge.recoverLastPayoutRequested.value = false;
+      await handleRecoverLastPayoutRequest(this.walletSync, bridge, state.currencyState, state.lastSuccessfulPayments, logger);
     }
   }
 
