@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.16
+
+- Accept Wallet API records that omit `paymentType` while retaining strict account, category, currency, transfer, amount, bank-sync, and marker validation during income revaluation.
+- Continue rejecting records that explicitly identify as a non-income payment type.
+
 ## 0.7.15
 
 - Fix Wallet marker recovery after the Wallet API stopped accepting the unsupported `paymentType` query parameter on `GET /records`.

@@ -7127,7 +7127,16 @@ var require_wallet_sync = __commonJS({
             markIncomeUnclassified(entry, now);
             continue;
           }
-          if (normalizeText2(record.accountId) !== normalizeText2(referenceData.dataAnnotationAccount.id) || record.accountIsBankSync === true || normalizeText2(record.paymentType) !== "web_payment" || record.transfer || normalizeText2(record.amount?.currencyCode).toUpperCase() !== WALLET_CURRENCY || !normalizeText2(entry.note_marker) || !normalizeText2(record.note).includes(normalizeText2(entry.note_marker))) {
+          const paymentType = normalizeText2(record.paymentType).toLowerCase();
+          const recordType = normalizeText2(record.recordType).toLowerCase();
+          const recordCategoryId = normalizeText2(record.categoryId || record.category?.id);
+          const recordCategoryName = normalizeText2(record.category?.name).toLowerCase();
+          const expectedCategoryId = normalizeText2(referenceData.incomeCategory?.id);
+          const expectedCategoryName = normalizeText2(referenceData.incomeCategory?.name).toLowerCase();
+          const categoryMismatch = recordCategoryId && expectedCategoryId && recordCategoryId !== expectedCategoryId || recordCategoryName && expectedCategoryName && recordCategoryName !== expectedCategoryName;
+          const paymentTypeMismatch = paymentType && paymentType !== "web_payment";
+          const derivedTypeMismatch = !paymentType && recordType && recordType !== "income";
+          if (normalizeText2(record.accountId) !== normalizeText2(referenceData.dataAnnotationAccount.id) || record.accountIsBankSync === true || paymentTypeMismatch || derivedTypeMismatch || categoryMismatch || record.transfer || !Number.isFinite(Number(record.amount?.value)) || Number(record.amount.value) <= 0 || normalizeText2(record.amount?.currencyCode).toUpperCase() !== WALLET_CURRENCY || !normalizeText2(entry.note_marker) || !normalizeText2(record.note).includes(normalizeText2(entry.note_marker))) {
             this.logger.warning(`Wallet income record ${recordId} no longer matches revaluation safety checks; leaving it unchanged`);
             markIncomeHistoricalLocked(entry, now);
             continue;
@@ -8388,7 +8397,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.15",
+      version: "0.7.16",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

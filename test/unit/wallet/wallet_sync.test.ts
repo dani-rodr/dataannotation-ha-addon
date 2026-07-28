@@ -207,7 +207,6 @@ test('WalletSync verifies the current amount when a queued record rate already m
       id: 'active-record',
       accountId: 'da',
       accountIsBankSync: false,
-      paymentType: 'web_payment',
       transfer: null,
       amount: { value: 600, currencyCode: 'PHP' },
       note: `DAWALLET|income|${marker} proj=Active project usd=$10.00 php=PHP 600.00 rate=61.5790`,
@@ -238,7 +237,10 @@ test('WalletSync verifies the current amount when a queued record rate already m
 
     const result = await sync._applyQueuedRevaluation({
       state,
-      referenceData: { dataAnnotationAccount: { id: 'da' } },
+      referenceData: {
+        dataAnnotationAccount: { id: 'da' },
+        incomeCategory: { id: 'income', name: 'Income' },
+      },
       fx: { referenceRate: 61.579, settlementRate: 61.579 },
       now: new Date('2026-07-14T12:00:00.000Z'),
     });
@@ -248,6 +250,60 @@ test('WalletSync verifies the current amount when a queued record rate already m
     assert.equal(patchCalls[0][0].amount, 615.79);
     assert.equal(state.last_applied_settlement_rate, 61.579);
     assert.equal(state.pending_revaluation, null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WalletSync refuses an explicitly non-income payment type during revaluation', async () => {
+  const { sync, dir } = createWalletSync();
+  const marker = buildIncomeMarker('wrong-payment-type');
+
+  sync.client = {
+    fetchRecords: async () => [{
+      id: 'transfer-record',
+      accountId: 'da',
+      accountIsBankSync: false,
+      paymentType: 'transfer',
+      transfer: null,
+      amount: { value: 600, currencyCode: 'PHP' },
+      note: `DAWALLET|income|${marker} proj=Wrong type usd=$10.00 php=PHP 600.00 rate=60.0000`,
+    }],
+    patchRecords: async () => {
+      throw new Error('patch should not be called');
+    },
+  };
+
+  try {
+    const state = {
+      last_applied_settlement_rate: 60,
+      pending_revaluation: { settlement_rate: 61.579 },
+      imported_funds_entries: {
+        [marker]: {
+          note_marker: marker,
+          source_type: 'income',
+          source_fingerprint: 'wrong-payment-type',
+          source_amount_usd_cents: 1000,
+          source_rate: 60,
+          record_id: 'transfer-record',
+          status: 'pending',
+        },
+      },
+    };
+
+    const result = await sync._applyQueuedRevaluation({
+      state,
+      referenceData: {
+        dataAnnotationAccount: { id: 'da' },
+        incomeCategory: { id: 'income', name: 'Income' },
+      },
+      fx: { referenceRate: 61.579, settlementRate: 61.579 },
+      now: new Date('2026-07-14T12:00:00.000Z'),
+    });
+
+    assert.equal(result.changed, true);
+    assert.equal(state.imported_funds_entries[marker].status, 'historical_locked');
+    assert.equal(state.last_applied_settlement_rate, 61.579);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

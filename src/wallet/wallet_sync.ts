@@ -584,10 +584,25 @@ class WalletSync {
         continue;
       }
 
+      const paymentType = normalizeText(record.paymentType).toLowerCase();
+      const recordType = normalizeText(record.recordType).toLowerCase();
+      const recordCategoryId = normalizeText(record.categoryId || record.category?.id);
+      const recordCategoryName = normalizeText(record.category?.name).toLowerCase();
+      const expectedCategoryId = normalizeText(referenceData.incomeCategory?.id);
+      const expectedCategoryName = normalizeText(referenceData.incomeCategory?.name).toLowerCase();
+      const categoryMismatch = (recordCategoryId && expectedCategoryId && recordCategoryId !== expectedCategoryId)
+        || (recordCategoryName && expectedCategoryName && recordCategoryName !== expectedCategoryName);
+      const paymentTypeMismatch = paymentType && paymentType !== 'web_payment';
+      const derivedTypeMismatch = !paymentType && recordType && recordType !== 'income';
+
       if (normalizeText(record.accountId) !== normalizeText(referenceData.dataAnnotationAccount.id)
         || record.accountIsBankSync === true
-        || normalizeText(record.paymentType) !== 'web_payment'
+        || paymentTypeMismatch
+        || derivedTypeMismatch
+        || categoryMismatch
         || record.transfer
+        || !Number.isFinite(Number(record.amount?.value))
+        || Number(record.amount.value) <= 0
         || normalizeText(record.amount?.currencyCode).toUpperCase() !== WALLET_CURRENCY
         || !normalizeText(entry.note_marker)
         || !normalizeText(record.note).includes(normalizeText(entry.note_marker))) {
