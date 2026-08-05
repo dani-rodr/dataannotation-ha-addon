@@ -6649,6 +6649,7 @@ var require_wallet_sync = __commonJS({
             return { enabled: true, changed: false, reason: "fx_unavailable" };
           }
           let changed = this._queueRevaluationIfNeeded(state, fx, now);
+          const recordSnapshot = includeFundsHistory ? this._createIncomeRecordSnapshot() : null;
           const retriedWithdrawals = await this._retryPendingWithdrawalEvents({
             state,
             referenceData,
@@ -6663,14 +6664,16 @@ var require_wallet_sync = __commonJS({
               payments,
               fundsHistorySnapshot,
               fx,
-              now
+              now,
+              recordSnapshot
             });
             changed = changed || imported.changed;
             const revalued = await this._applyQueuedRevaluation({
               state,
               referenceData,
               fx,
-              now
+              now,
+              recordSnapshot
             });
             changed = changed || revalued.changed;
           }
@@ -6787,7 +6790,7 @@ var require_wallet_sync = __commonJS({
           return { enabled: true, changed: false, error: error.message };
         }
       }
-      async _importNewIncomeEntries({ state, referenceData, payments, fundsHistorySnapshot, fx, now }) {
+      async _importNewIncomeEntries({ state, referenceData, payments, fundsHistorySnapshot, fx, now, recordSnapshot = null }) {
         const entries = Array.isArray(fundsHistorySnapshot?.pending_payout_entries) ? fundsHistorySnapshot.pending_payout_entries : [];
         let changed = false;
         const seenFingerprintCounts = {};
@@ -6810,13 +6813,14 @@ var require_wallet_sync = __commonJS({
             continue;
           }
           if (existing?.record_id) {
-            const existingRecord = await this._recoverExistingRecord({
+            const existingRecord2 = await this._recoverExistingRecord({
               accountId: referenceData.dataAnnotationAccount.id,
               noteMarker: marker,
               paymentType: "web_payment",
-              categoryId: referenceData.incomeCategory.id
+              categoryId: referenceData.incomeCategory.id,
+              recordSnapshot
             });
-            if (existingRecord) {
+            if (existingRecord2) {
               const sourceAmountUsdCents = normalizeCents3(entry.amount_cents, entry.amount);
               const nextProject = normalizeText2(entry.project) || existing.source_project || null;
               const nextStatusUpdatedAt = now.toISOString();
@@ -6834,18 +6838,19 @@ var require_wallet_sync = __commonJS({
             this.logger.warning(`Wallet income marker ${marker} was stored in sync state but no matching Wallet record was found; leaving it absent`);
             continue;
           }
-          const existingRecords = await this.client.findRecordsByNote({
+          const existingRecord = await this._recoverExistingRecord({
             accountId: referenceData.dataAnnotationAccount.id,
-            noteMarker: marker
+            noteMarker: marker,
+            recordSnapshot
           });
-          if (existingRecords.length > 0) {
+          if (existingRecord) {
             state.imported_funds_entries[marker] = {
               key: marker,
               note_marker: marker,
               source_marker: sourceFingerprint,
               source_observation_id: normalizeText2(entry.observation_id) || null,
               source_project: normalizeText2(entry.project) || null,
-              record_id: existingRecords[0].id || null,
+              record_id: existingRecord.id || null,
               source_type: "income",
               source_fingerprint: sourceFingerprint,
               source_amount_usd_cents: normalizeCents3(entry.amount_cents, entry.amount),
@@ -6890,7 +6895,7 @@ var require_wallet_sync = __commonJS({
         }
         for (let index = 0; index < pendingCreates.length; index += DEFAULT_BATCH_SIZE) {
           const batch = pendingCreates.slice(index, index + DEFAULT_BATCH_SIZE);
-          const createdMap = await this._createIncomeRecordBatch(batch, referenceData, fx, now, state);
+          const createdMap = await this._createIncomeRecordBatch(batch, referenceData, fx, now, state, recordSnapshot);
           changed = changed || createdMap.changed;
         }
         const reconciliation = this._reconcileIncomeStatuses({
@@ -7013,7 +7018,7 @@ var require_wallet_sync = __commonJS({
         }
         return { changed };
       }
-      async _applyQueuedRevaluation({ state, referenceData, fx, now }) {
+      async _applyQueuedRevaluation({ state, referenceData, fx, now, recordSnapshot = null }) {
         const targetRate = roundToSix(fx.settlementRate);
         const queuedRate = Number(state?.pending_revaluation?.settlement_rate);
         const lastAppliedRate = Number(state?.last_applied_settlement_rate);
@@ -7055,6 +7060,8 @@ var require_wallet_sync = __commonJS({
           state.pending_revaluation = null;
           return { changed: true };
         }
+        const incomeRecordSnapshot = recordSnapshot || this._createIncomeRecordSnapshot();
+        await incomeRecordSnapshot.load();
         const patchItems = [];
         const patchMeta = [];
         for (const entry of staleEntries) {
@@ -7066,7 +7073,8 @@ var require_wallet_sync = __commonJS({
             const recovered = await this._recoverExistingRecord({
               accountId: referenceData.dataAnnotationAccount.id,
               noteMarker: entry.note_marker,
-              paymentType: "web_payment"
+              paymentType: "web_payment",
+              recordSnapshot: incomeRecordSnapshot
             });
             recordId = normalizeText2(recovered?.id);
             if (recordId) {
@@ -7076,8 +7084,7 @@ var require_wallet_sync = __commonJS({
               continue;
             }
           }
-          const records = await this.client.fetchRecords({ id: recordId, limit: 1 });
-          const record = Array.isArray(records) ? records[0] : null;
+          const record = incomeRecordSnapshot.byId.get(recordId) || null;
           if (!record) {
             this.logger.warning(`Wallet income record ${recordId} disappeared before revaluation; leaving it unchanged`);
             markIncomeUnclassified(entry, now);
@@ -7187,7 +7194,7 @@ var require_wallet_sync = __commonJS({
         }
         return changed;
       }
-      async _createIncomeRecordBatch(batch, referenceData, fx, now, state) {
+      async _createIncomeRecordBatch(batch, referenceData, fx, now, state, recordSnapshot = null) {
         if (!Array.isArray(batch) || batch.length === 0) {
           return { changed: false };
         }
@@ -7205,7 +7212,8 @@ var require_wallet_sync = __commonJS({
                 accountId: referenceData.dataAnnotationAccount.id,
                 noteMarker: item.marker,
                 paymentType: "web_payment",
-                categoryId: referenceData.incomeCategory.id
+                categoryId: referenceData.incomeCategory.id,
+                recordSnapshot
               });
               if (!recovered) {
                 failures.push(`${item.marker}: ${result.error || "rejected"}`);
@@ -7240,7 +7248,8 @@ var require_wallet_sync = __commonJS({
                 accountId: referenceData.dataAnnotationAccount.id,
                 noteMarker: item.marker,
                 paymentType: "web_payment",
-                categoryId: referenceData.incomeCategory.id
+                categoryId: referenceData.incomeCategory.id,
+                recordSnapshot
               });
               if (recovered) {
                 state.imported_funds_entries[item.marker] = {
@@ -7289,6 +7298,7 @@ var require_wallet_sync = __commonJS({
               status_updated_at: now.toISOString(),
               created_at: now.toISOString()
             };
+            recordSnapshot?.addRecord({ ...result.record || item.recordInput, id: recordId });
             changed = true;
           }
           if (failures.length > 0) {
@@ -7310,7 +7320,7 @@ var require_wallet_sync = __commonJS({
               noteMarker: item.marker,
               paymentType: "web_payment",
               categoryId: referenceData.incomeCategory.id
-            });
+            }, recordSnapshot);
             if (!created?.recordId) {
               continue;
             }
@@ -7532,14 +7542,14 @@ var require_wallet_sync = __commonJS({
           paymentType: "transfer"
         });
       }
-      async _createLedgerRecord(record, searchOptions) {
+      async _createLedgerRecord(record, searchOptions, recordSnapshot = null) {
         const marker = searchOptions.noteMarker;
         try {
           const response = await this.client.createRecords([record], true);
           const responseStatus = Number(response?.status || response?.statusCode || 0) || null;
           const result = Array.isArray(response?.results) ? response.results[0] || {} : {};
           if (result.success === false) {
-            const recovered = await this._recoverExistingRecord(searchOptions);
+            const recovered = await this._recoverExistingRecord({ ...searchOptions, recordSnapshot });
             if (recovered) {
               return { recordId: recovered.id || null, recovered: true };
             }
@@ -7547,18 +7557,20 @@ var require_wallet_sync = __commonJS({
           }
           const recordId = result.id || result.record?.id || null;
           if (!recordId) {
-            const recovered = await this._recoverExistingRecord(searchOptions);
+            const recovered = await this._recoverExistingRecord({ ...searchOptions, recordSnapshot });
             if (recovered) {
               return { recordId: recovered.id || null, recovered: true };
             }
             throw new Error(`Wallet record create returned no id${responseStatus ? ` (status ${responseStatus})` : ""}`);
           }
-          return {
+          const created = {
             recordId,
             record: result.record || null
           };
+          recordSnapshot?.addRecord({ ...result.record || record, id: recordId });
+          return created;
         } catch (error) {
-          const recovered = await this._recoverExistingRecord(searchOptions);
+          const recovered = await this._recoverExistingRecord({ ...searchOptions, recordSnapshot });
           if (recovered) {
             return { recordId: recovered.id || null, recovered: true };
           }
@@ -7566,9 +7578,61 @@ var require_wallet_sync = __commonJS({
           return null;
         }
       }
-      async _recoverExistingRecord({ accountId, noteMarker, paymentType = null, categoryId = null }) {
+      async _recoverExistingRecord({ accountId, noteMarker, paymentType = null, categoryId = null, recordSnapshot = null }) {
+        if (recordSnapshot) {
+          return recordSnapshot.findRecord({ accountId, noteMarker, categoryId });
+        }
         const records = await this.client.findRecordsByNote({ accountId, noteMarker, paymentType, categoryId });
         return records.length > 0 ? records[0] : null;
+      }
+      _createIncomeRecordSnapshot() {
+        const snapshot = {
+          records: null,
+          byId: /* @__PURE__ */ new Map(),
+          byMarker: /* @__PURE__ */ new Map(),
+          load: async () => {
+            if (snapshot.records !== null) {
+              return snapshot;
+            }
+            snapshot.records = await this.client.fetchRecords({
+              note: `contains.${NOTE_PREFIX}|income|`
+            });
+            for (const record of Array.isArray(snapshot.records) ? snapshot.records : []) {
+              snapshot.addRecord(record);
+            }
+            return snapshot;
+          },
+          addRecord: (record) => {
+            const recordId = normalizeText2(record?.id);
+            if (recordId) {
+              snapshot.byId.set(recordId, record);
+            }
+            const marker = extractIncomeMarker(record?.note);
+            if (!marker) {
+              return;
+            }
+            const markerKey = normalizeMarker(marker);
+            const records = snapshot.byMarker.get(markerKey) || [];
+            if (!records.some((candidate) => normalizeText2(candidate?.id) === recordId)) {
+              records.push(record);
+              snapshot.byMarker.set(markerKey, records);
+            }
+          },
+          findRecord: async ({ accountId, noteMarker, categoryId = null }) => {
+            await snapshot.load();
+            const candidates = snapshot.byMarker.get(normalizeMarker(noteMarker)) || [];
+            return candidates.find((record) => {
+              if (accountId && normalizeText2(record?.accountId) !== normalizeText2(accountId)) {
+                return false;
+              }
+              if (categoryId && normalizeText2(record?.categoryId || record?.category?.id) !== normalizeText2(categoryId)) {
+                return false;
+              }
+              return true;
+            }) || null;
+          }
+        };
+        return snapshot;
       }
       async _processWithdrawalFeeRecord(context, state, referenceData) {
         return this._createWithdrawalFeeRecord(context, state, referenceData);
@@ -7652,6 +7716,19 @@ var require_wallet_sync = __commonJS({
         value.push(`src=${truncateText(sourceFingerprint, 24)}`);
       }
       return truncateText(value.join(" "), 255);
+    }
+    function extractIncomeMarker(note) {
+      const prefix = `${NOTE_PREFIX}|income|`;
+      const value = String(note || "");
+      const start = value.indexOf(prefix);
+      if (start < 0) {
+        return null;
+      }
+      const marker = value.slice(start + prefix.length).split(/\s+/)[0];
+      return marker || null;
+    }
+    function normalizeMarker(value) {
+      return normalizeText2(value).toLowerCase();
     }
     function buildWithdrawalNote({ marker, kind, grossUsdCents, feeUsdCents, grossPhpCents, phpCents, netUsdCents, netPhpCents, fx }) {
       return truncateText(
@@ -7768,8 +7845,9 @@ var require_wallet_sync = __commonJS({
       }
       const retryAfterSeconds = Number(error.retryAfterSeconds || error.details?.retryAfterSeconds);
       const failureCount = Math.max(1, (Number(state.wallet_api_failure_count) || 0) + 1);
-      const baseDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0 ? retryAfterSeconds * 1e3 : Math.min(60 * 60 * 1e3, 15e3 * 2 ** Math.min(6, failureCount - 1));
-      const backoffMs = Math.max(15e3, baseDelayMs);
+      const retryAfterMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0 ? retryAfterSeconds * 1e3 : 0;
+      const exponentialMs = Math.min(60 * 60 * 1e3, 15e3 * 2 ** Math.min(6, failureCount - 1));
+      const backoffMs = Math.max(15e3, retryAfterMs, exponentialMs);
       state.wallet_api_failure_count = failureCount;
       state.wallet_api_retry_after_at = new Date(now.getTime() + backoffMs).toISOString();
       state.wallet_api_last_error = truncateText(String(error.message || "wallet api error"), 255);
@@ -8415,7 +8493,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.17",
+      version: "0.7.18",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.18
+
+- Replace per-entry Wallet income marker reads with one shared paginated snapshot per Funds History sync, while preserving duplicate prevention, manual-deletion handling, and revaluation safety checks.
+- Escalate repeated Wallet API rate-limit backoff even when the server returns short `Retry-After` values.
+- Add regression coverage for bounded Wallet reads and repeated rate limits.
+
 ## 0.7.17
 
 - Remove the unsafe manual Last Payout Wallet recovery control; ordinary sync no longer infers or recreates withdrawals from stale payout attributes.

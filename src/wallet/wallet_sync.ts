@@ -52,6 +52,7 @@ class WalletSync {
       }
 
       let changed = this._queueRevaluationIfNeeded(state, fx, now);
+      const recordSnapshot = includeFundsHistory ? this._createIncomeRecordSnapshot() : null;
 
       const retriedWithdrawals = await this._retryPendingWithdrawalEvents({
         state,
@@ -69,6 +70,7 @@ class WalletSync {
           fundsHistorySnapshot,
           fx,
           now,
+          recordSnapshot,
         });
         changed = changed || imported.changed;
 
@@ -77,6 +79,7 @@ class WalletSync {
           referenceData,
           fx,
           now,
+          recordSnapshot,
         });
         changed = changed || revalued.changed;
       }
@@ -215,7 +218,7 @@ class WalletSync {
     }
   }
 
-  async _importNewIncomeEntries({ state, referenceData, payments, fundsHistorySnapshot, fx, now }) {
+  async _importNewIncomeEntries({ state, referenceData, payments, fundsHistorySnapshot, fx, now, recordSnapshot = null }) {
     const entries = Array.isArray(fundsHistorySnapshot?.pending_payout_entries)
       ? fundsHistorySnapshot.pending_payout_entries
       : [];
@@ -250,6 +253,7 @@ class WalletSync {
           noteMarker: marker,
           paymentType: 'web_payment',
           categoryId: referenceData.incomeCategory.id,
+          recordSnapshot,
         });
         if (existingRecord) {
           const sourceAmountUsdCents = normalizeCents(entry.amount_cents, entry.amount);
@@ -274,18 +278,19 @@ class WalletSync {
         continue;
       }
 
-      const existingRecords = await this.client.findRecordsByNote({
+      const existingRecord = await this._recoverExistingRecord({
         accountId: referenceData.dataAnnotationAccount.id,
         noteMarker: marker,
+        recordSnapshot,
       });
-      if (existingRecords.length > 0) {
+      if (existingRecord) {
         state.imported_funds_entries[marker] = {
           key: marker,
           note_marker: marker,
           source_marker: sourceFingerprint,
           source_observation_id: normalizeText(entry.observation_id) || null,
           source_project: normalizeText(entry.project) || null,
-          record_id: existingRecords[0].id || null,
+          record_id: existingRecord.id || null,
           source_type: 'income',
           source_fingerprint: sourceFingerprint,
           source_amount_usd_cents: normalizeCents(entry.amount_cents, entry.amount),
@@ -333,7 +338,7 @@ class WalletSync {
 
     for (let index = 0; index < pendingCreates.length; index += DEFAULT_BATCH_SIZE) {
       const batch = pendingCreates.slice(index, index + DEFAULT_BATCH_SIZE);
-      const createdMap = await this._createIncomeRecordBatch(batch, referenceData, fx, now, state);
+      const createdMap = await this._createIncomeRecordBatch(batch, referenceData, fx, now, state, recordSnapshot);
       changed = changed || createdMap.changed;
     }
 
@@ -483,7 +488,7 @@ class WalletSync {
     return { changed };
   }
 
-  async _applyQueuedRevaluation({ state, referenceData, fx, now }) {
+  async _applyQueuedRevaluation({ state, referenceData, fx, now, recordSnapshot = null }) {
     const targetRate = roundToSix(fx.settlementRate);
     const queuedRate = Number(state?.pending_revaluation?.settlement_rate);
     const lastAppliedRate = Number(state?.last_applied_settlement_rate);
@@ -545,6 +550,9 @@ class WalletSync {
       return { changed: true };
     }
 
+    const incomeRecordSnapshot = recordSnapshot || this._createIncomeRecordSnapshot();
+    await incomeRecordSnapshot.load();
+
     const patchItems = [];
     const patchMeta = [];
     for (const entry of staleEntries) {
@@ -558,6 +566,7 @@ class WalletSync {
           accountId: referenceData.dataAnnotationAccount.id,
           noteMarker: entry.note_marker,
           paymentType: 'web_payment',
+          recordSnapshot: incomeRecordSnapshot,
         });
         recordId = normalizeText(recovered?.id);
         if (recordId) {
@@ -568,8 +577,7 @@ class WalletSync {
         }
       }
 
-      const records = await this.client.fetchRecords({ id: recordId, limit: 1 });
-      const record = Array.isArray(records) ? records[0] : null;
+      const record = incomeRecordSnapshot.byId.get(recordId) || null;
       if (!record) {
         this.logger.warning(`Wallet income record ${recordId} disappeared before revaluation; leaving it unchanged`);
         markIncomeUnclassified(entry, now);
@@ -720,7 +728,7 @@ class WalletSync {
     return changed;
   }
 
-  async _createIncomeRecordBatch(batch, referenceData, fx, now, state) {
+  async _createIncomeRecordBatch(batch, referenceData, fx, now, state, recordSnapshot = null) {
     if (!Array.isArray(batch) || batch.length === 0) {
       return { changed: false };
     }
@@ -745,6 +753,7 @@ class WalletSync {
             noteMarker: item.marker,
             paymentType: 'web_payment',
             categoryId: referenceData.incomeCategory.id,
+            recordSnapshot,
           });
           if (!recovered) {
             failures.push(`${item.marker}: ${result.error || 'rejected'}`);
@@ -782,6 +791,7 @@ class WalletSync {
             noteMarker: item.marker,
             paymentType: 'web_payment',
             categoryId: referenceData.incomeCategory.id,
+            recordSnapshot,
           });
           if (recovered) {
             state.imported_funds_entries[item.marker] = {
@@ -832,6 +842,7 @@ class WalletSync {
           status_updated_at: now.toISOString(),
           created_at: now.toISOString(),
         };
+        recordSnapshot?.addRecord({ ...(result.record || item.recordInput), id: recordId });
         changed = true;
       }
 
@@ -856,7 +867,7 @@ class WalletSync {
           noteMarker: item.marker,
           paymentType: 'web_payment',
           categoryId: referenceData.incomeCategory.id,
-        });
+        }, recordSnapshot);
 
         if (!created?.recordId) {
           continue;
@@ -1113,7 +1124,7 @@ class WalletSync {
     });
   }
 
-  async _createLedgerRecord(record, searchOptions) {
+  async _createLedgerRecord(record, searchOptions, recordSnapshot = null) {
     const marker = searchOptions.noteMarker;
     try {
       const response = await this.client.createRecords([record], true);
@@ -1121,7 +1132,7 @@ class WalletSync {
       const result = Array.isArray(response?.results) ? response.results[0] || {} : {};
 
       if (result.success === false) {
-        const recovered = await this._recoverExistingRecord(searchOptions);
+        const recovered = await this._recoverExistingRecord({ ...searchOptions, recordSnapshot });
         if (recovered) {
           return { recordId: recovered.id || null, recovered: true };
         }
@@ -1131,7 +1142,7 @@ class WalletSync {
 
       const recordId = result.id || result.record?.id || null;
       if (!recordId) {
-        const recovered = await this._recoverExistingRecord(searchOptions);
+        const recovered = await this._recoverExistingRecord({ ...searchOptions, recordSnapshot });
         if (recovered) {
           return { recordId: recovered.id || null, recovered: true };
         }
@@ -1139,12 +1150,14 @@ class WalletSync {
         throw new Error(`Wallet record create returned no id${responseStatus ? ` (status ${responseStatus})` : ''}`);
       }
 
-      return {
+      const created = {
         recordId,
         record: result.record || null,
       };
+      recordSnapshot?.addRecord({ ...(result.record || record), id: recordId });
+      return created;
     } catch (error) {
-      const recovered = await this._recoverExistingRecord(searchOptions);
+      const recovered = await this._recoverExistingRecord({ ...searchOptions, recordSnapshot });
       if (recovered) {
         return { recordId: recovered.id || null, recovered: true };
       }
@@ -1154,9 +1167,70 @@ class WalletSync {
     }
   }
 
-  async _recoverExistingRecord({ accountId, noteMarker, paymentType = null, categoryId = null }) {
+  async _recoverExistingRecord({ accountId, noteMarker, paymentType = null, categoryId = null, recordSnapshot = null }) {
+    if (recordSnapshot) {
+      return recordSnapshot.findRecord({ accountId, noteMarker, categoryId });
+    }
+
     const records = await this.client.findRecordsByNote({ accountId, noteMarker, paymentType, categoryId });
     return records.length > 0 ? records[0] : null;
+  }
+
+  _createIncomeRecordSnapshot() {
+    const snapshot = {
+      records: null,
+      byId: new Map(),
+      byMarker: new Map(),
+      load: async () => {
+        if (snapshot.records !== null) {
+          return snapshot;
+        }
+
+        snapshot.records = await this.client.fetchRecords({
+          note: `contains.${NOTE_PREFIX}|income|`,
+        });
+        for (const record of Array.isArray(snapshot.records) ? snapshot.records : []) {
+          snapshot.addRecord(record);
+        }
+
+        return snapshot;
+      },
+      addRecord: (record) => {
+        const recordId = normalizeText(record?.id);
+        if (recordId) {
+          snapshot.byId.set(recordId, record);
+        }
+
+        const marker = extractIncomeMarker(record?.note);
+        if (!marker) {
+          return;
+        }
+
+        const markerKey = normalizeMarker(marker);
+        const records = snapshot.byMarker.get(markerKey) || [];
+        if (!records.some((candidate) => normalizeText(candidate?.id) === recordId)) {
+          records.push(record);
+          snapshot.byMarker.set(markerKey, records);
+        }
+      },
+      findRecord: async ({ accountId, noteMarker, categoryId = null }) => {
+        await snapshot.load();
+        const candidates = snapshot.byMarker.get(normalizeMarker(noteMarker)) || [];
+        return candidates.find((record) => {
+          if (accountId && normalizeText(record?.accountId) !== normalizeText(accountId)) {
+            return false;
+          }
+
+          if (categoryId && normalizeText(record?.categoryId || record?.category?.id) !== normalizeText(categoryId)) {
+            return false;
+          }
+
+          return true;
+        }) || null;
+      },
+    };
+
+    return snapshot;
   }
 
   async _processWithdrawalFeeRecord(context, state, referenceData) {
@@ -1246,6 +1320,22 @@ function buildIncomeNote({ noteMarker, sourceFingerprint, usdAmount, phpAmount, 
     value.push(`src=${truncateText(sourceFingerprint, 24)}`);
   }
   return truncateText(value.join(' '), 255);
+}
+
+function extractIncomeMarker(note) {
+  const prefix = `${NOTE_PREFIX}|income|`;
+  const value = String(note || '');
+  const start = value.indexOf(prefix);
+  if (start < 0) {
+    return null;
+  }
+
+  const marker = value.slice(start + prefix.length).split(/\s+/)[0];
+  return marker || null;
+}
+
+function normalizeMarker(value) {
+  return normalizeText(value).toLowerCase();
 }
 
 function buildWithdrawalNote({ marker, kind, grossUsdCents, feeUsdCents, grossPhpCents, phpCents, netUsdCents, netPhpCents, fx }) {
@@ -1396,10 +1486,11 @@ function applyWalletApiBackoff(state, error, now) {
 
   const retryAfterSeconds = Number(error.retryAfterSeconds || error.details?.retryAfterSeconds);
   const failureCount = Math.max(1, (Number(state.wallet_api_failure_count) || 0) + 1);
-  const baseDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
+  const retryAfterMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
     ? retryAfterSeconds * 1000
-    : Math.min(60 * 60 * 1000, 15_000 * (2 ** Math.min(6, failureCount - 1)));
-  const backoffMs = Math.max(15_000, baseDelayMs);
+    : 0;
+  const exponentialMs = Math.min(60 * 60 * 1000, 15_000 * (2 ** Math.min(6, failureCount - 1)));
+  const backoffMs = Math.max(15_000, retryAfterMs, exponentialMs);
 
   state.wallet_api_failure_count = failureCount;
   state.wallet_api_retry_after_at = new Date(now.getTime() + backoffMs).toISOString();

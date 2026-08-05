@@ -48,7 +48,7 @@ function buildIncomeMarker(sourceFingerprint, occurrence = 1) {
 test('WalletSync imports new funds history entries once and dedupes on rerun', async () => {
   const { sync, dir } = createWalletSync();
   const createdRecords = [];
-  let findCallCount = 0;
+  const walletRecords = [];
 
   sync.client = {
     fetchAccounts: async () => [
@@ -59,12 +59,10 @@ test('WalletSync imports new funds history entries once and dedupes on rerun', a
       { id: 'income', name: 'Income', archived: false },
       { id: 'fees', name: 'Charges, Fees', archived: false },
     ],
-    findRecordsByNote: async () => {
-      findCallCount += 1;
-      return findCallCount === 1 ? [] : [{ id: 'record-1' }];
-    },
+    fetchRecords: async () => walletRecords,
     createRecords: async (records) => {
       createdRecords.push(records);
+      walletRecords.push(...records.map((record, index) => ({ ...record, id: `record-${index + 1}` })));
       return { results: records.map((record, index) => ({ success: true, id: `record-${index + 1}`, record })) };
     },
   };
@@ -119,6 +117,100 @@ test('WalletSync imports new funds history entries once and dedupes on rerun', a
     assert.equal(second.enabled, true);
     assert.equal(second.changed, false);
     assert.equal(createdRecords.length, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WalletSync snapshots managed income records once for many existing and new entries', async () => {
+  const { sync, dir } = createWalletSync();
+  sync.config.wallet_settlement_adjustment = 1;
+  const existingRecords = [];
+  const createdRecords = [];
+  let fetchRecordCount = 0;
+  let findRecordCount = 0;
+
+  const pendingEntries = Array.from({ length: 51 }, (_, index) => ({
+    status: 'pending',
+    project: `Project ${index}`,
+    amount_cents: 1000,
+    first_seen_at: `2026-07-14T11:${String(index).padStart(2, '0')}:00.000Z`,
+    observation_id: `observation-${index}`,
+  }));
+
+  for (const entry of pendingEntries.slice(0, 46)) {
+    const marker = buildIncomeMarker(entry.observation_id);
+    existingRecords.push({
+      id: `existing-${existingRecords.length}`,
+      accountId: 'da',
+      accountIsBankSync: false,
+      paymentType: 'web_payment',
+      transfer: null,
+      amount: { value: 61.579, currencyCode: 'PHP' },
+      note: `DAWALLET|income|${marker} proj=${entry.project} usd=$10.00 php=PHP 61.58 rate=61.5790`,
+    });
+  }
+
+  sync.client = {
+    fetchAccounts: async () => [
+      { id: 'da', name: 'Data Annotation', currencyCode: 'PHP' },
+      { id: 'gt', name: 'GoTyme', currencyCode: 'PHP' },
+    ],
+    fetchCategories: async () => [
+      { id: 'income', name: 'Income', archived: false },
+      { id: 'fees', name: 'Charges, Fees', archived: false },
+    ],
+    fetchRecords: async () => {
+      fetchRecordCount += 1;
+      return existingRecords;
+    },
+    findRecordsByNote: async () => {
+      findRecordCount += 1;
+      return [];
+    },
+    createRecords: async (records) => {
+      createdRecords.push(records);
+      return {
+        results: records.map((record, index) => ({
+          success: true,
+          id: `created-${index}`,
+          record,
+        })),
+      };
+    },
+    patchRecords: async (records) => ({
+      results: records.map((record) => ({ success: true, id: record.id, record })),
+    }),
+  };
+
+  try {
+    const result = await sync.processSync({
+      payments: {
+        pending_payout_entries: pendingEntries,
+        available_amount_cents: 0,
+        available_amount: 0,
+      },
+      fundsHistorySnapshot: { pending_payout_entries: pendingEntries },
+      includeFundsHistory: true,
+      currencyState: {
+        usd_php_rate: 61.579,
+        usd_php_rate_date: '2026-07-14',
+        usd_php_rate_fetched_at: '2026-07-14T10:00:00.000Z',
+        usd_php_rate_source: 'test',
+      },
+      now: new Date('2026-07-14T12:00:00.000Z'),
+    });
+
+    assert.equal(result.enabled, true);
+    assert.equal(result.changed, true, result.error);
+    assert.equal(fetchRecordCount, 1);
+    assert.equal(findRecordCount, 0);
+    assert.equal(createdRecords.length, 1);
+    assert.equal(createdRecords[0].length, 5);
+
+    const state = JSON.parse(fs.readFileSync(sync.statePath, 'utf8'));
+    assert.equal(Object.keys(state.imported_funds_entries).length, 51);
+    assert.equal(state.last_applied_settlement_rate, 61.579);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -322,7 +414,7 @@ test('WalletSync leaves a manually deleted income record absent instead of recre
       { id: 'income', name: 'Income', archived: false },
       { id: 'fees', name: 'Charges, Fees', archived: false },
     ],
-    findRecordsByNote: async () => [],
+    fetchRecords: async () => [],
     createRecords: async (records) => {
       createdRecords.push(records);
       return { results: records.map((record, index) => ({ success: true, id: `record-${index + 1}`, record })) };
@@ -397,6 +489,7 @@ test('WalletSync marks a partial income batch as failed and backs off', async ()
       { id: 'income', name: 'Income', archived: false },
       { id: 'fees', name: 'Charges, Fees', archived: false },
     ],
+    fetchRecords: async () => [],
     findRecordsByNote: async () => [],
     createRecords: async (records) => {
       createdRecords.push(records);
@@ -662,7 +755,7 @@ test('WalletSync revalues current pending income and locks historical income out
       return [];
     },
     fetchRecords: async ({ id }) => {
-      if (id === 'record-pending') {
+      if (!id || id === 'record-pending') {
         return [{
           id: 'record-pending',
           accountId: 'da',
@@ -796,8 +889,7 @@ test('WalletSync revalues available funds only when the missing pending set matc
     ],
     findRecordsByNote: async () => [],
     fetchRecords: async ({ id }) => {
-      if (id === 'record-a') {
-        return [{
+      const records = [{
           id: 'record-a',
           accountId: 'da',
           accountIsBankSync: false,
@@ -805,11 +897,7 @@ test('WalletSync revalues available funds only when the missing pending set matc
           transfer: null,
           amount: { value: 10, currencyCode: 'PHP' },
           note: `DAWALLET|income|${markerA} proj=Available A usd=$10.00 php=PHP 9.00 rate=60.0000`,
-        }];
-      }
-
-      if (id === 'record-b') {
-        return [{
+        }, {
           id: 'record-b',
           accountId: 'da',
           accountIsBankSync: false,
@@ -818,9 +906,7 @@ test('WalletSync revalues available funds only when the missing pending set matc
           amount: { value: 20, currencyCode: 'PHP' },
           note: `DAWALLET|income|${markerB} proj=Available B usd=$20.00 php=PHP 18.00 rate=60.0000`,
         }];
-      }
-
-      return [];
+      return id ? records.filter((record) => record.id === id) : records;
     },
     patchRecords: async (records) => {
       patchCalls.push(records);
@@ -1304,6 +1390,52 @@ test('WalletSync persists a backoff when the Wallet API rate limits requests', a
 
     assert.equal(skipped.reason, 'wallet_backoff');
     assert.equal(fetchCount, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WalletSync escalates repeated short Wallet API rate-limit delays', async () => {
+  const { sync, dir } = createWalletSync();
+  let fetchCount = 0;
+
+  sync.client = {
+    fetchAccounts: async () => {
+      fetchCount += 1;
+      const error = new Error('rate limited');
+      error.status = 429;
+      error.retryAfterSeconds = 1;
+      throw error;
+    },
+  };
+
+  const payments = { pending_payout_entries: [], available_amount_cents: 0, available_amount: 0 };
+  const currencyState = {
+    usd_php_rate: 61.579,
+    usd_php_rate_date: '2026-07-14',
+    usd_php_rate_fetched_at: '2026-07-14T10:00:00.000Z',
+    usd_php_rate_source: 'test',
+  };
+  const firstNow = new Date('2026-07-14T12:00:00.000Z');
+
+  try {
+    await sync.processSync({ payments, includeFundsHistory: true, currencyState, now: firstNow });
+    const firstState = JSON.parse(fs.readFileSync(sync.statePath, 'utf8'));
+    const firstRetryAt = new Date(firstState.wallet_api_retry_after_at);
+    assert.equal(firstRetryAt.getTime() - firstNow.getTime(), 15_000);
+
+    const secondNow = new Date(firstRetryAt);
+    await sync.processSync({ payments, includeFundsHistory: true, currencyState, now: secondNow });
+    const secondState = JSON.parse(fs.readFileSync(sync.statePath, 'utf8'));
+    const secondRetryAt = new Date(secondState.wallet_api_retry_after_at);
+    assert.equal(secondRetryAt.getTime() - secondNow.getTime(), 30_000);
+
+    const thirdNow = new Date(secondRetryAt);
+    await sync.processSync({ payments, includeFundsHistory: true, currencyState, now: thirdNow });
+    const thirdState = JSON.parse(fs.readFileSync(sync.statePath, 'utf8'));
+    const thirdRetryAt = new Date(thirdState.wallet_api_retry_after_at);
+    assert.equal(thirdRetryAt.getTime() - thirdNow.getTime(), 60_000);
+    assert.equal(fetchCount, 3);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
