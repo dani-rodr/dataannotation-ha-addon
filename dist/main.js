@@ -1923,6 +1923,7 @@ var require_funds_history_observations = __commonJS({
     var DEFAULT_OBSERVATIONS = {
       version: 2,
       entries: {},
+      api_cutover_at: null,
       updated_at: null
     };
     function loadFundsHistoryObservations(filePath) {
@@ -1949,7 +1950,7 @@ var require_funds_history_observations = __commonJS({
       const seenObservationIds = /* @__PURE__ */ new Set();
       const matchedStableKeys = /* @__PURE__ */ new Map();
       const seenFingerprintCounts = /* @__PURE__ */ new Map();
-      const { byFingerprint, byStableKey } = buildObservationIndex(state);
+      const { byFingerprint, bySourceEntryId, byStableKey } = buildObservationIndex(state);
       const mergedEntries = [];
       for (const entry of sortParsedEntries(entries)) {
         if (!entry || !entry.status) {
@@ -1961,10 +1962,11 @@ var require_funds_history_observations = __commonJS({
         if (fingerprint) {
           seenFingerprintCounts.set(fingerprint, fingerprintCount);
         }
-        const exactExisting = fingerprint ? byFingerprint.get(fingerprint) || null : null;
+        const sourceEntryId = normalizeText2(entry?.source_entry_id);
+        const exactExisting = sourceEntryId ? bySourceEntryId.get(sourceEntryId) || null : findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
         const stableCandidates = stableKey ? byStableKey.get(stableKey) || [] : [];
         let existing = exactExisting;
-        if (!existing && stableCandidates.length > 0) {
+        if (!existing && !sourceEntryId && stableCandidates.length > 0) {
           const candidate = stableCandidates.find((item) => !seenObservationIds.has(normalizeText2(item?.observation_id)));
           if (candidate) {
             const matchedCount = matchedStableKeys.get(stableKey) || 0;
@@ -1977,8 +1979,12 @@ var require_funds_history_observations = __commonJS({
             delete state.entries[existing.observation_id];
             seenObservationIds.add(existing.observation_id);
           }
-          if (fingerprint && byFingerprint.has(fingerprint)) {
-            const observation = byFingerprint.get(fingerprint);
+          if (!sourceEntryId && fingerprint && byFingerprint.has(fingerprint)) {
+            const observation = findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
+            if (!observation) {
+              mergedEntries.push(entry);
+              continue;
+            }
             delete state.entries[observation.observation_id];
             seenObservationIds.add(observation.observation_id);
           }
@@ -2085,6 +2091,8 @@ var require_funds_history_observations = __commonJS({
     function pickStoredObservationFields(entry) {
       return {
         observation_id: entry.observation_id,
+        source_entry_id: entry.source_entry_id || null,
+        source_created_at: entry.source_created_at || null,
         fingerprint: entry.fingerprint,
         current_fingerprint: entry.current_fingerprint,
         aliases: entry.aliases,
@@ -2121,6 +2129,7 @@ var require_funds_history_observations = __commonJS({
       return {
         version: 2,
         entries: normalizedEntries,
+        api_cutover_at: normalizeIsoDate(value?.api_cutover_at) || null,
         updated_at: normalizeIsoDate(value?.updated_at) || null
       };
     }
@@ -2152,6 +2161,8 @@ var require_funds_history_observations = __commonJS({
       const normalizedAliases = uniqueTextList([normalizedFingerprint, normalizedObservationId, ...aliases].filter(Boolean));
       const normalized = {
         observation_id: normalizedObservationId,
+        source_entry_id: normalizeText2(entry.source_entry_id) || null,
+        source_created_at: normalizeIsoDate(entry.source_created_at) || null,
         fingerprint: normalizedFingerprint,
         current_fingerprint: normalizeText2(entry.current_fingerprint || normalizedFingerprint) || normalizedFingerprint,
         aliases: normalizedAliases,
@@ -2289,7 +2300,9 @@ var require_funds_history_observations = __commonJS({
       return suffix > 1 ? `obs_${hash}#${suffix}` : `obs_${hash}`;
     }
     function toObservationRecord(entry, currentFingerprint, now, existing = null, aliases = [], occurrence = 1) {
-      const observationId = existing?.observation_id || (occurrence > 1 ? makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence) : currentFingerprint || makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence));
+      const sourceEntryId = normalizeText2(entry?.source_entry_id) || normalizeText2(existing?.source_entry_id);
+      const sourceCreatedAt = normalizeIsoDate(entry?.source_created_at) || normalizeIsoDate(existing?.source_created_at);
+      const observationId = existing?.observation_id || (sourceEntryId ? makeObservationId(`source:${sourceEntryId}`) : occurrence > 1 ? makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence) : currentFingerprint || makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence));
       const fingerprintAliases = uniqueTextList([
         ...Array.isArray(existing?.aliases) ? existing.aliases : [],
         ...Array.isArray(aliases) ? aliases : [],
@@ -2299,6 +2312,8 @@ var require_funds_history_observations = __commonJS({
       ]);
       return {
         observation_id: observationId,
+        source_entry_id: sourceEntryId || null,
+        source_created_at: sourceCreatedAt || null,
         fingerprint: currentFingerprint,
         current_fingerprint: currentFingerprint,
         aliases: fingerprintAliases,
@@ -2325,14 +2340,22 @@ var require_funds_history_observations = __commonJS({
     }
     function buildObservationIndex(state) {
       const byFingerprint = /* @__PURE__ */ new Map();
+      const bySourceEntryId = /* @__PURE__ */ new Map();
       const byStableKey = /* @__PURE__ */ new Map();
       for (const observation of Object.values(state?.entries || {})) {
         const id = normalizeText2(observation?.observation_id);
         if (!id) {
           continue;
         }
+        const sourceEntryId = normalizeText2(observation?.source_entry_id);
+        if (sourceEntryId) {
+          bySourceEntryId.set(sourceEntryId, observation);
+        }
         for (const alias of uniqueTextList([observation?.fingerprint, observation?.current_fingerprint, ...Array.isArray(observation?.aliases) ? observation.aliases : []])) {
-          byFingerprint.set(alias, observation);
+          if (!byFingerprint.has(alias)) {
+            byFingerprint.set(alias, []);
+          }
+          byFingerprint.get(alias).push(observation);
         }
         const stableKey = normalizeText2(observation?.stable_key);
         if (!stableKey) {
@@ -2353,7 +2376,10 @@ var require_funds_history_observations = __commonJS({
           return String(left?.observation_id || "").localeCompare(String(right?.observation_id || ""));
         });
       }
-      return { byFingerprint, byStableKey };
+      return { byFingerprint, bySourceEntryId, byStableKey };
+    }
+    function findUnusedObservation(observations, seenObservationIds) {
+      return (Array.isArray(observations) ? observations : []).find((observation) => !seenObservationIds.has(normalizeText2(observation?.observation_id))) || null;
     }
     function cloneObservations(value) {
       return normalizeObservations(JSON.parse(JSON.stringify(value)));
@@ -2391,6 +2417,7 @@ var require_funds_history = __commonJS({
   "src/scrapers/funds_history.ts"(exports2, module2) {
     "use strict";
     var MONTH_SUMMARY_PATTERN = /^[A-Z][a-z]{2}\s+\d{1,2}(?:\s+\$[\d,]+(?:\.\d{2})?)?$/;
+    var DAY_MS = 24 * 60 * 60 * 1e3;
     var {
       applyFundsHistoryObservations,
       loadFundsHistoryObservations,
@@ -2412,7 +2439,7 @@ var require_funds_history = __commonJS({
       "nov",
       "dec"
     ];
-    async function scrapeFundsHistory(page, { observationsPath = null, now = /* @__PURE__ */ new Date() } = {}) {
+    async function scrapeFundsHistory(page, { observationsPath = null, now = /* @__PURE__ */ new Date(), apiEntries = null } = {}) {
       const historyTabReady = await openFundsHistoryTab(page);
       const historyRowsReady = await expandFundsHistoryRows(page);
       const rows = await page.$$eval("tr", (tableRows) => {
@@ -2421,7 +2448,8 @@ var require_funds_history = __commonJS({
       });
       const parsedEntries = parseFundsHistoryEntries(rows, now);
       const observations = loadFundsHistoryObservations(observationsPath);
-      const merged = applyFundsHistoryObservations(parsedEntries, observations, now);
+      const selectedEntries = selectFundsHistoryEntries(parsedEntries, apiEntries, observations, now);
+      const merged = applyFundsHistoryObservations(selectedEntries.entries, selectedEntries.observations, now);
       if (observationsPath) {
         try {
           saveFundsHistoryObservations(observationsPath, merged.observations);
@@ -2474,6 +2502,130 @@ var require_funds_history = __commonJS({
         last_payout_amount_formatted: lastPayoutSummary.amount_formatted
       };
     }
+    function selectFundsHistoryEntries(parsedEntries, apiEntries, observations, now = /* @__PURE__ */ new Date()) {
+      const normalizedApiEntries = normalizeApiPayoutEntries(apiEntries, now);
+      const nextObservations = observations && typeof observations === "object" ? { ...observations, entries: { ...observations.entries || {} } } : { version: 2, entries: {}, api_cutover_at: null, updated_at: null };
+      if (apiEntries === null || apiEntries === void 0) {
+        return { entries: parsedEntries, observations: nextObservations };
+      }
+      if (!normalizeDate3(nextObservations.api_cutover_at)) {
+        nextObservations.api_cutover_at = normalizeIsoDate(now);
+        return { entries: parsedEntries, observations: nextObservations };
+      }
+      const cutoff = normalizeDate3(nextObservations.api_cutover_at);
+      const futureEntries = normalizedApiEntries.filter((entry) => {
+        const createdAt = normalizeDate3(entry.source_created_at);
+        return createdAt && cutoff && createdAt >= cutoff;
+      });
+      if (futureEntries.length === 0) {
+        return { entries: parsedEntries, observations: nextObservations };
+      }
+      const usedPageIndexes = /* @__PURE__ */ new Set();
+      for (const apiEntry of futureEntries) {
+        const pageIndex = findMatchingPageEntry(parsedEntries, apiEntry, usedPageIndexes);
+        if (pageIndex !== null) {
+          usedPageIndexes.add(pageIndex);
+        }
+      }
+      return {
+        entries: parsedEntries.filter((_, index) => !usedPageIndexes.has(index)).concat(futureEntries),
+        observations: nextObservations
+      };
+    }
+    function normalizeApiPayoutEntries(value, now = /* @__PURE__ */ new Date()) {
+      const workLogs = Array.isArray(value?.workLogs) ? value.workLogs : [];
+      const timedWorkEntries = Array.isArray(value?.timedWorkEntries) ? value.timedWorkEntries : [];
+      return workLogs.concat(timedWorkEntries).map((entry) => normalizeApiPayoutEntry(entry, now)).filter(Boolean);
+    }
+    function normalizeApiPayoutEntry(entry, now = /* @__PURE__ */ new Date()) {
+      const createdAt = normalizeDate3(entry?.createdAt);
+      const sourceId = normalizeText2(entry?.id);
+      if (!createdAt || !sourceId) {
+        return null;
+      }
+      const isTimed = entry?.type === "TimedWorkEntry";
+      const status = entry?.status === "Pending Approval" ? "pending" : entry?.status === "Paid" ? "paid" : null;
+      if (!status) {
+        return null;
+      }
+      const dueDays = isTimed ? 7 : 3;
+      const age = getRelativeAge(createdAt, now);
+      const amountCents = numberOrZero3(entry?.amountInCents);
+      const sourceCreatedAt = createdAt.toISOString();
+      const entryDate = `${sourceCreatedAt.slice(0, 10)}T00:00:00.000Z`;
+      return {
+        source_entry_id: `api:${entry.type}:${sourceId}`,
+        source_created_at: sourceCreatedAt,
+        project: normalizeText2(entry?.project?.name) || null,
+        kind: isTimed ? "hourly" : "task",
+        status,
+        amount: formatCents3(amountCents),
+        amount_cents: amountCents,
+        duration: isTimed ? formatDuration(entry?.timeInMinutes) : null,
+        relative_age_value: age.value,
+        relative_age_unit: age.unit,
+        relative_age_text: age.text,
+        days_ago: Math.ceil(age.ageMs / DAY_MS),
+        days_until_available: Math.max(0, Math.ceil(dueDays - age.ageMs / DAY_MS)),
+        entry_date: entryDate,
+        due_days: dueDays,
+        estimated_work_at: sourceCreatedAt,
+        estimated_payout_at: new Date(createdAt.getTime() + dueDays * DAY_MS).toISOString(),
+        estimate_source: "api_created_at",
+        estimate_confidence: "high"
+      };
+    }
+    function findMatchingPageEntry(entries, apiEntry, usedIndexes) {
+      const candidates = (Array.isArray(entries) ? entries : []).map((entry, index) => ({ entry, index })).filter(({ entry, index }) => !usedIndexes.has(index) && entry?.status === apiEntry.status && payoutEntryMatchKey(entry) === payoutEntryMatchKey(apiEntry));
+      if (candidates.length === 0) {
+        return null;
+      }
+      const apiWorkAt = normalizeDate3(apiEntry.estimated_work_at)?.getTime() || 0;
+      candidates.sort((left, right) => {
+        const leftWorkAt = normalizeDate3(left.entry?.estimated_work_at)?.getTime() || 0;
+        const rightWorkAt = normalizeDate3(right.entry?.estimated_work_at)?.getTime() || 0;
+        return Math.abs(leftWorkAt - apiWorkAt) - Math.abs(rightWorkAt - apiWorkAt) || left.index - right.index;
+      });
+      return candidates[0].index;
+    }
+    function payoutEntryMatchKey(entry) {
+      return [
+        normalizeText2(entry?.project),
+        normalizeText2(entry?.kind),
+        String(numberOrZero3(entry?.amount_cents)),
+        normalizeText2(entry?.duration)
+      ].join("|");
+    }
+    function getRelativeAge(createdAt, now) {
+      const ageMs = Math.max(0, (normalizeDate3(now) || /* @__PURE__ */ new Date()).getTime() - createdAt.getTime());
+      const units = [
+        ["week", 7 * DAY_MS],
+        ["day", DAY_MS],
+        ["hour", 60 * 60 * 1e3],
+        ["minute", 60 * 1e3],
+        ["second", 1e3]
+      ];
+      const [unit, unitMs] = units.find(([, milliseconds]) => ageMs >= milliseconds) || units[units.length - 1];
+      const value = Math.floor(ageMs / unitMs);
+      return {
+        ageMs,
+        value,
+        unit,
+        text: `${value} ${unit}${value === 1 ? "" : "s"} ago`
+      };
+    }
+    function formatDuration(value) {
+      const minutes = Math.max(0, Math.trunc(Number(value) || 0));
+      const hours = Math.floor(minutes / 60);
+      const remainder = minutes % 60;
+      if (hours > 0 && remainder > 0) {
+        return `${hours}h ${remainder} min`;
+      }
+      if (hours > 0) {
+        return `${hours}h`;
+      }
+      return `${remainder} min`;
+    }
     function formatPublicPayoutEntries(entries) {
       return sortPayoutEntries(entries).map((entry) => formatPublicPayoutEntry(entry));
     }
@@ -2485,6 +2637,8 @@ var require_funds_history = __commonJS({
         relative_age: entry?.relative_age_text || null,
         estimated_work_at: formatHumanTimestamp(entry?.estimated_work_at),
         estimated_payout_at: formatHumanTimestamp(entry?.estimated_payout_at),
+        estimated_work_at_iso: normalizeIsoDate(entry?.estimated_work_at),
+        estimated_payout_at_iso: normalizeIsoDate(entry?.estimated_payout_at),
         source: entry?.estimate_source || null,
         confidence: entry?.estimate_confidence || null
       };
@@ -2824,6 +2978,8 @@ var require_funds_history = __commonJS({
       summarizeFundsHistoryEntries,
       parseFundsHistoryDetailRow,
       formatPublicPayoutEntries,
+      normalizeApiPayoutEntries,
+      selectFundsHistoryEntries,
       isProjectSummaryRow,
       extractProjectName
     };
@@ -3254,6 +3410,27 @@ var require_payments = __commonJS({
         }
         return await response.json();
       });
+      let apiEntries = null;
+      if (includeFundsHistory) {
+        try {
+          apiEntries = await page.evaluate(async () => {
+            const response = await fetch("/api_internal/payments/recent_work_logs_and_timed_work_entries?include_paid=true", {
+              credentials: "include",
+              headers: { Accept: "application/json" }
+            });
+            if (!response.ok) {
+              throw new Error(`recent payout entries request failed with ${response.status}`);
+            }
+            const payload = await response.json();
+            if (!payload || !Array.isArray(payload.workLogs) || !Array.isArray(payload.timedWorkEntries)) {
+              throw new Error("recent payout entries response has an invalid shape");
+            }
+            return payload;
+          });
+        } catch {
+          apiEntries = null;
+        }
+      }
       await page.waitForFunction(() => {
         const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
         return Array.from(document.querySelectorAll("button")).some((node) => {
@@ -3322,7 +3499,7 @@ var require_payments = __commonJS({
           };
         }, availableAmountCents);
       }
-      const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page, { observationsPath: fundsHistoryObservationsPath, now }) : {
+      const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page, { observationsPath: fundsHistoryObservationsPath, now, apiEntries }) : {
         next_payout_days: 0,
         next_payout_entries_count: 0,
         pending_payout_entries: []
@@ -8493,7 +8670,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.18",
+      version: "0.7.19",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

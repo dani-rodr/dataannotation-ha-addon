@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.19
+
+- Use exact DataAnnotation payout-entry timestamps for future entries while preserving current pending estimates through a one-time cutover.
+- Preserve legacy Wallet observation markers and prevent duplicate payout rows from sharing observations.
+- Retain the existing page-scrape fallback when the payout API is unavailable.
+
 ## 0.7.18
 
 - Replace per-entry Wallet income marker reads with one shared paginated snapshot per Funds History sync, while preserving duplicate prevention, manual-deletion handling, and revaluation safety checks.

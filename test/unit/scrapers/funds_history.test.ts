@@ -1,7 +1,14 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { parseFundsHistoryEntries, summarizeFundsHistoryEntries, parseFundsHistoryDetailRow } = require('../../../src/scrapers/funds_history');
+const {
+  normalizeApiPayoutEntries,
+  parseFundsHistoryEntries,
+  selectFundsHistoryEntries,
+  summarizeFundsHistoryEntries,
+  parseFundsHistoryDetailRow,
+  formatPublicPayoutEntries,
+} = require('../../../src/scrapers/funds_history');
 
 function localMidnightIsoFrom(now, daysOffset) {
   const date = new Date(now);
@@ -179,4 +186,78 @@ test('parseFundsHistoryEntries anchors next payout to the row date', () => {
   assert.equal(new Date(entries[0].entry_date).getMonth(), 5);
   assert.equal(new Date(entries[0].entry_date).getDate(), 20);
   assert.equal(entries[0].days_until_available, 1);
+});
+
+test('normalizeApiPayoutEntries uses exact source timestamps for task and hourly entries', () => {
+  const now = new Date('2026-08-08T12:00:00.000Z');
+  const entries = normalizeApiPayoutEntries({
+    workLogs: [{
+      type: 'TaskResponseWorkLog',
+      id: 'task-1',
+      status: 'Pending Approval',
+      amountInCents: 5000,
+      createdAt: '2026-08-08T11:42:17.123Z',
+      project: { name: 'Example Project' },
+    }],
+    timedWorkEntries: [{
+      type: 'TimedWorkEntry',
+      id: 'time-1',
+      status: 'Pending Approval',
+      amountInCents: 39050,
+      timeInMinutes: 426,
+      createdAt: '2026-08-08T10:15:09.456Z',
+      project: { name: 'Hourly Project' },
+    }],
+  }, now);
+
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].source_entry_id, 'api:TaskResponseWorkLog:task-1');
+  assert.equal(entries[0].estimated_work_at, '2026-08-08T11:42:17.123Z');
+  assert.equal(entries[0].estimated_payout_at, '2026-08-11T11:42:17.123Z');
+  assert.equal(entries[0].estimate_source, 'api_created_at');
+  assert.equal(entries[1].source_entry_id, 'api:TimedWorkEntry:time-1');
+  assert.equal(entries[1].estimated_work_at, '2026-08-08T10:15:09.456Z');
+  assert.equal(entries[1].estimated_payout_at, '2026-08-15T10:15:09.456Z');
+  assert.equal(entries[1].duration, '7h 6 min');
+
+  const publicEntries = formatPublicPayoutEntries(entries);
+  assert.equal(publicEntries[0].estimated_work_at_iso, '2026-08-08T11:42:17.123Z');
+  assert.equal(publicEntries[0].estimated_payout_at_iso, '2026-08-11T11:42:17.123Z');
+});
+
+test('selectFundsHistoryEntries keeps the first API sync on legacy page estimates and uses exact timestamps after cutover', () => {
+  const firstNow = new Date('2026-08-08T12:00:00.000Z');
+  const secondNow = new Date('2026-08-08T12:30:00.000Z');
+  const apiEntries = {
+    workLogs: [{
+      type: 'TaskResponseWorkLog',
+      id: 'task-new',
+      status: 'Pending Approval',
+      amountInCents: 5000,
+      createdAt: '2026-08-08T12:10:15.321Z',
+      project: { name: 'Example Project' },
+    }],
+    timedWorkEntries: [],
+  };
+  const legacyEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 1 day ago',
+    'Example Project',
+    new Date('2026-08-07T00:00:00.000Z'),
+    firstNow
+  );
+  const first = selectFundsHistoryEntries([legacyEntry], apiEntries, null, firstNow);
+  assert.deepEqual(first.entries, [legacyEntry]);
+  assert.equal(first.observations.api_cutover_at, firstNow.toISOString());
+
+  const secondLegacyEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 1 day ago',
+    'Example Project',
+    new Date('2026-08-07T00:00:00.000Z'),
+    secondNow
+  );
+  const second = selectFundsHistoryEntries([secondLegacyEntry], apiEntries, first.observations, secondNow);
+  assert.equal(second.entries.length, 1);
+  assert.equal(second.entries[0].source_entry_id, 'api:TaskResponseWorkLog:task-new');
+  assert.equal(second.entries[0].estimated_work_at, '2026-08-08T12:10:15.321Z');
+  assert.equal(second.entries[0].estimated_payout_at, '2026-08-11T12:10:15.321Z');
 });

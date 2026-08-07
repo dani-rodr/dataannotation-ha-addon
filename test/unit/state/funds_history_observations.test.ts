@@ -83,6 +83,37 @@ test('funds history observations keep a stable observation id when the project t
   assert.equal(secondResult.entries[0].estimated_payout_at, firstResult.entries[0].estimated_payout_at);
 });
 
+test('funds history observations keep duplicate rows on separate observations', () => {
+  const now = new Date('2026-07-15T19:45:00.000Z');
+  const firstEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 13 minutes ago',
+    'Example Project',
+    new Date('2026-07-15T00:00:00.000Z'),
+    now
+  );
+  const secondEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 26 minutes ago',
+    'Example Project',
+    new Date('2026-07-15T00:00:00.000Z'),
+    now
+  );
+
+  const firstResult = applyFundsHistoryObservations([firstEntry, secondEntry], null, now);
+  const secondResult = applyFundsHistoryObservations([
+    { ...firstEntry, relative_age_value: 18, relative_age_text: '18 minutes ago' },
+    { ...secondEntry, relative_age_value: 31, relative_age_text: '31 minutes ago' },
+  ], firstResult.observations, new Date('2026-07-15T20:00:00.000Z'));
+
+  assert.equal(firstResult.entries.length, 2);
+  assert.equal(new Set(firstResult.entries.map((entry) => entry.observation_id)).size, 2);
+  assert.equal(new Set(firstResult.entries.map((entry) => entry.estimated_payout_at)).size, 2);
+  assert.deepEqual(
+    secondResult.entries.map((entry) => entry.estimated_payout_at).sort(),
+    firstResult.entries.map((entry) => entry.estimated_payout_at).sort()
+  );
+  assert.equal(new Set(secondResult.entries.map((entry) => entry.observation_id)).size, 2);
+});
+
 test('funds history observations preserve minute-based estimates', () => {
   const now = new Date('2026-06-28T19:45:00.000Z');
   const laterNow = new Date('2026-06-28T19:58:00.000Z');

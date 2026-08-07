@@ -200,6 +200,8 @@ test('extractPaymentsSnapshot estimates next withdrawal from last payout instead
       relative_age: null,
       estimated_work_at: null,
       estimated_payout_at: formatHumanTimestamp(nextPayoutAt),
+      estimated_work_at_iso: null,
+      estimated_payout_at_iso: nextPayoutAt,
       source: 'row_date_fallback',
       confidence: 'low',
     },

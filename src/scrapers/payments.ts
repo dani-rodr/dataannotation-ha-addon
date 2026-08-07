@@ -415,6 +415,27 @@ async function scrapePayments(page, { includeFundsHistory = true, fundsHistoryOb
     }
     return await response.json();
   });
+  let apiEntries = null;
+  if (includeFundsHistory) {
+    try {
+      apiEntries = await page.evaluate(async () => {
+        const response = await fetch('/api_internal/payments/recent_work_logs_and_timed_work_entries?include_paid=true', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) {
+          throw new Error(`recent payout entries request failed with ${response.status}`);
+        }
+        const payload = await response.json();
+        if (!payload || !Array.isArray(payload.workLogs) || !Array.isArray(payload.timedWorkEntries)) {
+          throw new Error('recent payout entries response has an invalid shape');
+        }
+        return payload;
+      });
+    } catch {
+      apiEntries = null;
+    }
+  }
 
   await page.waitForFunction(() => {
     const normalize = (value) => String(value || '').trim().replace(/\s+/g, ' ');
@@ -495,7 +516,7 @@ async function scrapePayments(page, { includeFundsHistory = true, fundsHistoryOb
       };
     }, availableAmountCents);
   }
-  const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page, { observationsPath: fundsHistoryObservationsPath, now }) : {
+  const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page, { observationsPath: fundsHistoryObservationsPath, now, apiEntries }) : {
     next_payout_days: 0,
     next_payout_entries_count: 0,
     pending_payout_entries: [],

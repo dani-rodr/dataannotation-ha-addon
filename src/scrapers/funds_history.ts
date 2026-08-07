@@ -1,4 +1,5 @@
 const MONTH_SUMMARY_PATTERN = /^[A-Z][a-z]{2}\s+\d{1,2}(?:\s+\$[\d,]+(?:\.\d{2})?)?$/;
+const DAY_MS = 24 * 60 * 60 * 1000;
 // @ts-nocheck
 const {
   applyFundsHistoryObservations,
@@ -23,7 +24,7 @@ const MONTH_NAMES = [
   'dec',
 ];
 
-async function scrapeFundsHistory(page: any, { observationsPath = null, now = new Date() }: any = {}) {
+async function scrapeFundsHistory(page: any, { observationsPath = null, now = new Date(), apiEntries = null }: any = {}) {
   const historyTabReady = await openFundsHistoryTab(page);
   const historyRowsReady = await expandFundsHistoryRows(page);
 
@@ -36,7 +37,8 @@ async function scrapeFundsHistory(page: any, { observationsPath = null, now = ne
 
   const parsedEntries = parseFundsHistoryEntries(rows, now);
   const observations = loadFundsHistoryObservations(observationsPath);
-  const merged = applyFundsHistoryObservations(parsedEntries, observations, now);
+  const selectedEntries = selectFundsHistoryEntries(parsedEntries, apiEntries, observations, now);
+  const merged = applyFundsHistoryObservations(selectedEntries.entries, selectedEntries.observations, now);
 
   if (observationsPath) {
     try {
@@ -113,6 +115,161 @@ function summarizeFundsHistoryEntries(entries: any, now = new Date()) {
   };
 }
 
+function selectFundsHistoryEntries(parsedEntries: any[], apiEntries: any, observations: any, now = new Date()) {
+  const normalizedApiEntries = normalizeApiPayoutEntries(apiEntries, now);
+  const nextObservations = observations && typeof observations === 'object'
+    ? { ...observations, entries: { ...(observations.entries || {}) } }
+    : { version: 2, entries: {}, api_cutover_at: null, updated_at: null };
+
+  if (apiEntries === null || apiEntries === undefined) {
+    return { entries: parsedEntries, observations: nextObservations };
+  }
+
+  if (!normalizeDate(nextObservations.api_cutover_at)) {
+    // Keep the first API sync on the existing page estimates; only later entries switch sources.
+    nextObservations.api_cutover_at = normalizeIsoDate(now);
+    return { entries: parsedEntries, observations: nextObservations };
+  }
+
+  const cutoff = normalizeDate(nextObservations.api_cutover_at);
+  const futureEntries = normalizedApiEntries.filter((entry: any) => {
+    const createdAt = normalizeDate(entry.source_created_at);
+    return createdAt && cutoff && createdAt >= cutoff;
+  });
+
+  if (futureEntries.length === 0) {
+    return { entries: parsedEntries, observations: nextObservations };
+  }
+
+  const usedPageIndexes = new Set<number>();
+  for (const apiEntry of futureEntries) {
+    const pageIndex = findMatchingPageEntry(parsedEntries, apiEntry, usedPageIndexes);
+    if (pageIndex !== null) {
+      usedPageIndexes.add(pageIndex);
+    }
+  }
+
+  return {
+    entries: parsedEntries.filter((_, index) => !usedPageIndexes.has(index)).concat(futureEntries),
+    observations: nextObservations,
+  };
+}
+
+function normalizeApiPayoutEntries(value: any, now = new Date()) {
+  const workLogs = Array.isArray(value?.workLogs) ? value.workLogs : [];
+  const timedWorkEntries = Array.isArray(value?.timedWorkEntries) ? value.timedWorkEntries : [];
+  return workLogs.concat(timedWorkEntries)
+    .map((entry: any) => normalizeApiPayoutEntry(entry, now))
+    .filter(Boolean);
+}
+
+function normalizeApiPayoutEntry(entry: any, now = new Date()) {
+  const createdAt = normalizeDate(entry?.createdAt);
+  const sourceId = normalizeText(entry?.id);
+  if (!createdAt || !sourceId) {
+    return null;
+  }
+
+  const isTimed = entry?.type === 'TimedWorkEntry';
+  const status = entry?.status === 'Pending Approval'
+    ? 'pending'
+    : entry?.status === 'Paid'
+      ? 'paid'
+      : null;
+  if (!status) {
+    return null;
+  }
+
+  const dueDays = isTimed ? 7 : 3;
+  const age = getRelativeAge(createdAt, now);
+  const amountCents = numberOrZero(entry?.amountInCents);
+  const sourceCreatedAt = createdAt.toISOString();
+  const entryDate = `${sourceCreatedAt.slice(0, 10)}T00:00:00.000Z`;
+
+  return {
+    source_entry_id: `api:${entry.type}:${sourceId}`,
+    source_created_at: sourceCreatedAt,
+    project: normalizeText(entry?.project?.name) || null,
+    kind: isTimed ? 'hourly' : 'task',
+    status,
+    amount: formatCents(amountCents),
+    amount_cents: amountCents,
+    duration: isTimed ? formatDuration(entry?.timeInMinutes) : null,
+    relative_age_value: age.value,
+    relative_age_unit: age.unit,
+    relative_age_text: age.text,
+    days_ago: Math.ceil(age.ageMs / DAY_MS),
+    days_until_available: Math.max(0, Math.ceil(dueDays - (age.ageMs / DAY_MS))),
+    entry_date: entryDate,
+    due_days: dueDays,
+    estimated_work_at: sourceCreatedAt,
+    estimated_payout_at: new Date(createdAt.getTime() + dueDays * DAY_MS).toISOString(),
+    estimate_source: 'api_created_at',
+    estimate_confidence: 'high',
+  };
+}
+
+function findMatchingPageEntry(entries: any[], apiEntry: any, usedIndexes: Set<number>) {
+  const candidates = (Array.isArray(entries) ? entries : [])
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry, index }) => !usedIndexes.has(index)
+      && entry?.status === apiEntry.status
+      && payoutEntryMatchKey(entry) === payoutEntryMatchKey(apiEntry));
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const apiWorkAt = normalizeDate(apiEntry.estimated_work_at)?.getTime() || 0;
+  candidates.sort((left, right) => {
+    const leftWorkAt = normalizeDate(left.entry?.estimated_work_at)?.getTime() || 0;
+    const rightWorkAt = normalizeDate(right.entry?.estimated_work_at)?.getTime() || 0;
+    return Math.abs(leftWorkAt - apiWorkAt) - Math.abs(rightWorkAt - apiWorkAt) || left.index - right.index;
+  });
+  return candidates[0].index;
+}
+
+function payoutEntryMatchKey(entry: any) {
+  return [
+    normalizeText(entry?.project),
+    normalizeText(entry?.kind),
+    String(numberOrZero(entry?.amount_cents)),
+    normalizeText(entry?.duration),
+  ].join('|');
+}
+
+function getRelativeAge(createdAt: Date, now: Date) {
+  const ageMs = Math.max(0, (normalizeDate(now) || new Date()).getTime() - createdAt.getTime());
+  const units: [string, number][] = [
+    ['week', 7 * DAY_MS],
+    ['day', DAY_MS],
+    ['hour', 60 * 60 * 1000],
+    ['minute', 60 * 1000],
+    ['second', 1000],
+  ];
+  const [unit, unitMs] = units.find(([, milliseconds]) => ageMs >= milliseconds) || units[units.length - 1];
+  const value = Math.floor(ageMs / unitMs);
+  return {
+    ageMs,
+    value,
+    unit,
+    text: `${value} ${unit}${value === 1 ? '' : 's'} ago`,
+  };
+}
+
+function formatDuration(value: any) {
+  const minutes = Math.max(0, Math.trunc(Number(value) || 0));
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours > 0 && remainder > 0) {
+    return `${hours}h ${remainder} min`;
+  }
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+  return `${remainder} min`;
+}
+
 function formatPublicPayoutEntries(entries: any) {
   return sortPayoutEntries(entries).map((entry) => formatPublicPayoutEntry(entry));
 }
@@ -125,6 +282,8 @@ function formatPublicPayoutEntry(entry: any) {
     relative_age: entry?.relative_age_text || null,
     estimated_work_at: formatHumanTimestamp(entry?.estimated_work_at),
     estimated_payout_at: formatHumanTimestamp(entry?.estimated_payout_at),
+    estimated_work_at_iso: normalizeIsoDate(entry?.estimated_work_at),
+    estimated_payout_at_iso: normalizeIsoDate(entry?.estimated_payout_at),
     source: entry?.estimate_source || null,
     confidence: entry?.estimate_confidence || null,
   };
@@ -553,6 +712,8 @@ module.exports = {
   summarizeFundsHistoryEntries,
   parseFundsHistoryDetailRow,
   formatPublicPayoutEntries,
+  normalizeApiPayoutEntries,
+  selectFundsHistoryEntries,
   isProjectSummaryRow,
   extractProjectName,
 };

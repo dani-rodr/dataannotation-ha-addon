@@ -7,6 +7,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_OBSERVATIONS = {
   version: 2,
   entries: {},
+  api_cutover_at: null,
   updated_at: null,
 };
 
@@ -38,7 +39,7 @@ function applyFundsHistoryObservations(entries: any, observations: any = null, n
   const seenObservationIds = new Set();
   const matchedStableKeys = new Map();
   const seenFingerprintCounts = new Map();
-  const { byFingerprint, byStableKey } = buildObservationIndex(state);
+  const { byFingerprint, bySourceEntryId, byStableKey } = buildObservationIndex(state);
   const mergedEntries = [];
 
   for (const entry of sortParsedEntries(entries)) {
@@ -52,11 +53,14 @@ function applyFundsHistoryObservations(entries: any, observations: any = null, n
     if (fingerprint) {
       seenFingerprintCounts.set(fingerprint, fingerprintCount);
     }
-    const exactExisting = fingerprint ? byFingerprint.get(fingerprint) || null : null;
+    const sourceEntryId = normalizeText(entry?.source_entry_id);
+    const exactExisting = sourceEntryId
+      ? bySourceEntryId.get(sourceEntryId) || null
+      : findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
     const stableCandidates = stableKey ? byStableKey.get(stableKey) || [] : [];
     let existing = exactExisting;
 
-    if (!existing && stableCandidates.length > 0) {
+    if (!existing && !sourceEntryId && stableCandidates.length > 0) {
       const candidate = stableCandidates.find((item) => !seenObservationIds.has(normalizeText(item?.observation_id)));
       if (candidate) {
         const matchedCount = matchedStableKeys.get(stableKey) || 0;
@@ -71,8 +75,12 @@ function applyFundsHistoryObservations(entries: any, observations: any = null, n
         seenObservationIds.add(existing.observation_id);
       }
 
-      if (fingerprint && byFingerprint.has(fingerprint)) {
-        const observation = byFingerprint.get(fingerprint);
+      if (!sourceEntryId && fingerprint && byFingerprint.has(fingerprint)) {
+        const observation = findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
+        if (!observation) {
+          mergedEntries.push(entry);
+          continue;
+        }
         delete state.entries[observation.observation_id];
         seenObservationIds.add(observation.observation_id);
       }
@@ -200,6 +208,8 @@ function buildFundsHistoryEntryFingerprint(entry: any) {
 function pickStoredObservationFields(entry: any) {
   return {
     observation_id: entry.observation_id,
+    source_entry_id: entry.source_entry_id || null,
+    source_created_at: entry.source_created_at || null,
     fingerprint: entry.fingerprint,
     current_fingerprint: entry.current_fingerprint,
     aliases: entry.aliases,
@@ -239,6 +249,7 @@ function normalizeObservations(value: any) {
   return {
     version: 2,
     entries: normalizedEntries,
+    api_cutover_at: normalizeIsoDate(value?.api_cutover_at) || null,
     updated_at: normalizeIsoDate(value?.updated_at) || null,
   };
 }
@@ -281,6 +292,8 @@ function normalizeObservationEntry(fingerprint: any, entry: any) {
 
   const normalized = {
     observation_id: normalizedObservationId,
+    source_entry_id: normalizeText(entry.source_entry_id) || null,
+    source_created_at: normalizeIsoDate(entry.source_created_at) || null,
     fingerprint: normalizedFingerprint,
     current_fingerprint: normalizeText(entry.current_fingerprint || normalizedFingerprint) || normalizedFingerprint,
     aliases: normalizedAliases,
@@ -448,7 +461,10 @@ function makeObservationId(fingerprint: string, occurrence = 1) {
 }
 
 function toObservationRecord(entry: any, currentFingerprint: string, now: Date, existing: any = null, aliases: string[] = [], occurrence = 1) {
-  const observationId = existing?.observation_id || (occurrence > 1 ? makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence) : currentFingerprint || makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence));
+  const sourceEntryId = normalizeText(entry?.source_entry_id) || normalizeText(existing?.source_entry_id);
+  const sourceCreatedAt = normalizeIsoDate(entry?.source_created_at) || normalizeIsoDate(existing?.source_created_at);
+  const observationId = existing?.observation_id
+    || (sourceEntryId ? makeObservationId(`source:${sourceEntryId}`) : (occurrence > 1 ? makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence) : currentFingerprint || makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence)));
   const fingerprintAliases = uniqueTextList([
     ...(Array.isArray(existing?.aliases) ? existing.aliases : []),
     ...(Array.isArray(aliases) ? aliases : []),
@@ -459,6 +475,8 @@ function toObservationRecord(entry: any, currentFingerprint: string, now: Date, 
 
   return {
     observation_id: observationId,
+    source_entry_id: sourceEntryId || null,
+    source_created_at: sourceCreatedAt || null,
     fingerprint: currentFingerprint,
     current_fingerprint: currentFingerprint,
     aliases: fingerprintAliases,
@@ -486,6 +504,7 @@ function toObservationRecord(entry: any, currentFingerprint: string, now: Date, 
 
 function buildObservationIndex(state: any) {
   const byFingerprint = new Map();
+  const bySourceEntryId = new Map();
   const byStableKey = new Map();
 
   for (const observation of Object.values(state?.entries || {})) {
@@ -494,8 +513,16 @@ function buildObservationIndex(state: any) {
       continue;
     }
 
+    const sourceEntryId = normalizeText(observation?.source_entry_id);
+    if (sourceEntryId) {
+      bySourceEntryId.set(sourceEntryId, observation);
+    }
+
     for (const alias of uniqueTextList([observation?.fingerprint, observation?.current_fingerprint, ...(Array.isArray(observation?.aliases) ? observation.aliases : [])])) {
-      byFingerprint.set(alias, observation);
+      if (!byFingerprint.has(alias)) {
+        byFingerprint.set(alias, []);
+      }
+      byFingerprint.get(alias).push(observation);
     }
 
     const stableKey = normalizeText(observation?.stable_key);
@@ -522,7 +549,12 @@ function buildObservationIndex(state: any) {
     });
   }
 
-  return { byFingerprint, byStableKey };
+  return { byFingerprint, bySourceEntryId, byStableKey };
+}
+
+function findUnusedObservation(observations: any[], seenObservationIds: Set<string>) {
+  return (Array.isArray(observations) ? observations : [])
+    .find((observation) => !seenObservationIds.has(normalizeText(observation?.observation_id))) || null;
 }
 
 function cloneObservations(value: any) {
