@@ -1963,7 +1963,8 @@ var require_funds_history_observations = __commonJS({
           seenFingerprintCounts.set(fingerprint, fingerprintCount);
         }
         const sourceEntryId = normalizeText2(entry?.source_entry_id);
-        const exactExisting = sourceEntryId ? bySourceEntryId.get(sourceEntryId) || null : findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
+        const useLegacyFingerprintMatching = !sourceEntryId && Boolean(normalizeDate3(state.api_cutover_at));
+        const exactExisting = sourceEntryId ? bySourceEntryId.get(sourceEntryId) || null : useLegacyFingerprintMatching ? (byFingerprint.get(fingerprint) || [])[0] || null : findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
         const stableCandidates = stableKey ? byStableKey.get(stableKey) || [] : [];
         let existing = exactExisting;
         if (!existing && !sourceEntryId && stableCandidates.length > 0) {
@@ -8670,7 +8671,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.19",
+      version: "0.7.20",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

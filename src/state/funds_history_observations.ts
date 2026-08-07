@@ -54,9 +54,12 @@ function applyFundsHistoryObservations(entries: any, observations: any = null, n
       seenFingerprintCounts.set(fingerprint, fingerprintCount);
     }
     const sourceEntryId = normalizeText(entry?.source_entry_id);
+    const useLegacyFingerprintMatching = !sourceEntryId && Boolean(normalizeDate(state.api_cutover_at));
     const exactExisting = sourceEntryId
       ? bySourceEntryId.get(sourceEntryId) || null
-      : findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
+      : useLegacyFingerprintMatching
+        ? (byFingerprint.get(fingerprint) || [])[0] || null
+        : findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
     const stableCandidates = stableKey ? byStableKey.get(stableKey) || [] : [];
     let existing = exactExisting;
 

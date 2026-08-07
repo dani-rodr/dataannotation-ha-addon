@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.20
+
+- Preserve legacy Funds History observation identities after API cutover so existing Wallet income markers are not recreated.
+- Keep unique source IDs for future API-backed payout entries and retain exact timestamps for those entries.
+- Add regression coverage for legacy duplicate marker stability.
+
 ## 0.7.19
 
 - Use exact DataAnnotation payout-entry timestamps for future entries while preserving current pending estimates through a one-time cutover.

@@ -114,6 +114,38 @@ test('funds history observations keep duplicate rows on separate observations', 
   assert.equal(new Set(secondResult.entries.map((entry) => entry.observation_id)).size, 2);
 });
 
+test('funds history observations preserve legacy duplicate identity after API cutover', () => {
+  const now = new Date('2026-07-15T19:45:00.000Z');
+  const laterNow = new Date('2026-07-15T20:00:00.000Z');
+  const firstEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 13 minutes ago',
+    'Example Project',
+    new Date('2026-07-15T00:00:00.000Z'),
+    now
+  );
+  const secondEntry = parseFundsHistoryDetailRow(
+    'Task Submission $50.00 Pending Approval · 26 minutes ago',
+    'Example Project',
+    new Date('2026-07-15T00:00:00.000Z'),
+    now
+  );
+  const legacyResult = applyFundsHistoryObservations([firstEntry], null, now);
+  const observations = {
+    ...legacyResult.observations,
+    api_cutover_at: now.toISOString(),
+  };
+
+  const firstResult = applyFundsHistoryObservations([firstEntry, secondEntry], observations, now);
+  const secondResult = applyFundsHistoryObservations([
+    { ...firstEntry, relative_age_value: 18, relative_age_text: '18 minutes ago' },
+    { ...secondEntry, relative_age_value: 31, relative_age_text: '31 minutes ago' },
+  ], firstResult.observations, laterNow);
+
+  assert.equal(new Set(firstResult.entries.map((entry) => entry.observation_id)).size, 1);
+  assert.equal(new Set(secondResult.entries.map((entry) => entry.observation_id)).size, 1);
+  assert.equal(secondResult.entries[0].observation_id, firstResult.entries[0].observation_id);
+});
+
 test('funds history observations preserve minute-based estimates', () => {
   const now = new Date('2026-06-28T19:45:00.000Z');
   const laterNow = new Date('2026-06-28T19:58:00.000Z');
