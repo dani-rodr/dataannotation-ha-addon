@@ -1254,7 +1254,9 @@ function buildIncomeRecord({ accountId, categoryId, noteMarker, sourceFingerprin
     accountId,
     categoryId,
     amount: { value: phpAmount, currencyCode: WALLET_CURRENCY },
-    recordDate: normalizeIsoDate(entry.first_seen_at) || now.toISOString(),
+    recordDate: normalizeIsoDate(entry.source_created_at)
+      || normalizeIsoDate(entry.first_seen_at)
+      || now.toISOString(),
     paymentType: 'web_payment',
     recordState: 'cleared',
     note,

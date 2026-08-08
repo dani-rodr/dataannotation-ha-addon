@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.22
+
+- Use the API's exact `source_created_at` timestamp for new Wallet income records.
+- Preserve the existing sync-time fallback for legacy entries without an API timestamp.
+
 ## 0.7.21
 
 - Make the authenticated recent-work API the authoritative Funds History source.

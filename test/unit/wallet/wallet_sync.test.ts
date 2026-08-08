@@ -74,6 +74,7 @@ test('WalletSync imports new funds history entries once and dedupes on rerun', a
           status: 'pending',
           project: 'Labeling Task',
           amount_cents: 1234,
+          source_created_at: '2026-07-14T10:59:58.321Z',
           first_seen_at: '2026-07-14T11:00:00.000Z',
           fingerprint: 'fingerprint-123',
         },
@@ -104,6 +105,7 @@ test('WalletSync imports new funds history entries once and dedupes on rerun', a
     assert.equal(createdRecords[0][0].paymentType, 'web_payment');
     assert.equal(createdRecords[0][0].recordState, 'cleared');
     assert.equal(createdRecords[0][0].amount.currencyCode, 'PHP');
+    assert.equal(createdRecords[0][0].recordDate, '2026-07-14T10:59:58.321Z');
     assert.match(createdRecords[0][0].note, /^DAWALLET\|income\|DAWALLET\|inc\|/);
 
     const second = await sync.processSync({

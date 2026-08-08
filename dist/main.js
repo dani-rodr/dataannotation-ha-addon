@@ -7559,7 +7559,7 @@ var require_wallet_sync = __commonJS({
         accountId,
         categoryId,
         amount: { value: phpAmount, currencyCode: WALLET_CURRENCY },
-        recordDate: normalizeIsoDate(entry.first_seen_at) || now.toISOString(),
+        recordDate: normalizeIsoDate(entry.source_created_at) || normalizeIsoDate(entry.first_seen_at) || now.toISOString(),
         paymentType: "web_payment",
         recordState: "cleared",
         note,
@@ -8399,7 +8399,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.21",
+      version: "0.7.22",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",
