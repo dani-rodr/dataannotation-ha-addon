@@ -1963,10 +1963,20 @@ var require_funds_history_observations = __commonJS({
           seenFingerprintCounts.set(fingerprint, fingerprintCount);
         }
         const sourceEntryId = normalizeText2(entry?.source_entry_id);
-        const useLegacyFingerprintMatching = !sourceEntryId && Boolean(normalizeDate3(state.api_cutover_at));
+        const sourceCreatedAt = normalizeDate3(entry?.source_created_at);
+        const cutoff = normalizeDate3(state.api_cutover_at);
+        const isPreCutoverApiEntry = Boolean(sourceEntryId && sourceCreatedAt && cutoff && sourceCreatedAt < cutoff);
+        const useLegacyFingerprintMatching = !sourceEntryId && Boolean(cutoff);
         const exactExisting = sourceEntryId ? bySourceEntryId.get(sourceEntryId) || null : useLegacyFingerprintMatching ? (byFingerprint.get(fingerprint) || [])[0] || null : findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
         const stableCandidates = stableKey ? byStableKey.get(stableKey) || [] : [];
         let existing = exactExisting;
+        if (!existing && isPreCutoverApiEntry) {
+          existing = findLegacyMigrationObservation(
+            byStableKey.get(stableKey) || [],
+            entry,
+            seenObservationIds
+          );
+        }
         if (!existing && !sourceEntryId && stableCandidates.length > 0) {
           const candidate = stableCandidates.find((item) => !seenObservationIds.has(normalizeText2(item?.observation_id)));
           if (candidate) {
@@ -2001,6 +2011,12 @@ var require_funds_history_observations = __commonJS({
           estimate_source: existing.estimate_source || null,
           estimate_confidence: existing.estimate_confidence || null,
           first_seen_at: existing.first_seen_at || existing.last_seen_at || current.toISOString()
+        } : sourceEntryId && (entry.estimated_work_at || entry.estimated_payout_at) ? {
+          estimated_work_at: entry.estimated_work_at || null,
+          estimated_payout_at: entry.estimated_payout_at || null,
+          estimate_source: entry.estimate_source || null,
+          estimate_confidence: entry.estimate_confidence || null,
+          first_seen_at: current.toISOString()
         } : estimateFundsHistoryEntry(entry, current);
         const aliases = existing ? Array.from(new Set([...existing.aliases || [], existing.fingerprint, existing.current_fingerprint, fingerprint].filter(Boolean).map((value) => normalizeText2(value)).filter(Boolean))) : [fingerprint].filter(Boolean);
         const mergedEntry = toObservationRecord({
@@ -2093,6 +2109,7 @@ var require_funds_history_observations = __commonJS({
       return {
         observation_id: entry.observation_id,
         source_entry_id: entry.source_entry_id || null,
+        source_entry_ids: uniqueTextList(entry.source_entry_ids || [entry.source_entry_id]),
         source_created_at: entry.source_created_at || null,
         fingerprint: entry.fingerprint,
         current_fingerprint: entry.current_fingerprint,
@@ -2163,6 +2180,7 @@ var require_funds_history_observations = __commonJS({
       const normalized = {
         observation_id: normalizedObservationId,
         source_entry_id: normalizeText2(entry.source_entry_id) || null,
+        source_entry_ids: uniqueTextList(entry.source_entry_ids || [entry.source_entry_id]),
         source_created_at: normalizeIsoDate(entry.source_created_at) || null,
         fingerprint: normalizedFingerprint,
         current_fingerprint: normalizeText2(entry.current_fingerprint || normalizedFingerprint) || normalizedFingerprint,
@@ -2303,6 +2321,11 @@ var require_funds_history_observations = __commonJS({
     function toObservationRecord(entry, currentFingerprint, now, existing = null, aliases = [], occurrence = 1) {
       const sourceEntryId = normalizeText2(entry?.source_entry_id) || normalizeText2(existing?.source_entry_id);
       const sourceCreatedAt = normalizeIsoDate(entry?.source_created_at) || normalizeIsoDate(existing?.source_created_at);
+      const sourceEntryIds = uniqueTextList([
+        ...Array.isArray(existing?.source_entry_ids) ? existing.source_entry_ids : [],
+        existing?.source_entry_id,
+        entry?.source_entry_id
+      ]);
       const observationId = existing?.observation_id || (sourceEntryId ? makeObservationId(`source:${sourceEntryId}`) : occurrence > 1 ? makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence) : currentFingerprint || makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence));
       const fingerprintAliases = uniqueTextList([
         ...Array.isArray(existing?.aliases) ? existing.aliases : [],
@@ -2314,6 +2337,7 @@ var require_funds_history_observations = __commonJS({
       return {
         observation_id: observationId,
         source_entry_id: sourceEntryId || null,
+        source_entry_ids: sourceEntryIds,
         source_created_at: sourceCreatedAt || null,
         fingerprint: currentFingerprint,
         current_fingerprint: currentFingerprint,
@@ -2348,8 +2372,10 @@ var require_funds_history_observations = __commonJS({
         if (!id) {
           continue;
         }
-        const sourceEntryId = normalizeText2(observation?.source_entry_id);
-        if (sourceEntryId) {
+        for (const sourceEntryId of uniqueTextList([
+          observation?.source_entry_id,
+          ...Array.isArray(observation?.source_entry_ids) ? observation.source_entry_ids : []
+        ])) {
           bySourceEntryId.set(sourceEntryId, observation);
         }
         for (const alias of uniqueTextList([observation?.fingerprint, observation?.current_fingerprint, ...Array.isArray(observation?.aliases) ? observation.aliases : []])) {
@@ -2381,6 +2407,18 @@ var require_funds_history_observations = __commonJS({
     }
     function findUnusedObservation(observations, seenObservationIds) {
       return (Array.isArray(observations) ? observations : []).find((observation) => !seenObservationIds.has(normalizeText2(observation?.observation_id))) || null;
+    }
+    function findLegacyMigrationObservation(observations, entry, seenObservationIds) {
+      const candidates = (Array.isArray(observations) ? observations : []).filter((observation) => !seenObservationIds.has(normalizeText2(observation?.observation_id))).filter((observation) => normalizeText2(observation?.kind) === normalizeText2(entry?.kind)).filter((observation) => numberOrZero3(observation?.amount_cents) === numberOrZero3(entry?.amount_cents)).filter((observation) => normalizeText2(observation?.project) === normalizeText2(entry?.project)).filter((observation) => normalizeText2(observation?.duration) === normalizeText2(entry?.duration));
+      if (candidates.length === 0) {
+        return null;
+      }
+      const workAt = normalizeDate3(entry?.source_created_at || entry?.estimated_work_at)?.getTime() || 0;
+      return candidates.sort((left, right) => {
+        const leftWorkAt = normalizeDate3(left?.estimated_work_at)?.getTime() || 0;
+        const rightWorkAt = normalizeDate3(right?.estimated_work_at)?.getTime() || 0;
+        return Math.abs(leftWorkAt - workAt) - Math.abs(rightWorkAt - workAt) || String(left?.observation_id || "").localeCompare(String(right?.observation_id || ""));
+      })[0];
     }
     function cloneObservations(value) {
       return normalizeObservations(JSON.parse(JSON.stringify(value)));
@@ -2417,40 +2455,26 @@ var require_funds_history_observations = __commonJS({
 var require_funds_history = __commonJS({
   "src/scrapers/funds_history.ts"(exports2, module2) {
     "use strict";
-    var MONTH_SUMMARY_PATTERN = /^[A-Z][a-z]{2}\s+\d{1,2}(?:\s+\$[\d,]+(?:\.\d{2})?)?$/;
     var DAY_MS = 24 * 60 * 60 * 1e3;
     var {
       applyFundsHistoryObservations,
       loadFundsHistoryObservations,
       saveFundsHistoryObservations
     } = require_funds_history_observations();
-    var DETAIL_ROW_PATTERN = /^(Time Entry|Task Submission)\s+(?:·{1,3}\s+)?(\$[\d,]+(?:\.\d{2})?)(?:\s+(.*?))?\s+(Pending Approval|Paid)\s+·\s+(\d+)\s+(minute|hour|day|week)s?\s+ago$/i;
-    var DETAIL_KIND_PATTERN = /\b(Time Entry|Task Submission)\b/i;
-    var MONTH_NAMES = [
-      "jan",
-      "feb",
-      "mar",
-      "apr",
-      "may",
-      "jun",
-      "jul",
-      "aug",
-      "sep",
-      "oct",
-      "nov",
-      "dec"
-    ];
-    async function scrapeFundsHistory(page, { observationsPath = null, now = /* @__PURE__ */ new Date(), apiEntries = null } = {}) {
-      const historyTabReady = await openFundsHistoryTab(page);
-      const historyRowsReady = await expandFundsHistoryRows(page);
-      const rows = await page.$$eval("tr", (tableRows) => {
-        const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
-        return tableRows.map((row) => normalize(row.innerText || row.textContent || "")).filter(Boolean);
-      });
-      const parsedEntries = parseFundsHistoryEntries(rows, now);
+    async function scrapeFundsHistory(apiEntries, { observationsPath = null, now = /* @__PURE__ */ new Date() } = {}) {
+      if (!apiEntries || !Array.isArray(apiEntries.workLogs) || !Array.isArray(apiEntries.timedWorkEntries)) {
+        return {
+          ...summarizeFundsHistoryEntries([], now),
+          funds_history_complete: false
+        };
+      }
+      const parsedEntries = normalizeApiPayoutEntries(apiEntries, now);
       const observations = loadFundsHistoryObservations(observationsPath);
-      const selectedEntries = selectFundsHistoryEntries(parsedEntries, apiEntries, observations, now);
-      const merged = applyFundsHistoryObservations(selectedEntries.entries, selectedEntries.observations, now);
+      const nextObservations = { ...observations, entries: { ...observations.entries || {} } };
+      if (!normalizeIsoDate(nextObservations.api_cutover_at)) {
+        nextObservations.api_cutover_at = normalizeIsoDate(now);
+      }
+      const merged = applyFundsHistoryObservations(parsedEntries, nextObservations, now);
       if (observationsPath) {
         try {
           saveFundsHistoryObservations(observationsPath, merged.observations);
@@ -2459,39 +2483,14 @@ var require_funds_history = __commonJS({
       }
       return {
         ...summarizeFundsHistoryEntries(merged.entries, now),
-        funds_history_complete: historyTabReady && historyRowsReady && parsedEntries.length > 0
+        funds_history_complete: true
       };
-    }
-    function parseFundsHistoryEntries(rows, now = /* @__PURE__ */ new Date()) {
-      const entries = [];
-      let currentProject = null;
-      let currentMonthDate = null;
-      for (const rowText of Array.isArray(rows) ? rows : []) {
-        const text = normalizeText2(rowText);
-        if (!text) {
-          continue;
-        }
-        if (MONTH_SUMMARY_PATTERN.test(text)) {
-          currentMonthDate = parseMonthSummaryDate(text, now);
-          currentProject = null;
-          continue;
-        }
-        if (isProjectSummaryRow(text)) {
-          currentProject = extractProjectName(text);
-          continue;
-        }
-        const entry = parseFundsHistoryDetailRow(text, currentProject, currentMonthDate, now);
-        if (entry) {
-          entries.push(entry);
-        }
-      }
-      return entries;
     }
     function summarizeFundsHistoryEntries(entries, now = /* @__PURE__ */ new Date()) {
       const pendingEntries = Array.isArray(entries) ? entries.filter((entry) => entry.status === "pending") : [];
       const paidEntries = Array.isArray(entries) ? entries.filter((entry) => entry.status === "paid") : [];
       const lastPayoutSummary = summarizeLastPayoutEntries(paidEntries);
-      const nextPayoutDays = pendingEntries.length > 0 ? Math.min(...pendingEntries.map((entry) => entry.days_until_available)) : 0;
+      const nextPayoutDays = pendingEntries.length > 0 ? Math.min(...pendingEntries.map((entry) => numberOrZero3(entry.days_until_available))) : 0;
       const nextPayoutAt = pendingEntries.length > 0 ? pendingEntries.map((entry) => normalizeIsoDate(entry.estimated_payout_at) || computeNextPayoutAt(entry, now)).filter(Boolean).sort()[0] || null : null;
       return {
         next_payout_days: nextPayoutDays,
@@ -2501,36 +2500,6 @@ var require_funds_history = __commonJS({
         last_payout_amount_cents: lastPayoutSummary.amount_cents,
         last_payout_amount: lastPayoutSummary.amount,
         last_payout_amount_formatted: lastPayoutSummary.amount_formatted
-      };
-    }
-    function selectFundsHistoryEntries(parsedEntries, apiEntries, observations, now = /* @__PURE__ */ new Date()) {
-      const normalizedApiEntries = normalizeApiPayoutEntries(apiEntries, now);
-      const nextObservations = observations && typeof observations === "object" ? { ...observations, entries: { ...observations.entries || {} } } : { version: 2, entries: {}, api_cutover_at: null, updated_at: null };
-      if (apiEntries === null || apiEntries === void 0) {
-        return { entries: parsedEntries, observations: nextObservations };
-      }
-      if (!normalizeDate3(nextObservations.api_cutover_at)) {
-        nextObservations.api_cutover_at = normalizeIsoDate(now);
-        return { entries: parsedEntries, observations: nextObservations };
-      }
-      const cutoff = normalizeDate3(nextObservations.api_cutover_at);
-      const futureEntries = normalizedApiEntries.filter((entry) => {
-        const createdAt = normalizeDate3(entry.source_created_at);
-        return createdAt && cutoff && createdAt >= cutoff;
-      });
-      if (futureEntries.length === 0) {
-        return { entries: parsedEntries, observations: nextObservations };
-      }
-      const usedPageIndexes = /* @__PURE__ */ new Set();
-      for (const apiEntry of futureEntries) {
-        const pageIndex = findMatchingPageEntry(parsedEntries, apiEntry, usedPageIndexes);
-        if (pageIndex !== null) {
-          usedPageIndexes.add(pageIndex);
-        }
-      }
-      return {
-        entries: parsedEntries.filter((_, index) => !usedPageIndexes.has(index)).concat(futureEntries),
-        observations: nextObservations
       };
     }
     function normalizeApiPayoutEntries(value, now = /* @__PURE__ */ new Date()) {
@@ -2575,27 +2544,6 @@ var require_funds_history = __commonJS({
         estimate_source: "api_created_at",
         estimate_confidence: "high"
       };
-    }
-    function findMatchingPageEntry(entries, apiEntry, usedIndexes) {
-      const candidates = (Array.isArray(entries) ? entries : []).map((entry, index) => ({ entry, index })).filter(({ entry, index }) => !usedIndexes.has(index) && entry?.status === apiEntry.status && payoutEntryMatchKey(entry) === payoutEntryMatchKey(apiEntry));
-      if (candidates.length === 0) {
-        return null;
-      }
-      const apiWorkAt = normalizeDate3(apiEntry.estimated_work_at)?.getTime() || 0;
-      candidates.sort((left, right) => {
-        const leftWorkAt = normalizeDate3(left.entry?.estimated_work_at)?.getTime() || 0;
-        const rightWorkAt = normalizeDate3(right.entry?.estimated_work_at)?.getTime() || 0;
-        return Math.abs(leftWorkAt - apiWorkAt) - Math.abs(rightWorkAt - apiWorkAt) || left.index - right.index;
-      });
-      return candidates[0].index;
-    }
-    function payoutEntryMatchKey(entry) {
-      return [
-        normalizeText2(entry?.project),
-        normalizeText2(entry?.kind),
-        String(numberOrZero3(entry?.amount_cents)),
-        normalizeText2(entry?.duration)
-      ].join("|");
     }
     function getRelativeAge(createdAt, now) {
       const ageMs = Math.max(0, (normalizeDate3(now) || /* @__PURE__ */ new Date()).getTime() - createdAt.getTime());
@@ -2644,97 +2592,26 @@ var require_funds_history = __commonJS({
         confidence: entry?.estimate_confidence || null
       };
     }
-    function parseFundsHistoryDetailRow(text, project, entryDate = null, now = /* @__PURE__ */ new Date()) {
-      const match = text.match(DETAIL_ROW_PATTERN);
-      if (!match) {
-        return null;
-      }
-      const [, kindLabel, amount, durationText, statusLabel, relativeAgeValue, relativeAgeUnit] = match;
-      const kind = kindLabel.toLowerCase() === "time entry" ? "hourly" : "task";
-      const status = statusLabel.toLowerCase() === "pending approval" ? "pending" : "paid";
-      const normalizedAgeValue = Number(relativeAgeValue);
-      const normalizedAgeUnit = relativeAgeUnit.toLowerCase();
-      const dueDays = kind === "hourly" ? 7 : 3;
-      const ageDays = normalizedAgeUnit === "minute" ? normalizedAgeValue / (24 * 60) : normalizedAgeUnit === "hour" ? normalizedAgeValue / 24 : normalizedAgeUnit === "week" ? normalizedAgeValue * 7 : normalizedAgeValue;
-      const normalizedEntryDate = normalizeDate3(entryDate);
-      const entryDateValue = normalizedEntryDate ? normalizedEntryDate.toISOString() : null;
-      const isPreciseEstimate = (normalizedAgeUnit === "minute" || normalizedAgeUnit === "hour") && Number.isFinite(normalizedAgeValue) && normalizedAgeValue > 0;
-      const estimatedWorkAt = isPreciseEstimate ? estimateWorkAt(now, normalizedAgeValue, normalizedAgeUnit, entryDateValue) : entryDateValue || normalizeDate3(now)?.toISOString() || (/* @__PURE__ */ new Date()).toISOString();
-      const estimatedPayoutAt = isPreciseEstimate ? estimatePayoutAt(estimatedWorkAt, dueDays, now) : estimatePayoutAtFromEntryDate(entryDateValue, dueDays, now) || toLocalMidnightAtOffset(now, dueDays);
-      return {
-        project: project || null,
-        kind,
-        status,
-        amount,
-        amount_cents: amountToCents(amount),
-        duration: durationText ? durationText.trim() : null,
-        relative_age_value: Number.isFinite(normalizedAgeValue) ? normalizedAgeValue : 0,
-        relative_age_unit: normalizedAgeUnit,
-        relative_age_text: `${Number.isFinite(normalizedAgeValue) ? normalizedAgeValue : 0} ${normalizedAgeUnit}${Number.isFinite(normalizedAgeValue) && normalizedAgeValue === 1 ? "" : "s"} ago`,
-        days_ago: Math.ceil(ageDays),
-        days_until_available: Math.max(0, Math.ceil(dueDays - ageDays)),
-        entry_date: entryDateValue,
-        due_days: dueDays,
-        estimated_work_at: estimatedWorkAt,
-        estimated_payout_at: estimatedPayoutAt,
-        estimate_source: normalizedAgeUnit === "minute" ? "observed_minutes" : normalizedAgeUnit === "hour" ? "observed_hours" : "row_date_fallback",
-        estimate_confidence: isPreciseEstimate ? "high" : "low"
-      };
-    }
-    function isProjectSummaryRow(text) {
-      return /^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text) && !MONTH_SUMMARY_PATTERN.test(text) && !DETAIL_KIND_PATTERN.test(text) && !/\b(Paid|Pending Approval)\b/i.test(text);
-    }
-    function extractProjectName(text) {
-      return text.replace(/\s+\$[\d,]+(?:\.\d{2})?$/, "").trim();
-    }
-    function parseMonthSummaryDate(text, now = /* @__PURE__ */ new Date()) {
-      const match = String(text).trim().match(/^([A-Z][a-z]{2})\s+(\d{1,2})/);
-      if (!match) {
-        return null;
-      }
-      const monthIndex = MONTH_NAMES.indexOf(match[1].toLowerCase());
-      if (monthIndex === -1) {
-        return null;
-      }
-      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
-      const year = inferYearForMonth(monthIndex, current);
-      return new Date(year, monthIndex, Number(match[2]), 0, 0, 0, 0);
-    }
     function sortPayoutEntries(entries) {
       return (Array.isArray(entries) ? entries : []).map((entry, index) => ({ entry, index })).sort((left, right) => {
         const leftValue = String(left.entry?.estimated_payout_at || "");
         const rightValue = String(right.entry?.estimated_payout_at || "");
-        if (!leftValue && !rightValue) {
-          return left.index - right.index;
-        }
-        if (!leftValue) {
-          return 1;
-        }
-        if (!rightValue) {
-          return -1;
-        }
-        if (leftValue === rightValue) {
-          return left.index - right.index;
-        }
-        return leftValue.localeCompare(rightValue);
+        if (!leftValue && !rightValue) return left.index - right.index;
+        if (!leftValue) return 1;
+        if (!rightValue) return -1;
+        return leftValue.localeCompare(rightValue) || left.index - right.index;
       }).map((item) => item.entry);
     }
     function summarizeLastPayoutEntries(entries) {
       const grouped = /* @__PURE__ */ new Map();
       for (const entry of Array.isArray(entries) ? entries : []) {
         const key = normalizePayoutGroupKey(entry);
-        if (key === null) {
-          continue;
-        }
-        const cents = Number.isFinite(Number(entry?.amount_cents)) ? Number(entry?.amount_cents) : amountToCents(entry?.amount);
+        if (key === null) continue;
+        const cents = Number.isFinite(Number(entry?.amount_cents)) ? Number(entry.amount_cents) : amountToCents(entry?.amount);
         grouped.set(key, (grouped.get(key) || 0) + cents);
       }
       if (grouped.size === 0) {
-        return {
-          amount_cents: null,
-          amount: null,
-          amount_formatted: null
-        };
+        return { amount_cents: null, amount: null, amount_formatted: null };
       }
       const latestKey = Math.max(...grouped.keys());
       const amountCents = grouped.get(latestKey) || 0;
@@ -2748,6 +2625,20 @@ var require_funds_history = __commonJS({
       const entryDate = normalizeDate3(entry?.entry_date) || normalizeDate3(entry?.estimated_payout_at);
       return entryDate ? entryDate.getTime() : null;
     }
+    function computeNextPayoutAt(entry, now = /* @__PURE__ */ new Date()) {
+      if (!entry || entry.status !== "pending") return null;
+      const entryDate = normalizeDate3(entry.entry_date);
+      if (entryDate && Number.isFinite(Number(entry.due_days))) {
+        return new Date(entryDate.getTime() + (numberOrZero3(entry.due_days) + 1) * DAY_MS).toISOString();
+      }
+      return null;
+    }
+    function amountToCents(value) {
+      const match = String(value || "").match(/^\$([\d,]+)(?:\.(\d{2}))?$/);
+      if (!match) return 0;
+      const [, dollarsRaw, centsRaw = "00"] = match;
+      return Number(dollarsRaw.replace(/,/g, "")) * 100 + Number(centsRaw);
+    }
     function centsToNumber(value) {
       return numberOrZero3(value) / 100;
     }
@@ -2757,203 +2648,17 @@ var require_funds_history = __commonJS({
         maximumFractionDigits: 2
       }).format(numberOrZero3(value) / 100)}`;
     }
-    function inferYearForMonth(monthIndex, now) {
-      let year = now.getFullYear();
-      if (monthIndex > now.getMonth() + 1) {
-        year -= 1;
-      }
-      return year;
-    }
-    function computeNextPayoutAt(entry, now = /* @__PURE__ */ new Date()) {
-      if (!entry || entry.status !== "pending") {
-        return null;
-      }
-      const entryDate = normalizeDate3(entry.entry_date);
-      if (entryDate && Number.isFinite(Number(entry.due_days))) {
-        const payoutDate = new Date(
-          entryDate.getFullYear(),
-          entryDate.getMonth(),
-          entryDate.getDate() + numberOrZero3(entry.due_days) + 1,
-          0,
-          0,
-          0,
-          0
-        );
-        const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
-        if (payoutDate <= current) {
-          payoutDate.setDate(payoutDate.getDate() + 1);
-        }
-        return payoutDate.toISOString();
-      }
-      if (Number.isFinite(Number(entry.days_until_available))) {
-        return toLocalMidnightAtOffset(now, numberOrZero3(entry.days_until_available) + 1);
-      }
-      return null;
-    }
-    function estimateWorkAt(now, ageValue, ageUnit, fallbackEntryDate) {
-      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
-      if (Number.isFinite(ageValue) && ageValue > 0) {
-        const ms = ageValue * relativeAgeUnitToMs(ageUnit);
-        return new Date(current.getTime() - ms).toISOString();
-      }
-      return fallbackEntryDate || current.toISOString();
-    }
-    function estimatePayoutAtFromEntryDate(entryDate, dueDays, now = /* @__PURE__ */ new Date()) {
-      const baseDate = normalizeDate3(entryDate);
-      if (!baseDate) {
-        return null;
-      }
-      const payoutDate = new Date(
-        baseDate.getFullYear(),
-        baseDate.getMonth(),
-        baseDate.getDate() + numberOrZero3(dueDays) + 1,
-        0,
-        0,
-        0,
-        0
-      );
-      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
-      if (payoutDate <= current) {
-        payoutDate.setDate(payoutDate.getDate() + 1);
-      }
-      return payoutDate.toISOString();
-    }
-    function estimatePayoutAt(estimatedWorkAt, dueDays, now = /* @__PURE__ */ new Date()) {
-      const workAt = normalizeDate3(estimatedWorkAt);
-      if (!workAt) {
-        return null;
-      }
-      const payoutAt = new Date(workAt.getTime() + numberOrZero3(dueDays) * 24 * 60 * 60 * 1e3);
-      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
-      if (payoutAt <= current) {
-        return toLocalMidnightAtOffset(current, 1);
-      }
-      return payoutAt.toISOString();
-    }
-    function relativeAgeUnitToMs(unit) {
-      switch (String(unit || "").toLowerCase()) {
-        case "minute":
-          return 60 * 1e3;
-        case "hour":
-          return 60 * 60 * 1e3;
-        case "week":
-          return 7 * 24 * 60 * 60 * 1e3;
-        case "day":
-        default:
-          return 24 * 60 * 60 * 1e3;
-      }
-    }
-    function amountToCents(value) {
-      const match = String(value || "").match(/^\$([\d,]+)(?:\.(\d{2}))?$/);
-      if (!match) {
-        return 0;
-      }
-      const [, dollarsRaw, centsRaw = "00"] = match;
-      return Number(dollarsRaw.replace(/,/g, "")) * 100 + Number(centsRaw);
-    }
-    function toLocalMidnightAtOffset(now, daysOffset) {
-      const date = normalizeDate3(now) || /* @__PURE__ */ new Date();
-      const localMidnight = new Date(
-        date.getFullYear(),
-        date.getMonth(),
-        date.getDate() + numberOrZero3(daysOffset),
-        0,
-        0,
-        0,
-        0
-      );
-      if (localMidnight <= date) {
-        localMidnight.setDate(localMidnight.getDate() + 1);
-      }
-      return localMidnight.toISOString();
-    }
-    async function openFundsHistoryTab(page) {
-      const tabFound = await page.evaluate(() => {
-        const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
-        const target = Array.from(document.querySelectorAll('button,[role="tab"]')).find((element) => {
-          const node = element;
-          const text = normalize(node.innerText || node.textContent || "");
-          const aria = normalize(element.getAttribute("aria-label") || "");
-          const title = normalize(element.getAttribute("title") || "");
-          return /Funds History/i.test(text) || /Funds History/i.test(aria) || /Funds History/i.test(title);
-        });
-        if (target) {
-          target.click();
-        }
-        return Boolean(target);
-      });
-      if (!tabFound) {
-        return false;
-      }
-      const historyLoaded = await page.waitForFunction(() => {
-        const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
-        return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
-          const node = element;
-          const text = normalize(node.innerText || node.textContent || "");
-          return /^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text);
-        });
-      }, { timeout: 3e4 }).then(() => true).catch(() => false);
-      await sleep(250);
-      return historyLoaded;
-    }
-    async function expandFundsHistoryRows(page) {
-      const monthRowCount = await clickFundsHistoryRows(page, "month");
-      const monthRowsExpanded = await page.waitForFunction(() => {
-        const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
-        return Array.from(document.querySelectorAll('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer')).some((element) => {
-          const node = element;
-          const text = normalize(node.innerText || node.textContent || "");
-          return /^(Time Entry|Task Submission)/i.test(text) || /^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text) && !/^[A-Z][a-z]{2}\s+\d{1,2}$/.test(text);
-        });
-      }, { timeout: 3e4 }).then(() => true).catch(() => false);
-      await sleep(250);
-      const projectRowCount = await clickFundsHistoryRows(page, "project");
-      const projectRowsExpanded = await page.waitForFunction(() => {
-        const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
-        return Array.from(document.querySelectorAll("tr")).some((row) => {
-          const node = row;
-          const text = normalize(node.innerText || node.textContent || "");
-          return /Pending Approval/i.test(text) || /Paid/i.test(text);
-        });
-      }, { timeout: 3e4 }).then(() => true).catch(() => false);
-      await sleep(250);
-      return monthRowCount > 0 && monthRowsExpanded && projectRowCount > 0 && projectRowsExpanded;
-    }
-    async function clickFundsHistoryRows(page, kind) {
-      return page.evaluate((rowKind) => {
-        const normalize = (value) => String(value || "").trim().replace(/\s+/g, " ");
-        const isMonth = (text) => /^[A-Z][a-z]{2}\s+\d{1,2}\s+\$[\d,]+(?:\.\d{2})?$/.test(text);
-        const isDetail = (text) => /^(Time Entry|Task Submission|Paid|Pending Approval)/i.test(text);
-        const isProject = (text) => /^.+\s+\$[\d,]+(?:\.\d{2})?$/.test(text) && !isMonth(text) && !isDetail(text);
-        const predicate = rowKind === "month" ? isMonth : isProject;
-        let count = 0;
-        for (const row of Array.from(document.querySelectorAll("tr"))) {
-          const node = row;
-          const text = normalize(node.innerText || node.textContent || "");
-          const target = node.querySelector('td[data-testid="cell-title"] div.tw-flex.tw-cursor-pointer');
-          if (text && target && predicate(text)) {
-            target.click();
-            count += 1;
-          }
-        }
-        return count;
-      }, kind);
-    }
     function normalizeText2(value) {
       return String(value || "").trim().replace(/\s+/g, " ");
     }
     function normalizeDate3(value) {
-      if (!value) {
-        return null;
-      }
+      if (!value) return null;
       const date = value instanceof Date ? value : new Date(value);
       return Number.isNaN(date.getTime()) ? null : date;
     }
     function formatHumanTimestamp(value) {
       const date = normalizeDate3(value);
-      if (!date) {
-        return null;
-      }
+      if (!date) return null;
       return new Intl.DateTimeFormat("en-US", {
         month: "short",
         day: "numeric",
@@ -2970,19 +2675,11 @@ var require_funds_history = __commonJS({
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : 0;
     }
-    function sleep(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    }
     module2.exports = {
       scrapeFundsHistory,
-      parseFundsHistoryEntries,
       summarizeFundsHistoryEntries,
-      parseFundsHistoryDetailRow,
       formatPublicPayoutEntries,
-      normalizeApiPayoutEntries,
-      selectFundsHistoryEntries,
-      isProjectSummaryRow,
-      extractProjectName
+      normalizeApiPayoutEntries
     };
   }
 });
@@ -3500,7 +3197,7 @@ var require_payments = __commonJS({
           };
         }, availableAmountCents);
       }
-      const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page, { observationsPath: fundsHistoryObservationsPath, now, apiEntries }) : {
+      const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(apiEntries, { observationsPath: fundsHistoryObservationsPath, now }) : {
         next_payout_days: 0,
         next_payout_entries_count: 0,
         pending_payout_entries: []
@@ -3796,12 +3493,15 @@ var require_dataannotation_http_client = __commonJS({
         const response = await this._getAuthenticated("/workers/projects");
         return extractProjectsPage(response.body, response.url);
       }
-      async getPayments() {
-        const [pageResponse, earningsResponse] = await Promise.all([
+      async getPayments({ includeFundsHistory = true } = {}) {
+        const [pageResponse, earningsResponse, recentWorkResponse] = await Promise.all([
           this._getAuthenticated("/workers/payments"),
           this._getAuthenticated("/api_internal/payments/earnings_summary", {
             accept: "application/json"
-          })
+          }),
+          includeFundsHistory ? this._getAuthenticated("/api_internal/payments/recent_work_logs_and_timed_work_entries?include_paid=true", {
+            accept: "application/json"
+          }) : Promise.resolve(null)
         ]);
         let earningsSummary;
         try {
@@ -3809,9 +3509,26 @@ var require_dataannotation_http_client = __commonJS({
         } catch (error) {
           throw new Error(`DataAnnotation earnings response was not valid JSON: ${error.message}`);
         }
+        let recentWorkEntries = null;
+        if (!recentWorkResponse) {
+          return {
+            ...extractPaymentsPage(pageResponse.body, pageResponse.url),
+            earningsSummary,
+            recentWorkEntries
+          };
+        }
+        try {
+          recentWorkEntries = JSON.parse(recentWorkResponse.body);
+        } catch (error) {
+          throw new Error(`DataAnnotation recent work response was not valid JSON: ${error.message}`);
+        }
+        if (!recentWorkEntries || !Array.isArray(recentWorkEntries.workLogs) || !Array.isArray(recentWorkEntries.timedWorkEntries)) {
+          throw new Error("DataAnnotation recent work response has an invalid shape");
+        }
         return {
           ...extractPaymentsPage(pageResponse.body, pageResponse.url),
-          earningsSummary
+          earningsSummary,
+          recentWorkEntries
         };
       }
       async _getAuthenticated(path6, options = {}) {
@@ -3956,6 +3673,7 @@ var require_dataannotation_client = __commonJS({
     var { buildProjectSelectionUrl: buildProjectSelectionUrl2, buildProjectTasksUrl: buildProjectTasksUrl2, buildProjectUrl: buildProjectUrl2, extractProjects: extractProjects2 } = (init_projects(), __toCommonJS(projects_exports));
     var { extractTaskStatus } = require_task_status();
     var { chooseWithdrawalButton, extractPaymentsSnapshot, formatCents: formatCents3, scrapePayments } = require_payments();
+    var { scrapeFundsHistory } = require_funds_history();
     var { DataAnnotationBrowserSession, resolveExecutablePath } = require_browser_session();
     var { DataAnnotationHttpClient } = require_dataannotation_http_client();
     var NULL_LOGGER = {
@@ -4048,19 +3766,17 @@ var require_dataannotation_client = __commonJS({
         }
       }
       async collectPayments(options = {}) {
-        if (options.includeFundsHistory === false) {
-          try {
-            const result = await this._collectPaymentsWithHttp();
-            this.logger.debug("Collected DataAnnotation payments through HTTP");
-            return result;
-          } catch (error) {
-            this.logger.warning(`HTTP payment read failed; falling back to browser: ${error.message}`);
-          }
+        try {
+          const result = await this._collectPaymentsWithHttp(options);
+          this.logger.debug("Collected DataAnnotation payments through HTTP");
+          return result;
+        } catch (error) {
+          this.logger.warning(`HTTP payment read failed; falling back to browser: ${error.message}`);
         }
         return this._collectPaymentsWithBrowser(options);
       }
-      async _collectPaymentsWithHttp() {
-        const page = await this.httpClient.getPayments();
+      async _collectPaymentsWithHttp(options = {}) {
+        const page = await this.httpClient.getPayments(options);
         const availableAmountCents = numberOrZero3(page.props?.paymentStatus?.amountInCents);
         let withdrawButton = chooseWithdrawalButton(page.buttons, availableAmountCents);
         if (!withdrawButton.present && isHttpWithdrawalEligible(page.props?.paymentStatus, availableAmountCents)) {
@@ -4073,6 +3789,15 @@ var require_dataannotation_client = __commonJS({
           };
         }
         const scrapedAt = (/* @__PURE__ */ new Date()).toISOString();
+        const fundsHistory = options.includeFundsHistory === false ? {
+          next_payout_days: 0,
+          next_payout_entries_count: 0,
+          pending_payout_entries: [],
+          funds_history_complete: null
+        } : await scrapeFundsHistory(page.recentWorkEntries, {
+          observationsPath: options.fundsHistoryObservationsPath || null,
+          now: new Date(scrapedAt)
+        });
         const payments = extractPaymentsSnapshot({
           pageProps: page.props,
           earningsSummary: page.earningsSummary,
@@ -4080,7 +3805,8 @@ var require_dataannotation_client = __commonJS({
           buttonText: withdrawButton.text,
           buttonDisabled: withdrawButton.disabled,
           nextWithdrawalText: page.nextWithdrawalText,
-          scrapedAt
+          scrapedAt,
+          ...fundsHistory
         });
         this.logger.debug(
           `Scraped payments snapshot: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`
@@ -5706,10 +5432,12 @@ function pickFundsHistoryFields(payments) {
     next_payout_entries_count: payments?.next_payout_entries_count ?? 0,
     next_payout_at_human: payments?.next_payout_at_human ?? null,
     next_payout_entries: Array.isArray(payments?.next_payout_entries) ? payments.next_payout_entries : [],
+    next_payout_entries_public: Array.isArray(payments?.next_payout_entries_public) ? payments.next_payout_entries_public : [],
     next_payout_amount: payments?.next_payout_amount ?? null,
     next_payout_source: payments?.next_payout_source ?? null,
     next_payout_confidence: payments?.next_payout_confidence ?? null,
     pending_payout_entries: Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : [],
+    pending_payout_entries_public: Array.isArray(payments?.pending_payout_entries_public) ? payments.pending_payout_entries_public : [],
     funds_history_complete: payments?.funds_history_complete ?? null,
     last_payout_amount_cents: payments?.last_payout_amount_cents ?? null,
     last_payout_amount: payments?.last_payout_amount ?? null,
@@ -6483,7 +6211,7 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
       fundsHistoryObservationsPath: FUNDS_HISTORY_OBSERVATIONS_PATH
     });
     logger.debug(`Payments scrape completed in ${Date.now() - paymentsStartedAt}ms`);
-    const mergedPayments = includeFundsHistory ? payments : mergePaymentsWithFundsHistory2(payments, lastFundsHistorySnapshot);
+    const mergedPayments = includeFundsHistory ? payments?.funds_history_complete === false ? { ...mergePaymentsWithFundsHistory2(payments, lastFundsHistorySnapshot), funds_history_complete: false } : payments : mergePaymentsWithFundsHistory2(payments, lastFundsHistorySnapshot);
     const paymentsForPublish = retainNextWithdrawalAt3(clearExpiredPayoutDetails2(mergedPayments, /* @__PURE__ */ new Date()), lastSuccessfulPayments, /* @__PURE__ */ new Date());
     logger.info(`Payments snapshot complete: available=${paymentsForPublish.available_amount_formatted}, canWithdraw=${paymentsForPublish.can_withdraw}`);
     logger.debug(`Payments page URL: ${paymentsForPublish.pageUrl}`);
@@ -8671,7 +8399,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.20",
+      version: "0.7.21",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

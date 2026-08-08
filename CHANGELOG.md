@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.21
+
+- Make the authenticated recent-work API the authoritative Funds History source.
+- Remove Funds History tab expansion and relative-age UI parsing while preserving Wallet observation identities.
+- Retain the last complete payout snapshot when the API is unavailable and mark the current history incomplete.
+
 ## 0.7.20
 
 - Preserve legacy Funds History observation identities after API cutover so existing Wallet income markers are not recreated.

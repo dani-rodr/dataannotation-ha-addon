@@ -21,12 +21,17 @@ class DataAnnotationHttpClient {
     return extractProjectsPage(response.body, response.url);
   }
 
-  async getPayments() {
-    const [pageResponse, earningsResponse] = await Promise.all([
+  async getPayments({ includeFundsHistory = true } = {}) {
+    const [pageResponse, earningsResponse, recentWorkResponse] = await Promise.all([
       this._getAuthenticated('/workers/payments'),
       this._getAuthenticated('/api_internal/payments/earnings_summary', {
         accept: 'application/json',
       }),
+      includeFundsHistory
+        ? this._getAuthenticated('/api_internal/payments/recent_work_logs_and_timed_work_entries?include_paid=true', {
+          accept: 'application/json',
+        })
+        : Promise.resolve(null),
     ]);
 
     let earningsSummary;
@@ -36,9 +41,29 @@ class DataAnnotationHttpClient {
       throw new Error(`DataAnnotation earnings response was not valid JSON: ${error.message}`);
     }
 
+    let recentWorkEntries = null;
+    if (!recentWorkResponse) {
+      return {
+        ...extractPaymentsPage(pageResponse.body, pageResponse.url),
+        earningsSummary,
+        recentWorkEntries,
+      };
+    }
+
+    try {
+      recentWorkEntries = JSON.parse(recentWorkResponse.body);
+    } catch (error) {
+      throw new Error(`DataAnnotation recent work response was not valid JSON: ${error.message}`);
+    }
+
+    if (!recentWorkEntries || !Array.isArray(recentWorkEntries.workLogs) || !Array.isArray(recentWorkEntries.timedWorkEntries)) {
+      throw new Error('DataAnnotation recent work response has an invalid shape');
+    }
+
     return {
       ...extractPaymentsPage(pageResponse.body, pageResponse.url),
       earningsSummary,
+      recentWorkEntries,
     };
   }
 

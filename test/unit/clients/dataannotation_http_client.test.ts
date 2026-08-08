@@ -110,6 +110,10 @@ test('HTTP client extracts payment props, buttons, and earnings JSON', async () 
       return response(PAYMENTS_HTML, { url });
     }
 
+    if (url.includes('/recent_work_logs_and_timed_work_entries')) {
+      return response(JSON.stringify({ workLogs: [], timedWorkEntries: [] }), { url });
+    }
+
     return response(JSON.stringify({ totalPaidOut: 30000, currentMonthEarnings: 20000 }), {
       url,
     });
@@ -123,4 +127,22 @@ test('HTTP client extracts payment props, buttons, and earnings JSON', async () 
   assert.equal(result.buttons[0].formMethod, 'post');
   assert.equal(result.earningsSummary.totalPaidOut, 30000);
   assert.equal(result.nextWithdrawalText, 'Next withdrawal: July 4, 2026 at 12:00 AM GMT+0');
+  assert.deepEqual(result.recentWorkEntries, { workLogs: [], timedWorkEntries: [] });
+});
+
+test('HTTP client rejects an invalid recent work response instead of treating it as empty history', async () => {
+  const fetchImpl = async (url) => {
+    if (url.endsWith('/workers/payments')) {
+      return response(PAYMENTS_HTML, { url });
+    }
+
+    if (url.includes('/recent_work_logs_and_timed_work_entries')) {
+      return response(JSON.stringify({ workLogs: [] }), { url });
+    }
+
+    return response(JSON.stringify({}), { url });
+  };
+
+  const client = new DataAnnotationHttpClient({ fetchImpl });
+  await assert.rejects(() => client.getPayments(), /recent work response has an invalid shape/);
 });

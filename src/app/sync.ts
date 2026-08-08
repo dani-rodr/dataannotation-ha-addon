@@ -135,7 +135,9 @@ export async function doSync(
     });
     logger.debug(`Payments scrape completed in ${Date.now() - paymentsStartedAt}ms`);
     const mergedPayments = includeFundsHistory
-      ? payments
+      ? payments?.funds_history_complete === false
+        ? { ...mergePaymentsWithFundsHistory(payments, lastFundsHistorySnapshot), funds_history_complete: false }
+        : payments
       : mergePaymentsWithFundsHistory(payments, lastFundsHistorySnapshot);
     const paymentsForPublish = retainNextWithdrawalAt(clearExpiredPayoutDetails(mergedPayments, new Date()), lastSuccessfulPayments, new Date());
     logger.info(`Payments snapshot complete: available=${paymentsForPublish.available_amount_formatted}, canWithdraw=${paymentsForPublish.can_withdraw}`);

@@ -26,6 +26,7 @@ function createHttpPaymentClient(paymentStatus) {
           buttons: [],
           nextWithdrawalText: '',
           earningsSummary: { totalPaidOut: 30000, currentMonthEarnings: 20000 },
+          recentWorkEntries: { workLogs: [], timedWorkEntries: [] },
         };
       },
     },
@@ -91,6 +92,7 @@ test('HTTP payment read uses the existing payment normalizer without a browser p
           }],
           nextWithdrawalText: 'Next withdrawal: July 4, 2026 at 12:00 AM GMT+0',
           earningsSummary: { totalPaidOut: 30000, currentMonthEarnings: 20000 },
+          recentWorkEntries: { workLogs: [], timedWorkEntries: [] },
         };
       },
     },
@@ -164,7 +166,7 @@ test('HTTP project failure falls back to the existing browser reader', async () 
   assert.equal(result.pageUrl, 'browser-fallback');
 });
 
-test('full payment reads keep the browser path for Funds History', async () => {
+test('full payment reads use HTTP without creating a browser page', async () => {
   const client = new DataAnnotationClient({
     email: 'user@example.com',
     password: 'secret',
@@ -172,22 +174,26 @@ test('full payment reads keep the browser path for Funds History', async () => {
     logger: createLogger(),
     httpClient: {
       async getPayments() {
-        throw new Error('HTTP should not be used for Funds History');
+        return {
+          pageUrl: 'https://app.dataannotation.tech/workers/payments',
+          props: { paymentStatus: { amountInCents: 0 }, totalLifetimeEarnings: 0, unapprovedAmount: 0 },
+          buttons: [],
+          nextWithdrawalText: '',
+          earningsSummary: {},
+          recentWorkEntries: { workLogs: [], timedWorkEntries: [] },
+        };
       },
     },
   });
-  client._collectPaymentsWithBrowser = async () => ({
-    authenticated: true,
-    loginState: 'authenticated',
-    pageUrl: 'browser-funds-history',
-  });
+  client.browserSession.newPage = async () => { throw new Error('browser should not be used'); };
 
   const result = await client.collectPayments({ includeFundsHistory: true });
 
-  assert.equal(result.pageUrl, 'browser-funds-history');
+  assert.equal(result.pageUrl, 'https://app.dataannotation.tech/workers/payments');
+  assert.equal(result.funds_history_complete, true);
 });
 
-test('payment collection keeps the browser default when Funds History is unspecified', async () => {
+test('payment collection uses HTTP when Funds History is unspecified', async () => {
   const client = new DataAnnotationClient({
     email: 'user@example.com',
     password: 'secret',
@@ -195,17 +201,20 @@ test('payment collection keeps the browser default when Funds History is unspeci
     logger: createLogger(),
     httpClient: {
       async getPayments() {
-        throw new Error('HTTP should not be used for the default full read');
+        return {
+          pageUrl: 'http-default-funds-history',
+          props: { paymentStatus: { amountInCents: 0 }, totalLifetimeEarnings: 0, unapprovedAmount: 0 },
+          buttons: [],
+          nextWithdrawalText: '',
+          earningsSummary: {},
+          recentWorkEntries: { workLogs: [], timedWorkEntries: [] },
+        };
       },
     },
   });
-  client._collectPaymentsWithBrowser = async () => ({
-    authenticated: true,
-    loginState: 'authenticated',
-    pageUrl: 'browser-default-funds-history',
-  });
+  client.browserSession.newPage = async () => { throw new Error('browser should not be used'); };
 
   const result = await client.collectPayments();
 
-  assert.equal(result.pageUrl, 'browser-default-funds-history');
+  assert.equal(result.pageUrl, 'http-default-funds-history');
 });

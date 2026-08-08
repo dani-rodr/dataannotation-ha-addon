@@ -516,7 +516,7 @@ async function scrapePayments(page, { includeFundsHistory = true, fundsHistoryOb
       };
     }, availableAmountCents);
   }
-  const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(page, { observationsPath: fundsHistoryObservationsPath, now, apiEntries }) : {
+  const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(apiEntries, { observationsPath: fundsHistoryObservationsPath, now }) : {
     next_payout_days: 0,
     next_payout_entries_count: 0,
     pending_payout_entries: [],

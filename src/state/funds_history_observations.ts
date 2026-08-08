@@ -54,7 +54,10 @@ function applyFundsHistoryObservations(entries: any, observations: any = null, n
       seenFingerprintCounts.set(fingerprint, fingerprintCount);
     }
     const sourceEntryId = normalizeText(entry?.source_entry_id);
-    const useLegacyFingerprintMatching = !sourceEntryId && Boolean(normalizeDate(state.api_cutover_at));
+    const sourceCreatedAt = normalizeDate(entry?.source_created_at);
+    const cutoff = normalizeDate(state.api_cutover_at);
+    const isPreCutoverApiEntry = Boolean(sourceEntryId && sourceCreatedAt && cutoff && sourceCreatedAt < cutoff);
+    const useLegacyFingerprintMatching = !sourceEntryId && Boolean(cutoff);
     const exactExisting = sourceEntryId
       ? bySourceEntryId.get(sourceEntryId) || null
       : useLegacyFingerprintMatching
@@ -62,6 +65,14 @@ function applyFundsHistoryObservations(entries: any, observations: any = null, n
         : findUnusedObservation(byFingerprint.get(fingerprint) || [], seenObservationIds);
     const stableCandidates = stableKey ? byStableKey.get(stableKey) || [] : [];
     let existing = exactExisting;
+
+    if (!existing && isPreCutoverApiEntry) {
+      existing = findLegacyMigrationObservation(
+        byStableKey.get(stableKey) || [],
+        entry,
+        seenObservationIds,
+      );
+    }
 
     if (!existing && !sourceEntryId && stableCandidates.length > 0) {
       const candidate = stableCandidates.find((item) => !seenObservationIds.has(normalizeText(item?.observation_id)));
@@ -104,7 +115,15 @@ function applyFundsHistoryObservations(entries: any, observations: any = null, n
           estimate_confidence: existing.estimate_confidence || null,
           first_seen_at: existing.first_seen_at || existing.last_seen_at || current.toISOString(),
         }
-      : estimateFundsHistoryEntry(entry, current);
+      : sourceEntryId && (entry.estimated_work_at || entry.estimated_payout_at)
+        ? {
+            estimated_work_at: entry.estimated_work_at || null,
+            estimated_payout_at: entry.estimated_payout_at || null,
+            estimate_source: entry.estimate_source || null,
+            estimate_confidence: entry.estimate_confidence || null,
+            first_seen_at: current.toISOString(),
+          }
+        : estimateFundsHistoryEntry(entry, current);
 
     const aliases = existing ? Array.from(new Set([...(existing.aliases || []), existing.fingerprint, existing.current_fingerprint, fingerprint].filter(Boolean).map((value) => normalizeText(value)).filter(Boolean))) : [fingerprint].filter(Boolean);
     const mergedEntry = toObservationRecord({
@@ -212,6 +231,7 @@ function pickStoredObservationFields(entry: any) {
   return {
     observation_id: entry.observation_id,
     source_entry_id: entry.source_entry_id || null,
+    source_entry_ids: uniqueTextList(entry.source_entry_ids || [entry.source_entry_id]),
     source_created_at: entry.source_created_at || null,
     fingerprint: entry.fingerprint,
     current_fingerprint: entry.current_fingerprint,
@@ -296,6 +316,7 @@ function normalizeObservationEntry(fingerprint: any, entry: any) {
   const normalized = {
     observation_id: normalizedObservationId,
     source_entry_id: normalizeText(entry.source_entry_id) || null,
+    source_entry_ids: uniqueTextList(entry.source_entry_ids || [entry.source_entry_id]),
     source_created_at: normalizeIsoDate(entry.source_created_at) || null,
     fingerprint: normalizedFingerprint,
     current_fingerprint: normalizeText(entry.current_fingerprint || normalizedFingerprint) || normalizedFingerprint,
@@ -466,6 +487,11 @@ function makeObservationId(fingerprint: string, occurrence = 1) {
 function toObservationRecord(entry: any, currentFingerprint: string, now: Date, existing: any = null, aliases: string[] = [], occurrence = 1) {
   const sourceEntryId = normalizeText(entry?.source_entry_id) || normalizeText(existing?.source_entry_id);
   const sourceCreatedAt = normalizeIsoDate(entry?.source_created_at) || normalizeIsoDate(existing?.source_created_at);
+  const sourceEntryIds = uniqueTextList([
+    ...(Array.isArray(existing?.source_entry_ids) ? existing.source_entry_ids : []),
+    existing?.source_entry_id,
+    entry?.source_entry_id,
+  ]);
   const observationId = existing?.observation_id
     || (sourceEntryId ? makeObservationId(`source:${sourceEntryId}`) : (occurrence > 1 ? makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence) : currentFingerprint || makeObservationId(currentFingerprint || buildStableObservationKey(entry), occurrence)));
   const fingerprintAliases = uniqueTextList([
@@ -479,6 +505,7 @@ function toObservationRecord(entry: any, currentFingerprint: string, now: Date, 
   return {
     observation_id: observationId,
     source_entry_id: sourceEntryId || null,
+    source_entry_ids: sourceEntryIds,
     source_created_at: sourceCreatedAt || null,
     fingerprint: currentFingerprint,
     current_fingerprint: currentFingerprint,
@@ -516,8 +543,10 @@ function buildObservationIndex(state: any) {
       continue;
     }
 
-    const sourceEntryId = normalizeText(observation?.source_entry_id);
-    if (sourceEntryId) {
+    for (const sourceEntryId of uniqueTextList([
+      observation?.source_entry_id,
+      ...(Array.isArray(observation?.source_entry_ids) ? observation.source_entry_ids : []),
+    ])) {
       bySourceEntryId.set(sourceEntryId, observation);
     }
 
@@ -558,6 +587,27 @@ function buildObservationIndex(state: any) {
 function findUnusedObservation(observations: any[], seenObservationIds: Set<string>) {
   return (Array.isArray(observations) ? observations : [])
     .find((observation) => !seenObservationIds.has(normalizeText(observation?.observation_id))) || null;
+}
+
+function findLegacyMigrationObservation(observations: any[], entry: any, seenObservationIds: Set<string>) {
+  const candidates = (Array.isArray(observations) ? observations : [])
+    .filter((observation) => !seenObservationIds.has(normalizeText(observation?.observation_id)))
+    .filter((observation) => normalizeText(observation?.kind) === normalizeText(entry?.kind))
+    .filter((observation) => numberOrZero(observation?.amount_cents) === numberOrZero(entry?.amount_cents))
+    .filter((observation) => normalizeText(observation?.project) === normalizeText(entry?.project))
+    .filter((observation) => normalizeText(observation?.duration) === normalizeText(entry?.duration));
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const workAt = normalizeDate(entry?.source_created_at || entry?.estimated_work_at)?.getTime() || 0;
+  return candidates.sort((left, right) => {
+    const leftWorkAt = normalizeDate(left?.estimated_work_at)?.getTime() || 0;
+    const rightWorkAt = normalizeDate(right?.estimated_work_at)?.getTime() || 0;
+    return Math.abs(leftWorkAt - workAt) - Math.abs(rightWorkAt - workAt)
+      || String(left?.observation_id || '').localeCompare(String(right?.observation_id || ''));
+  })[0];
 }
 
 function cloneObservations(value: any) {

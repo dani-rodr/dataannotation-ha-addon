@@ -4,6 +4,7 @@ const { CLAIM_WORK_SCREEN_METRICS, buildClaimProjectTarget } = require('../proje
 const { buildProjectSelectionUrl, buildProjectTasksUrl, buildProjectUrl, extractProjects } = require('../scrapers/projects.ts');
 const { extractTaskStatus } = require('../scrapers/task_status.ts');
 const { chooseWithdrawalButton, extractPaymentsSnapshot, formatCents, scrapePayments } = require('../scrapers/payments.ts');
+const { scrapeFundsHistory } = require('../scrapers/funds_history.ts');
 const { DataAnnotationBrowserSession, resolveExecutablePath } = require('./browser_session.ts');
 const { DataAnnotationHttpClient } = require('./dataannotation_http_client.ts');
 
@@ -102,21 +103,19 @@ class DataAnnotationClient {
   }
 
   async collectPayments(options = {}) {
-    if (options.includeFundsHistory === false) {
-      try {
-        const result = await this._collectPaymentsWithHttp();
-        this.logger.debug('Collected DataAnnotation payments through HTTP');
-        return result;
-      } catch (error) {
-        this.logger.warning(`HTTP payment read failed; falling back to browser: ${error.message}`);
-      }
+    try {
+      const result = await this._collectPaymentsWithHttp(options);
+      this.logger.debug('Collected DataAnnotation payments through HTTP');
+      return result;
+    } catch (error) {
+      this.logger.warning(`HTTP payment read failed; falling back to browser: ${error.message}`);
     }
 
     return this._collectPaymentsWithBrowser(options);
   }
 
-  async _collectPaymentsWithHttp() {
-    const page = await this.httpClient.getPayments();
+  async _collectPaymentsWithHttp(options = {}) {
+    const page = await this.httpClient.getPayments(options);
     const availableAmountCents = numberOrZero(page.props?.paymentStatus?.amountInCents);
     let withdrawButton = chooseWithdrawalButton(page.buttons, availableAmountCents);
     if (!withdrawButton.present && isHttpWithdrawalEligible(page.props?.paymentStatus, availableAmountCents)) {
@@ -129,6 +128,17 @@ class DataAnnotationClient {
       };
     }
     const scrapedAt = new Date().toISOString();
+    const fundsHistory = options.includeFundsHistory === false
+      ? {
+        next_payout_days: 0,
+        next_payout_entries_count: 0,
+        pending_payout_entries: [],
+        funds_history_complete: null,
+      }
+      : await scrapeFundsHistory(page.recentWorkEntries, {
+        observationsPath: options.fundsHistoryObservationsPath || null,
+        now: new Date(scrapedAt),
+      });
     const payments = extractPaymentsSnapshot({
       pageProps: page.props,
       earningsSummary: page.earningsSummary,
@@ -137,6 +147,7 @@ class DataAnnotationClient {
       buttonDisabled: withdrawButton.disabled,
       nextWithdrawalText: page.nextWithdrawalText,
       scrapedAt,
+      ...fundsHistory,
     });
 
     this.logger.debug(
