@@ -50,6 +50,7 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 - `Available Funds`
 - `Can Withdraw`
 - `Next Withdrawal`
+- `Suggested Withdrawal`
 - `USD to PHP Rate`
 - `Total Earnings`
 - `Total Paid Out`
@@ -86,6 +87,7 @@ Each project sensor uses the task count as its state and exposes attributes such
 - Home Assistant Core API access is enabled so the add-on can create persistent notifications.
 - Funds History is opened read-only and expanded only to calculate the next payout timestamp.
 - Funds History is expanded read-only to calculate the `Next Payout` sensor and publish compact payout-entry attributes with a human-readable timestamp.
+- `Suggested Withdrawal` uses a rolling six-hour window from the last included pending payout after `Next Withdrawal` and exposes the full projected withdrawal amount plus contributing entries.
 - Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
 - `In Progress Task` is ON when the live projects page reports at least one active task in its in-progress task list.
 - Frankfurter exchange rates are refreshed daily after the UTC afternoon update window.

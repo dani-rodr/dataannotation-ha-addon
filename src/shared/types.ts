@@ -62,6 +62,13 @@ export interface PaymentSnapshot {
   next_withdrawal_amount_cents?: number | null;
   next_withdrawal_amount?: unknown;
   next_withdrawal_amount_formatted?: string | null;
+  suggested_withdrawal_at?: string | null;
+  suggested_withdrawal_amount_cents?: number | null;
+  suggested_withdrawal_amount?: unknown;
+  suggested_withdrawal_amount_formatted?: string | null;
+  suggested_withdrawal_entries_count?: number | null;
+  suggested_withdrawal_entries?: RawPayoutEntry[];
+  suggested_withdrawal_entries_public?: PublicPayoutEntry[];
   last_payout_amount_cents?: number | null;
   last_payout_amount?: unknown;
   last_payout_amount_formatted?: string | null;

@@ -108,7 +108,11 @@ test('convertPaymentsForCurrency converts monetary summary fields into PHP', () 
       last_payout_amount_formatted: '$12.34',
       next_withdrawal_amount: 12.34,
       next_withdrawal_amount_cents: 1234,
-      next_withdrawal_amount_formatted: '$12.34',
+       next_withdrawal_amount_formatted: '$12.34',
+       suggested_withdrawal_amount: 45.67,
+       suggested_withdrawal_amount_cents: 4567,
+       suggested_withdrawal_amount_formatted: '$45.67',
+       suggested_withdrawal_entries: [{ amount: '$12.34', amount_cents: 1234 }],
       next_withdrawal_source: 'fallback',
       next_payout_amount: 12.34,
       next_payout_entries: [{ amount: '$12.34', amount_cents: 1234 }],
@@ -132,7 +136,11 @@ test('convertPaymentsForCurrency converts monetary summary fields into PHP', () 
   assert.equal(payments.last_payout_amount_formatted, 'PHP 758.55');
   assert.equal(payments.next_withdrawal_amount, 758.55);
   assert.equal(payments.next_withdrawal_amount_cents, 75855);
-  assert.equal(payments.next_withdrawal_amount_formatted, 'PHP 758.55');
+     assert.equal(payments.next_withdrawal_amount_formatted, 'PHP 758.55');
+     assert.equal(payments.suggested_withdrawal_amount, 2807.38);
+     assert.equal(payments.suggested_withdrawal_amount_cents, 280738);
+     assert.equal(payments.suggested_withdrawal_amount_formatted, 'PHP 2,807.38');
+     assert.equal(payments.suggested_withdrawal_entries[0].amount, 'PHP 758.55');
   assert.equal(payments.next_withdrawal_source, undefined);
   assert.equal(payments.next_payout_amount, 758.55);
   assert.equal(payments.next_payout_entries[0].amount, 'PHP 758.55');

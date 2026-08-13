@@ -571,6 +571,26 @@ class DataAnnotationMqttBridge {
       },
       {
         component: 'sensor',
+        objectId: 'suggested_withdrawal',
+        payload: {
+          name: 'Suggested Withdrawal',
+          unique_id: `${this.topicPrefix}_suggested_withdrawal`,
+          state_topic: this._topic('payments/summary'),
+          value_template: "{{ value_json.suggested_withdrawal_at if value_json.suggested_withdrawal_at else 'unknown' }}",
+          json_attributes_topic: this._topic('payments/summary'),
+          json_attributes_template:
+            "{{ {'suggested_withdrawal_amount': value_json.suggested_withdrawal_amount, 'suggested_withdrawal_amount_cents': value_json.suggested_withdrawal_amount_cents, 'suggested_withdrawal_amount_formatted': value_json.suggested_withdrawal_amount_formatted, 'suggested_withdrawal_entries': value_json.suggested_withdrawal_entries_public, 'suggested_withdrawal_entries_count': value_json.suggested_withdrawal_entries_count, 'next_withdrawal_at': value_json.next_withdrawal_at} | tojson }}",
+          force_update: true,
+          availability_topic: this._topic('availability'),
+          payload_available: 'online',
+          payload_not_available: 'offline',
+          device_class: 'timestamp',
+          icon: 'mdi:calendar-clock-outline',
+          device: this.device,
+        },
+      },
+      {
+        component: 'sensor',
         objectId: 'next_payout',
         payload: {
           name: names.next_payout,

@@ -44,6 +44,13 @@
 - Normal payment values still refresh on the regular poll; `Next Payout` is refreshed on the slower Funds History schedule.
 - Hourly pending entries use a 7 day wait; task submissions use a 3 day wait.
 - The `Next Payout` sensor reports the earliest pending payout estimate, reuses the first-seen timestamp for new rows, and exposes compact payout-entry attributes plus a human-readable timestamp.
+
+## Suggested Withdrawal
+
+- `Suggested Withdrawal` is a timestamp sensor based on `Next Withdrawal`.
+- It includes pending payout entries after `Next Withdrawal` when each entry is within six hours of the last included entry.
+- Its timestamp is the latest included entry, and its amount is the full projected withdrawal total including available funds.
+- Attributes include the contributing pending payout entries and their count.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
 - Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
 - Frankfurter exchange rates are refreshed daily after the UTC afternoon update window.

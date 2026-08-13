@@ -1,5 +1,6 @@
 import type { PaymentSnapshot } from '../shared/types';
-const { buildWithdrawalAmountSnapshot } = require('./withdrawal_amount.ts');
+const { buildWithdrawalAmountSnapshot, buildSuggestedWithdrawalSnapshot } = require('./withdrawal_amount.ts');
+const { formatPublicPayoutEntries } = require('../scrapers/funds_history.ts');
 
 export function shouldIncludePayments(_options: { initialSyncCompleted: boolean; manualSyncRequested: boolean; fastPollingEnabled: boolean }): boolean {
   return true;
@@ -132,6 +133,10 @@ export function retainNextWithdrawalAt(currentPayments: PaymentSnapshot | null |
   retainLastPayoutAmount(current, previousPayments);
 
   Object.assign(current, buildWithdrawalAmountSnapshot(current, current.next_withdrawal_at || null, now));
+  const suggestedWithdrawal = buildSuggestedWithdrawalSnapshot(current, current.next_withdrawal_at || null, now);
+  Object.assign(current, suggestedWithdrawal, {
+    suggested_withdrawal_entries_public: formatPublicPayoutEntries(suggestedWithdrawal.suggested_withdrawal_entries),
+  });
   return current;
 }
 

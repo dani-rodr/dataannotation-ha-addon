@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.23
+
+- Add a rolling-window `Suggested Withdrawal` timestamp sensor with projected amount and contributing pending payout attributes.
+
 ## 0.7.22
 
 - Use the API's exact `source_created_at` timestamp for new Wallet income records.

@@ -29,6 +29,66 @@ function buildWithdrawalAmountSnapshot(payments: any, nextWithdrawalAt: string |
   return formatWithdrawalAmount(availableAmountCents + pendingAmountCents);
 }
 
+function buildSuggestedWithdrawalSnapshot(payments: any, nextWithdrawalAt: string | null, now = new Date()) {
+  const nextWithdrawal = parseDate(nextWithdrawalAt);
+  if (!nextWithdrawal) {
+    return {
+      suggested_withdrawal_at: null,
+      suggested_withdrawal_amount_cents: null,
+      suggested_withdrawal_amount: null,
+      suggested_withdrawal_amount_formatted: null,
+      suggested_withdrawal_entries: [],
+      suggested_withdrawal_entries_count: 0,
+    };
+  }
+
+  const currentTime = normalizeDate(now);
+  const entries = getPendingEntries(payments);
+  const futureEntries = entries
+    .map((entry, index) => ({ entry, index, payoutAt: parseDate(entry?.estimated_payout_at) }))
+    .filter((item) => item.payoutAt && item.payoutAt > nextWithdrawal)
+    .sort((left, right) => left.payoutAt.getTime() - right.payoutAt.getTime() || left.index - right.index);
+
+  let suggestedAt = nextWithdrawal;
+  for (const item of futureEntries) {
+    if (item.payoutAt.getTime() - suggestedAt.getTime() > SIX_HOURS_MS) {
+      break;
+    }
+    suggestedAt = item.payoutAt;
+  }
+
+  const contributingEntries = entries.filter((entry) => {
+    const payoutAt = parseDate(entry?.estimated_payout_at);
+    return payoutAt && payoutAt > currentTime && payoutAt <= suggestedAt;
+  });
+  const availableAmountCents = toCents(payments?.available_amount_cents, payments?.available_amount);
+  const pendingAmountCents = contributingEntries.reduce(
+    (sum, entry) => sum + toCents(entry.amount_cents, entry.amount),
+    0,
+  );
+  const amountCents = availableAmountCents + pendingAmountCents;
+
+  return {
+    suggested_withdrawal_at: suggestedAt.toISOString(),
+    suggested_withdrawal_amount_cents: amountCents,
+    suggested_withdrawal_amount: amountCents / 100,
+    suggested_withdrawal_amount_formatted: formatCents(amountCents),
+    suggested_withdrawal_entries: contributingEntries,
+    suggested_withdrawal_entries_count: contributingEntries.length,
+  };
+}
+
+function getPendingEntries(payments: any) {
+  const entries = Array.isArray(payments?.next_payout_entries)
+    ? payments.next_payout_entries
+    : Array.isArray(payments?.pending_payout_entries)
+      ? payments.pending_payout_entries
+      : [];
+  return entries.filter((entry) => entry && entry.status === 'pending');
+}
+
+const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+
 function formatWithdrawalAmount(cents: number) {
   return {
     next_withdrawal_amount_cents: cents,
@@ -74,4 +134,5 @@ function normalizeDate(value: unknown) {
 
 module.exports = {
   buildWithdrawalAmountSnapshot,
+  buildSuggestedWithdrawalSnapshot,
 };

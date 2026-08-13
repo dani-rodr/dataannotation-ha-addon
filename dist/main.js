@@ -1328,6 +1328,25 @@ var require_mqtt_bridge = __commonJS({
           },
           {
             component: "sensor",
+            objectId: "suggested_withdrawal",
+            payload: {
+              name: "Suggested Withdrawal",
+              unique_id: `${this.topicPrefix}_suggested_withdrawal`,
+              state_topic: this._topic("payments/summary"),
+              value_template: "{{ value_json.suggested_withdrawal_at if value_json.suggested_withdrawal_at else 'unknown' }}",
+              json_attributes_topic: this._topic("payments/summary"),
+              json_attributes_template: "{{ {'suggested_withdrawal_amount': value_json.suggested_withdrawal_amount, 'suggested_withdrawal_amount_cents': value_json.suggested_withdrawal_amount_cents, 'suggested_withdrawal_amount_formatted': value_json.suggested_withdrawal_amount_formatted, 'suggested_withdrawal_entries': value_json.suggested_withdrawal_entries_public, 'suggested_withdrawal_entries_count': value_json.suggested_withdrawal_entries_count, 'next_withdrawal_at': value_json.next_withdrawal_at} | tojson }}",
+              force_update: true,
+              availability_topic: this._topic("availability"),
+              payload_available: "online",
+              payload_not_available: "offline",
+              device_class: "timestamp",
+              icon: "mdi:calendar-clock-outline",
+              device: this.device
+            }
+          },
+          {
+            component: "sensor",
             objectId: "next_payout",
             payload: {
               name: names.next_payout,
@@ -2575,7 +2594,7 @@ var require_funds_history = __commonJS({
       }
       return `${remainder} min`;
     }
-    function formatPublicPayoutEntries(entries) {
+    function formatPublicPayoutEntries2(entries) {
       return sortPayoutEntries(entries).map((entry) => formatPublicPayoutEntry(entry));
     }
     function formatPublicPayoutEntry(entry) {
@@ -2678,7 +2697,7 @@ var require_funds_history = __commonJS({
     module2.exports = {
       scrapeFundsHistory,
       summarizeFundsHistoryEntries,
-      formatPublicPayoutEntries,
+      formatPublicPayoutEntries: formatPublicPayoutEntries2,
       normalizeApiPayoutEntries
     };
   }
@@ -2708,6 +2727,52 @@ var require_withdrawal_amount = __commonJS({
       }, 0);
       return formatWithdrawalAmount(availableAmountCents + pendingAmountCents);
     }
+    function buildSuggestedWithdrawalSnapshot2(payments, nextWithdrawalAt, now = /* @__PURE__ */ new Date()) {
+      const nextWithdrawal = parseDate4(nextWithdrawalAt);
+      if (!nextWithdrawal) {
+        return {
+          suggested_withdrawal_at: null,
+          suggested_withdrawal_amount_cents: null,
+          suggested_withdrawal_amount: null,
+          suggested_withdrawal_amount_formatted: null,
+          suggested_withdrawal_entries: [],
+          suggested_withdrawal_entries_count: 0
+        };
+      }
+      const currentTime = normalizeDate3(now);
+      const entries = getPendingEntries(payments);
+      const futureEntries = entries.map((entry, index) => ({ entry, index, payoutAt: parseDate4(entry?.estimated_payout_at) })).filter((item) => item.payoutAt && item.payoutAt > nextWithdrawal).sort((left, right) => left.payoutAt.getTime() - right.payoutAt.getTime() || left.index - right.index);
+      let suggestedAt = nextWithdrawal;
+      for (const item of futureEntries) {
+        if (item.payoutAt.getTime() - suggestedAt.getTime() > SIX_HOURS_MS) {
+          break;
+        }
+        suggestedAt = item.payoutAt;
+      }
+      const contributingEntries = entries.filter((entry) => {
+        const payoutAt = parseDate4(entry?.estimated_payout_at);
+        return payoutAt && payoutAt > currentTime && payoutAt <= suggestedAt;
+      });
+      const availableAmountCents = toCents(payments?.available_amount_cents, payments?.available_amount);
+      const pendingAmountCents = contributingEntries.reduce(
+        (sum, entry) => sum + toCents(entry.amount_cents, entry.amount),
+        0
+      );
+      const amountCents = availableAmountCents + pendingAmountCents;
+      return {
+        suggested_withdrawal_at: suggestedAt.toISOString(),
+        suggested_withdrawal_amount_cents: amountCents,
+        suggested_withdrawal_amount: amountCents / 100,
+        suggested_withdrawal_amount_formatted: formatCents3(amountCents),
+        suggested_withdrawal_entries: contributingEntries,
+        suggested_withdrawal_entries_count: contributingEntries.length
+      };
+    }
+    function getPendingEntries(payments) {
+      const entries = Array.isArray(payments?.next_payout_entries) ? payments.next_payout_entries : Array.isArray(payments?.pending_payout_entries) ? payments.pending_payout_entries : [];
+      return entries.filter((entry) => entry && entry.status === "pending");
+    }
+    var SIX_HOURS_MS = 6 * 60 * 60 * 1e3;
     function formatWithdrawalAmount(cents) {
       return {
         next_withdrawal_amount_cents: cents,
@@ -2744,7 +2809,8 @@ var require_withdrawal_amount = __commonJS({
       return date || /* @__PURE__ */ new Date(0);
     }
     module2.exports = {
-      buildWithdrawalAmountSnapshot: buildWithdrawalAmountSnapshot2
+      buildWithdrawalAmountSnapshot: buildWithdrawalAmountSnapshot2,
+      buildSuggestedWithdrawalSnapshot: buildSuggestedWithdrawalSnapshot2
     };
   }
 });
@@ -2753,8 +2819,8 @@ var require_withdrawal_amount = __commonJS({
 var require_payments = __commonJS({
   "src/scrapers/payments.ts"(exports2, module2) {
     "use strict";
-    var { formatPublicPayoutEntries, scrapeFundsHistory } = require_funds_history();
-    var { buildWithdrawalAmountSnapshot: buildWithdrawalAmountSnapshot2 } = require_withdrawal_amount();
+    var { formatPublicPayoutEntries: formatPublicPayoutEntries2, scrapeFundsHistory } = require_funds_history();
+    var { buildWithdrawalAmountSnapshot: buildWithdrawalAmountSnapshot2, buildSuggestedWithdrawalSnapshot: buildSuggestedWithdrawalSnapshot2 } = require_withdrawal_amount();
     function extractPaymentsSnapshot({
       pageProps,
       earningsSummary,
@@ -2802,6 +2868,12 @@ var require_payments = __commonJS({
         next_payout_entries: nextPayoutEntries,
         pending_payout_entries
       }, nextWithdrawalAt, now);
+      const suggestedWithdrawal = buildSuggestedWithdrawalSnapshot2({
+        next_payout_entries: nextPayoutEntries,
+        pending_payout_entries,
+        available_amount_cents: availableAmountCents,
+        available_amount: centsToNumber(availableAmountCents)
+      }, nextWithdrawalAt, now);
       return {
         available_amount_cents: availableAmountCents,
         available_amount: centsToNumber(availableAmountCents),
@@ -2817,6 +2889,8 @@ var require_payments = __commonJS({
         next_withdrawal_source: nextWithdrawalSource,
         next_withdrawal_text: nextWithdrawalText || null,
         ...withdrawalAmount,
+        ...suggestedWithdrawal,
+        suggested_withdrawal_entries_public: formatPublicPayoutEntries2(suggestedWithdrawal.suggested_withdrawal_entries),
         payment_status: pageProps?.paymentStatus?.type || null,
         total_earnings_cents: totalEarningsCents,
         total_earnings: centsToNumber(totalEarningsCents),
@@ -2841,9 +2915,9 @@ var require_payments = __commonJS({
         next_payout_entries_count: numberOrZero3(next_payout_entries_count),
         pending_payout_entries: Array.isArray(pending_payout_entries) ? pending_payout_entries : [],
         funds_history_complete: funds_history_complete ?? null,
-        pending_payout_entries_public: formatPublicPayoutEntries(pending_payout_entries),
+        pending_payout_entries_public: formatPublicPayoutEntries2(pending_payout_entries),
         next_payout_entries: nextPayoutEntries,
-        next_payout_entries_public: formatPublicPayoutEntries(nextPayoutEntries),
+        next_payout_entries_public: formatPublicPayoutEntries2(nextPayoutEntries),
         next_payout_amount: nextPayoutEntry?.amount || null,
         next_payout_source: nextPayoutEntry?.estimate_source || nextPayoutEntry?.source || null,
         next_payout_confidence: nextPayoutEntry?.estimate_confidence || nextPayoutEntry?.confidence || null,
@@ -4627,7 +4701,7 @@ var require_currency_conversion = __commonJS({
     "use strict";
     var path6 = require("node:path");
     var fs7 = require("node:fs");
-    var { formatPublicPayoutEntries } = require_funds_history();
+    var { formatPublicPayoutEntries: formatPublicPayoutEntries2 } = require_funds_history();
     var CURRENCY_BASE = "USD";
     var CURRENCY_QUOTE = "PHP";
     var DEFAULT_CONVERT_TO_PHP = false;
@@ -4761,6 +4835,7 @@ var require_currency_conversion = __commonJS({
       }
       converted.next_payout_amount = convertMoneyValue(converted.next_payout_amount, rate, displayCurrency);
       converted.next_withdrawal_amount = convertMoneyValue(converted.next_withdrawal_amount, rate, displayCurrency);
+      converted.suggested_withdrawal_amount = convertMoneyValue(converted.suggested_withdrawal_amount, rate, displayCurrency);
       converted.last_payout_amount = convertMoneyValue(converted.last_payout_amount, rate, displayCurrency);
       converted.available_amount_cents = convertCents(converted.available_amount_cents, rate);
       converted.total_earnings_cents = convertCents(converted.total_earnings_cents, rate);
@@ -4769,6 +4844,7 @@ var require_currency_conversion = __commonJS({
       converted.best_month_cents = convertCents(converted.best_month_cents, rate);
       converted.pending_approval_cents = convertCents(converted.pending_approval_cents, rate);
       converted.next_withdrawal_amount_cents = convertCents(converted.next_withdrawal_amount_cents, rate);
+      converted.suggested_withdrawal_amount_cents = convertCents(converted.suggested_withdrawal_amount_cents, rate);
       converted.last_payout_amount_cents = convertCents(converted.last_payout_amount_cents, rate);
       converted.available_amount_formatted = convertMoneyText(converted.available_amount_formatted, rate, displayCurrency);
       converted.total_earnings_formatted = convertMoneyText(converted.total_earnings_formatted, rate, displayCurrency);
@@ -4777,13 +4853,16 @@ var require_currency_conversion = __commonJS({
       converted.best_month_formatted = convertMoneyText(converted.best_month_formatted, rate, displayCurrency);
       converted.pending_approval_formatted = convertMoneyText(converted.pending_approval_formatted, rate, displayCurrency);
       converted.next_withdrawal_amount_formatted = convertMoneyText(converted.next_withdrawal_amount_formatted, rate, displayCurrency);
+      converted.suggested_withdrawal_amount_formatted = convertMoneyText(converted.suggested_withdrawal_amount_formatted, rate, displayCurrency);
       converted.last_payout_amount_formatted = convertMoneyText(converted.last_payout_amount_formatted, rate, displayCurrency);
       converted.button_text = convertButtonText(converted.button_text, rate, displayCurrency);
       converted.withdraw_button_text = convertButtonText(converted.withdraw_button_text, rate, displayCurrency);
       converted.next_payout_entries = convertPayoutEntries(converted.next_payout_entries, rate, displayCurrency);
       converted.pending_payout_entries = convertPayoutEntries(converted.pending_payout_entries, rate, displayCurrency);
-      converted.next_payout_entries_public = formatPublicPayoutEntries(converted.next_payout_entries);
-      converted.pending_payout_entries_public = formatPublicPayoutEntries(converted.pending_payout_entries);
+      converted.suggested_withdrawal_entries = convertPayoutEntries(converted.suggested_withdrawal_entries, rate, displayCurrency);
+      converted.next_payout_entries_public = formatPublicPayoutEntries2(converted.next_payout_entries);
+      converted.pending_payout_entries_public = formatPublicPayoutEntries2(converted.pending_payout_entries);
+      converted.suggested_withdrawal_entries_public = formatPublicPayoutEntries2(converted.suggested_withdrawal_entries);
       delete converted.next_withdrawal_source;
       converted.currency = displayCurrency;
       converted.exchange_rate = rate;
@@ -5502,6 +5581,10 @@ function retainNextWithdrawalAt(currentPayments, previousPayments, now = /* @__P
   }
   retainLastPayoutAmount(current, previousPayments);
   Object.assign(current, buildWithdrawalAmountSnapshot(current, current.next_withdrawal_at || null, now));
+  const suggestedWithdrawal = buildSuggestedWithdrawalSnapshot(current, current.next_withdrawal_at || null, now);
+  Object.assign(current, suggestedWithdrawal, {
+    suggested_withdrawal_entries_public: formatPublicPayoutEntries(suggestedWithdrawal.suggested_withdrawal_entries)
+  });
   return current;
 }
 function parseDate(value) {
@@ -5556,11 +5639,12 @@ function formatCents2(value) {
     maximumFractionDigits: 2
   }).format(value / 100)}`;
 }
-var buildWithdrawalAmountSnapshot;
+var buildWithdrawalAmountSnapshot, buildSuggestedWithdrawalSnapshot, formatPublicPayoutEntries;
 var init_sync_policy = __esm({
   "src/state/sync_policy.ts"() {
     "use strict";
-    ({ buildWithdrawalAmountSnapshot } = require_withdrawal_amount());
+    ({ buildWithdrawalAmountSnapshot, buildSuggestedWithdrawalSnapshot } = require_withdrawal_amount());
+    ({ formatPublicPayoutEntries } = require_funds_history());
   }
 });
 
@@ -8399,7 +8483,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.22",
+      version: "0.7.23",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

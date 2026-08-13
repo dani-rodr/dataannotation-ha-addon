@@ -295,6 +295,42 @@ test('retainNextWithdrawalAt keeps a future withdrawal timestamp while funds are
   assert.equal(retained.next_withdrawal_amount_cents, 12500);
   assert.equal(retained.next_withdrawal_amount, 125);
   assert.equal(retained.next_withdrawal_amount_formatted, '$125.00');
+  assert.equal(retained.suggested_withdrawal_at, '2026-07-11T00:00:00.000Z');
+  assert.equal(retained.suggested_withdrawal_amount_cents, 17500);
+  assert.equal(retained.suggested_withdrawal_entries_count, 2);
+});
+
+test('retainNextWithdrawalAt chains suggested withdrawal entries from the last included entry', () => {
+  const retained = retainNextWithdrawalAt({
+    available_amount_cents: 10000,
+    next_payout_entries: [
+      { status: 'pending', amount_cents: 1000, estimated_payout_at: '2026-07-08T15:00:00.000Z' },
+      { status: 'pending', amount_cents: 2000, estimated_payout_at: '2026-07-08T17:30:00.000Z' },
+      { status: 'pending', amount_cents: 3000, estimated_payout_at: '2026-07-08T18:01:00.000Z' },
+      { status: 'pending', amount_cents: 4000, estimated_payout_at: '2026-07-09T01:02:00.000Z' },
+    ],
+    next_withdrawal_at: '2026-07-08T12:00:00.000Z',
+  }, null, new Date('2026-07-08T09:00:00.000Z'));
+
+  assert.equal(retained.suggested_withdrawal_at, '2026-07-08T18:01:00.000Z');
+  assert.equal(retained.suggested_withdrawal_amount_cents, 16000);
+  assert.equal(retained.suggested_withdrawal_amount, 160);
+  assert.equal(retained.suggested_withdrawal_entries_count, 3);
+});
+
+test('retainNextWithdrawalAt excludes suggested entries beyond the rolling six-hour window', () => {
+  const retained = retainNextWithdrawalAt({
+    available_amount_cents: 10000,
+    next_payout_entries: [
+      { status: 'pending', amount_cents: 1000, estimated_payout_at: '2026-07-08T18:00:01.000Z' },
+      { status: 'pending', amount_cents: 2000, estimated_payout_at: '2026-07-09T00:01:00.000Z' },
+    ],
+    next_withdrawal_at: '2026-07-08T12:00:00.000Z',
+  }, null, new Date('2026-07-08T09:00:00.000Z'));
+
+  assert.equal(retained.suggested_withdrawal_at, '2026-07-08T12:00:00.000Z');
+  assert.equal(retained.suggested_withdrawal_amount_cents, 10000);
+  assert.equal(retained.suggested_withdrawal_entries_count, 0);
 });
 
 test('retainNextWithdrawalAt excludes payout entries that are already expired', () => {
