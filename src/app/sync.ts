@@ -2,10 +2,12 @@ const { convertPaymentsForCurrency, convertProjectsForCurrency, getDisplayCurren
 const { detectNewTaskProjects } = require('../projects/project_delta.ts');
 const { filterExcludedProjects } = require('../projects/project_filters.ts');
 const { summarizeProjects } = require('../scrapers/projects.ts');
+const { buildWorkHoursSnapshot } = require('../state/work_hours.ts');
 const { clearExpiredPayoutDetails, mergePaymentsWithFundsHistory, pickFundsHistoryFields, retainNextWithdrawalAt } = require('../state/sync_policy.ts');
 const { maybeAutoAcceptNewTasks } = require('./commands.ts');
 
 const FUNDS_HISTORY_OBSERVATIONS_PATH = '/data/funds-history-observations.json';
+const WORK_HOURS_OBSERVATIONS_PATH = '/data/work-hours-observations.json';
 
 export function getActivePollCron(config: any, fastPollingEnabled: boolean): string {
   return fastPollingEnabled ? config.fast_poll_cron : config.poll_cron;
@@ -129,10 +131,28 @@ export async function doSync(
     logger.debug(`Auto accept decision completed in ${Date.now() - autoAcceptStartedAt}ms`);
 
     const paymentsStartedAt = Date.now();
-    const payments = await client.collectPayments({
+    const scrapedPayments = await client.collectPayments({
       includeFundsHistory,
       fundsHistoryObservationsPath: FUNDS_HISTORY_OBSERVATIONS_PATH,
+      workHoursObservationsPath: WORK_HOURS_OBSERVATIONS_PATH,
+      workHoursTimezone: config.work_hours_timezone,
+      workHoursTimezoneSource: config.work_hours_timezone_source,
+      workHoursWeekStart: config.work_hours_week_start,
     });
+    const payments = includeFundsHistory
+      ? scrapedPayments
+      : {
+        ...scrapedPayments,
+        ...buildWorkHoursSnapshot({
+          includeFundsHistory: false,
+          observationsPath: WORK_HOURS_OBSERVATIONS_PATH,
+          timezone: config.work_hours_timezone,
+          timezoneSource: config.work_hours_timezone_source,
+          weekStart: config.work_hours_week_start,
+          now: new Date(),
+          logger,
+        }),
+      };
     logger.debug(`Payments scrape completed in ${Date.now() - paymentsStartedAt}ms`);
     const mergedPayments = includeFundsHistory
       ? payments?.funds_history_complete === false

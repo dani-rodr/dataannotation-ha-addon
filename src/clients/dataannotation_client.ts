@@ -137,7 +137,12 @@ class DataAnnotationClient {
       }
       : await scrapeFundsHistory(page.recentWorkEntries, {
         observationsPath: options.fundsHistoryObservationsPath || null,
+        workHoursObservationsPath: options.workHoursObservationsPath || null,
+        workHoursTimezone: options.workHoursTimezone || 'UTC',
+        workHoursTimezoneSource: options.workHoursTimezoneSource || 'utc_fallback',
+        workHoursWeekStart: options.workHoursWeekStart || 'monday',
         now: new Date(scrapedAt),
+        logger: this.logger,
       });
     const payments = extractPaymentsSnapshot({
       pageProps: page.props,
@@ -171,6 +176,11 @@ class DataAnnotationClient {
       const payments = await scrapePayments(page, {
         includeFundsHistory: options.includeFundsHistory !== false,
         fundsHistoryObservationsPath: options.fundsHistoryObservationsPath || null,
+        workHoursObservationsPath: options.workHoursObservationsPath || null,
+        workHoursTimezone: options.workHoursTimezone || 'UTC',
+        workHoursTimezoneSource: options.workHoursTimezoneSource || 'utc_fallback',
+        workHoursWeekStart: options.workHoursWeekStart || 'monday',
+        logger: this.logger,
       });
       this.logger.debug(
         `Scraped payments snapshot: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`

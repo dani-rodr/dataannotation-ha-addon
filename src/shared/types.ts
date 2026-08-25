@@ -84,6 +84,29 @@ export interface PaymentSnapshot {
   next_payout_confidence?: unknown;
   pending_payout_entries_public?: PublicPayoutEntry[];
   next_payout_entries_public?: PublicPayoutEntry[];
+  work_hours_today?: number;
+  work_hours_today_minutes?: number;
+  work_hours_this_week?: number;
+  work_hours_this_week_minutes?: number;
+  work_hours_timezone?: string;
+  work_hours_timezone_source?: string;
+  work_hours_week_start?: string;
+  work_hours_today_date?: string | null;
+  work_hours_week_start_date?: string | null;
+  work_hours_entry_count?: number;
+  work_hours_projects?: WorkHoursProject[];
+  work_hours_last_updated?: string | null;
+  work_hours_complete?: boolean;
+  work_hours_stale?: boolean;
+  work_hours_allocation_method?: string;
+}
+
+export interface WorkHoursProject {
+  project: string;
+  today_minutes: number;
+  today_hours: number;
+  week_minutes: number;
+  week_hours: number;
 }
 
 export interface RawPayoutEntry {

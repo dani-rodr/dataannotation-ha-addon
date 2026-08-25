@@ -70,6 +70,9 @@ test('scrapeFundsHistory returns a complete API-backed summary', async () => {
   assert.equal(result.next_payout_entries_count, 2);
   assert.equal(result.next_payout_at, '2026-08-11T11:42:17.123Z');
   assert.equal(result.pending_payout_entries.find((entry) => entry.kind === 'task').estimated_work_at, '2026-08-08T11:42:17.123Z');
+  assert.equal(result.work_hours_today_minutes, 426);
+  assert.equal(result.work_hours_this_week_minutes, 426);
+  assert.equal(result.work_hours_projects[0].project, 'Hourly Project');
 });
 
 test('scrapeFundsHistory marks an unavailable API response incomplete without scraping the UI', async () => {

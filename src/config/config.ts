@@ -17,6 +17,9 @@ type Config = {
   fast_poll_cron: string;
   funds_history_cron: string;
   funds_history_after_task_delay_minutes: number;
+  work_hours_timezone: string;
+  work_hours_timezone_source: string;
+  work_hours_week_start: string;
   excluded_project_patterns: string[] | string;
   mqtt_topic_prefix: string;
   log_level: string;
@@ -52,6 +55,9 @@ const DEFAULT_CONFIG: Config = {
   fast_poll_cron: DEFAULT_FAST_POLL_CRON,
   funds_history_cron: DEFAULT_FUNDS_HISTORY_CRON,
   funds_history_after_task_delay_minutes: 2,
+  work_hours_timezone: 'home_assistant',
+  work_hours_timezone_source: 'home_assistant',
+  work_hours_week_start: 'monday',
   excluded_project_patterns: [],
   mqtt_topic_prefix: 'dataannotation',
   log_level: 'info',
@@ -89,6 +95,8 @@ export async function readConfig(): Promise<Config> {
         1440
       );
     }
+    config.work_hours_timezone = stringOrDefault(options.work_hours_timezone, config.work_hours_timezone);
+    config.work_hours_week_start = stringOrDefault(options.work_hours_week_start, config.work_hours_week_start);
     config.excluded_project_patterns = stringOrDefault(options.excluded_project_patterns ?? options.excluded_projects, '');
     config.mqtt_topic_prefix = stringOrDefault(options.mqtt_topic_prefix, config.mqtt_topic_prefix);
     config.log_level = stringOrDefault(options.log_level, config.log_level);
@@ -127,6 +135,12 @@ export async function readConfig(): Promise<Config> {
   if (process.env.FUNDS_HISTORY_CRON) {
     config.funds_history_cron = process.env.FUNDS_HISTORY_CRON;
   }
+  if (process.env.WORK_HOURS_TIMEZONE) {
+    config.work_hours_timezone = process.env.WORK_HOURS_TIMEZONE;
+  }
+  if (process.env.WORK_HOURS_WEEK_START) {
+    config.work_hours_week_start = process.env.WORK_HOURS_WEEK_START;
+  }
   if (process.env.EXCLUDED_PROJECT_PATTERNS) {
     config.excluded_project_patterns = process.env.EXCLUDED_PROJECT_PATTERNS;
   }
@@ -142,6 +156,10 @@ export async function readConfig(): Promise<Config> {
   config.poll_cron = normalizePollingCron(config.poll_cron, DEFAULT_POLL_CRON);
   config.fast_poll_cron = normalizePollingCron(config.fast_poll_cron, DEFAULT_FAST_POLL_CRON);
   config.funds_history_cron = normalizePollingCron(config.funds_history_cron, DEFAULT_FUNDS_HISTORY_CRON);
+  const workHoursTimezone = await resolveWorkHoursTimezone(config.work_hours_timezone);
+  config.work_hours_timezone = workHoursTimezone.timezone;
+  config.work_hours_timezone_source = workHoursTimezone.source;
+  config.work_hours_week_start = normalizeWeekStart(config.work_hours_week_start);
   config.excluded_project_patterns = parseExcludedProjectPatterns(config.excluded_project_patterns);
   config.browser_profile_dir = '/data/chrome-profile';
   config.wallet_data_annotation_account_name = stringOrDefault(config.wallet_data_annotation_account_name, DEFAULT_CONFIG.wallet_data_annotation_account_name);
@@ -300,4 +318,66 @@ async function getMqttFromSupervisor(): Promise<MqttSupervisorConfig> {
     });
     request.end();
   });
+}
+
+async function resolveWorkHoursTimezone(value: unknown): Promise<{ timezone: string; source: string }> {
+  const requested = String(value || 'home_assistant').trim();
+  if (requested.toLowerCase() !== 'home_assistant') {
+    validateTimeZone(requested);
+    return { timezone: requested, source: 'config' };
+  }
+
+  const timezone = await getHomeAssistantTimezone();
+  if (timezone) {
+    try {
+      validateTimeZone(timezone);
+      return { timezone, source: 'home_assistant' };
+    } catch {
+      // Fall through to UTC when HA reports an unusable timezone.
+    }
+  }
+
+  return { timezone: 'UTC', source: 'utc_fallback' };
+}
+
+function validateTimeZone(timezone: string): void {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+  } catch {
+    throw new Error(`Invalid work hours timezone "${timezone}"; use an IANA timezone such as "Asia/Manila" or "home_assistant"`);
+  }
+}
+
+function normalizeWeekStart(value: unknown): string {
+  const normalized = String(value || 'monday').trim().toLowerCase();
+  const allowed = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  if (!allowed.includes(normalized)) {
+    throw new Error(`Invalid work hours week start "${value}"; use a weekday name`);
+  }
+  return normalized;
+}
+
+async function getHomeAssistantTimezone(): Promise<string | null> {
+  const token = process.env.SUPERVISOR_TOKEN;
+  if (!token) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch('http://supervisor/core/api/config', {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json();
+    return typeof payload?.time_zone === 'string' ? payload.time_zone : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

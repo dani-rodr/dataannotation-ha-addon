@@ -252,6 +252,8 @@ async function readConfig() {
         1440
       );
     }
+    config.work_hours_timezone = stringOrDefault(options.work_hours_timezone, config.work_hours_timezone);
+    config.work_hours_week_start = stringOrDefault(options.work_hours_week_start, config.work_hours_week_start);
     config.excluded_project_patterns = stringOrDefault(options.excluded_project_patterns ?? options.excluded_projects, "");
     config.mqtt_topic_prefix = stringOrDefault(options.mqtt_topic_prefix, config.mqtt_topic_prefix);
     config.log_level = stringOrDefault(options.log_level, config.log_level);
@@ -289,6 +291,12 @@ async function readConfig() {
   if (process.env.FUNDS_HISTORY_CRON) {
     config.funds_history_cron = process.env.FUNDS_HISTORY_CRON;
   }
+  if (process.env.WORK_HOURS_TIMEZONE) {
+    config.work_hours_timezone = process.env.WORK_HOURS_TIMEZONE;
+  }
+  if (process.env.WORK_HOURS_WEEK_START) {
+    config.work_hours_week_start = process.env.WORK_HOURS_WEEK_START;
+  }
   if (process.env.EXCLUDED_PROJECT_PATTERNS) {
     config.excluded_project_patterns = process.env.EXCLUDED_PROJECT_PATTERNS;
   }
@@ -303,6 +311,10 @@ async function readConfig() {
   config.poll_cron = normalizePollingCron(config.poll_cron, DEFAULT_POLL_CRON);
   config.fast_poll_cron = normalizePollingCron(config.fast_poll_cron, DEFAULT_FAST_POLL_CRON);
   config.funds_history_cron = normalizePollingCron(config.funds_history_cron, DEFAULT_FUNDS_HISTORY_CRON);
+  const workHoursTimezone = await resolveWorkHoursTimezone(config.work_hours_timezone);
+  config.work_hours_timezone = workHoursTimezone.timezone;
+  config.work_hours_timezone_source = workHoursTimezone.source;
+  config.work_hours_week_start = normalizeWeekStart(config.work_hours_week_start);
   config.excluded_project_patterns = parseExcludedProjectPatterns(config.excluded_project_patterns);
   config.browser_profile_dir = "/data/chrome-profile";
   config.wallet_data_annotation_account_name = stringOrDefault(config.wallet_data_annotation_account_name, DEFAULT_CONFIG.wallet_data_annotation_account_name);
@@ -436,6 +448,60 @@ async function getMqttFromSupervisor() {
     request.end();
   });
 }
+async function resolveWorkHoursTimezone(value) {
+  const requested = String(value || "home_assistant").trim();
+  if (requested.toLowerCase() !== "home_assistant") {
+    validateTimeZone(requested);
+    return { timezone: requested, source: "config" };
+  }
+  const timezone = await getHomeAssistantTimezone();
+  if (timezone) {
+    try {
+      validateTimeZone(timezone);
+      return { timezone, source: "home_assistant" };
+    } catch {
+    }
+  }
+  return { timezone: "UTC", source: "utc_fallback" };
+}
+function validateTimeZone(timezone) {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+  } catch {
+    throw new Error(`Invalid work hours timezone "${timezone}"; use an IANA timezone such as "Asia/Manila" or "home_assistant"`);
+  }
+}
+function normalizeWeekStart(value) {
+  const normalized = String(value || "monday").trim().toLowerCase();
+  const allowed = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  if (!allowed.includes(normalized)) {
+    throw new Error(`Invalid work hours week start "${value}"; use a weekday name`);
+  }
+  return normalized;
+}
+async function getHomeAssistantTimezone() {
+  const token = process.env.SUPERVISOR_TOKEN;
+  if (!token) {
+    return null;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1e4);
+  try {
+    const response = await fetch("http://supervisor/core/api/config", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json();
+    return typeof payload?.time_zone === "string" ? payload.time_zone : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 var import_fs, import_http, DEFAULT_CONFIG;
 var init_config = __esm({
   "src/config/config.ts"() {
@@ -452,6 +518,9 @@ var init_config = __esm({
       fast_poll_cron: DEFAULT_FAST_POLL_CRON,
       funds_history_cron: DEFAULT_FUNDS_HISTORY_CRON,
       funds_history_after_task_delay_minutes: 2,
+      work_hours_timezone: "home_assistant",
+      work_hours_timezone_source: "home_assistant",
+      work_hours_week_start: "monday",
       excluded_project_patterns: [],
       mqtt_topic_prefix: "dataannotation",
       log_level: "info",
@@ -559,6 +628,8 @@ var require_mqtt_discovery = __commonJS({
         withdraw_funds: "Withdraw Funds",
         rebuild_discovery: "Rebuild Discovery",
         next_payout: "Next Payout",
+        hours_today: "Hours Today",
+        hours_this_week: "Hours This Week",
         auto_accept_project: "Auto Accept Priority"
       };
     }
@@ -1361,6 +1432,50 @@ var require_mqtt_bridge = __commonJS({
               payload_not_available: "offline",
               device_class: "timestamp",
               icon: "mdi:calendar-arrow-right",
+              device: this.device
+            }
+          },
+          {
+            component: "sensor",
+            objectId: "hours_today",
+            payload: {
+              name: names.hours_today,
+              unique_id: `${this.topicPrefix}_hours_today`,
+              state_topic: this._topic("payments/summary"),
+              value_template: "{{ value_json.work_hours_today }}",
+              json_attributes_topic: this._topic("payments/summary"),
+              json_attributes_template: "{{ {'minutes': value_json.work_hours_today_minutes, 'date': value_json.work_hours_today_date, 'timezone': value_json.work_hours_timezone, 'timezone_source': value_json.work_hours_timezone_source, 'projects': value_json.work_hours_projects, 'entry_count': value_json.work_hours_entry_count, 'last_updated': value_json.work_hours_last_updated, 'complete': value_json.work_hours_complete, 'stale': value_json.work_hours_stale, 'allocation_method': value_json.work_hours_allocation_method} | tojson }}",
+              unit_of_measurement: "h",
+              state_class: "measurement",
+              device_class: "duration",
+              suggested_display_precision: 2,
+              force_update: true,
+              availability_topic: this._topic("availability"),
+              payload_available: "online",
+              payload_not_available: "offline",
+              icon: "mdi:clock-time-four-outline",
+              device: this.device
+            }
+          },
+          {
+            component: "sensor",
+            objectId: "hours_this_week",
+            payload: {
+              name: names.hours_this_week,
+              unique_id: `${this.topicPrefix}_hours_this_week`,
+              state_topic: this._topic("payments/summary"),
+              value_template: "{{ value_json.work_hours_this_week }}",
+              json_attributes_topic: this._topic("payments/summary"),
+              json_attributes_template: "{{ {'minutes': value_json.work_hours_this_week_minutes, 'week_start_date': value_json.work_hours_week_start_date, 'week_start': value_json.work_hours_week_start, 'timezone': value_json.work_hours_timezone, 'timezone_source': value_json.work_hours_timezone_source, 'projects': value_json.work_hours_projects, 'entry_count': value_json.work_hours_entry_count, 'last_updated': value_json.work_hours_last_updated, 'complete': value_json.work_hours_complete, 'stale': value_json.work_hours_stale, 'allocation_method': value_json.work_hours_allocation_method} | tojson }}",
+              unit_of_measurement: "h",
+              state_class: "measurement",
+              device_class: "duration",
+              suggested_display_precision: 2,
+              force_update: true,
+              availability_topic: this._topic("availability"),
+              payload_available: "online",
+              payload_not_available: "offline",
+              icon: "mdi:calendar-week",
               device: this.device
             }
           },
@@ -2470,6 +2585,269 @@ var require_funds_history_observations = __commonJS({
   }
 });
 
+// src/state/work_hours.ts
+var require_work_hours = __commonJS({
+  "src/state/work_hours.ts"(exports2, module2) {
+    "use strict";
+    var fs7 = require("node:fs");
+    var path6 = require("node:path");
+    var DAY_MS = 24 * 60 * 60 * 1e3;
+    var RETENTION_DAYS = 35;
+    var DEFAULT_STATE = {
+      version: 1,
+      entries: {},
+      last_complete_at: null,
+      updated_at: null
+    };
+    function buildWorkHoursSnapshot2({
+      timedWorkEntries = null,
+      includeFundsHistory = false,
+      sourceComplete = false,
+      observationsPath = "/data/work-hours-observations.json",
+      timezone = "UTC",
+      timezoneSource = "utc_fallback",
+      weekStart = "monday",
+      now = /* @__PURE__ */ new Date(),
+      logger = null
+    } = {}) {
+      const current = normalizeDate3(now) || /* @__PURE__ */ new Date();
+      const state = loadWorkHoursObservations(observationsPath);
+      if (includeFundsHistory && sourceComplete && Array.isArray(timedWorkEntries)) {
+        for (const entry of normalizeTimedWorkEntries(timedWorkEntries)) {
+          const existing = state.entries[entry.source_entry_id];
+          state.entries[entry.source_entry_id] = {
+            ...entry,
+            first_seen_at: existing?.first_seen_at || current.toISOString(),
+            last_seen_at: current.toISOString()
+          };
+        }
+        pruneExpiredEntries(state, current);
+        state.last_complete_at = current.toISOString();
+        state.updated_at = current.toISOString();
+        try {
+          saveWorkHoursObservations(observationsPath, state);
+        } catch (error) {
+          logger?.warning?.(`Failed to persist work-hours observations: ${error.message}`);
+        }
+      }
+      return summarizeWorkHours(state, {
+        timezone,
+        timezoneSource,
+        weekStart,
+        now: current,
+        stale: !includeFundsHistory || !sourceComplete
+      });
+    }
+    function normalizeTimedWorkEntries(entries) {
+      return entries.map((entry) => {
+        const createdAt = normalizeDate3(entry?.createdAt);
+        const id = normalizeText2(entry?.id);
+        const minutes = Number(entry?.timeInMinutes);
+        const status = entry?.status === "Pending Approval" ? "pending" : entry?.status === "Paid" ? "paid" : null;
+        if (!createdAt || !id || !status || !Number.isFinite(minutes) || minutes < 0) {
+          return null;
+        }
+        return {
+          source_entry_id: `api:TimedWorkEntry:${id}`,
+          source_created_at: createdAt.toISOString(),
+          duration_minutes: minutes,
+          project: normalizeText2(entry?.project?.name) || "Unknown project",
+          status
+        };
+      }).filter(Boolean);
+    }
+    function summarizeWorkHours(state, { timezone, timezoneSource, weekStart, now, stale }) {
+      const today = localDateKey(now, timezone);
+      const currentWeekStart = getWeekStartDate(today, weekStart);
+      const daily = /* @__PURE__ */ new Map();
+      const weekly = /* @__PURE__ */ new Map();
+      for (const entry of Object.values(state.entries || {})) {
+        const segments = splitEntryByLocalDay(entry, timezone);
+        for (const segment of segments) {
+          if (segment.date === today) {
+            daily.set(entry.project, (daily.get(entry.project) || 0) + segment.minutes);
+          }
+          if (segment.date >= currentWeekStart && segment.date < addDays(currentWeekStart, 7)) {
+            weekly.set(entry.project, (weekly.get(entry.project) || 0) + segment.minutes);
+          }
+        }
+      }
+      const projects = Array.from(/* @__PURE__ */ new Set([...daily.keys(), ...weekly.keys()])).map((project) => ({
+        project,
+        today_minutes: roundMinutes(daily.get(project) || 0),
+        today_hours: roundHours(daily.get(project) || 0),
+        week_minutes: roundMinutes(weekly.get(project) || 0),
+        week_hours: roundHours(weekly.get(project) || 0)
+      })).sort((left, right) => right.week_minutes - left.week_minutes || left.project.localeCompare(right.project));
+      const todayMinutes = sumMap(daily);
+      const weekMinutes = sumMap(weekly);
+      return {
+        work_hours_today: roundHours(todayMinutes),
+        work_hours_today_minutes: roundMinutes(todayMinutes),
+        work_hours_this_week: roundHours(weekMinutes),
+        work_hours_this_week_minutes: roundMinutes(weekMinutes),
+        work_hours_timezone: timezone,
+        work_hours_timezone_source: timezoneSource,
+        work_hours_week_start: weekStart,
+        work_hours_today_date: today,
+        work_hours_week_start_date: currentWeekStart,
+        work_hours_entry_count: Object.keys(state.entries || {}).length,
+        work_hours_projects: projects,
+        work_hours_last_updated: state.last_complete_at,
+        work_hours_complete: Boolean(state.last_complete_at),
+        work_hours_stale: Boolean(stale),
+        work_hours_allocation_method: "backfilled_from_created_at"
+      };
+    }
+    function splitEntryByLocalDay(entry, timezone) {
+      const end = normalizeDate3(entry.source_created_at);
+      const minutes = Number(entry.duration_minutes);
+      if (!end || !Number.isFinite(minutes) || minutes <= 0) {
+        return [];
+      }
+      const start = new Date(end.getTime() - minutes * 60 * 1e3);
+      const segments = [];
+      let cursor = start;
+      while (cursor < end) {
+        const date = localDateKey(cursor, timezone);
+        const nextDate = addDays(date, 1);
+        const nextBoundary = localDateStart(nextDate, timezone);
+        const segmentEnd = nextBoundary > cursor && nextBoundary < end ? nextBoundary : end;
+        const segmentMinutes = (segmentEnd.getTime() - cursor.getTime()) / 6e4;
+        if (segmentMinutes > 0) {
+          segments.push({ date, minutes: segmentMinutes });
+        }
+        if (segmentEnd >= end) {
+          break;
+        }
+        cursor = segmentEnd;
+      }
+      return segments;
+    }
+    function loadWorkHoursObservations(filePath) {
+      if (!filePath || !fs7.existsSync(filePath)) {
+        return clone(DEFAULT_STATE);
+      }
+      try {
+        const parsed = JSON.parse(fs7.readFileSync(filePath, "utf8"));
+        return {
+          ...clone(DEFAULT_STATE),
+          ...parsed,
+          entries: parsed && typeof parsed.entries === "object" ? parsed.entries : {}
+        };
+      } catch {
+        return clone(DEFAULT_STATE);
+      }
+    }
+    function saveWorkHoursObservations(filePath, state) {
+      if (!filePath) {
+        return;
+      }
+      fs7.mkdirSync(path6.dirname(filePath), { recursive: true });
+      fs7.writeFileSync(filePath, JSON.stringify(state, null, 2));
+    }
+    function pruneExpiredEntries(state, now) {
+      const cutoff = now.getTime() - RETENTION_DAYS * DAY_MS;
+      for (const [key, entry] of Object.entries(state.entries || {})) {
+        const createdAt = normalizeDate3(entry?.source_created_at);
+        if (createdAt && createdAt.getTime() < cutoff) {
+          delete state.entries[key];
+        }
+      }
+    }
+    function localDateKey(value, timezone) {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).formatToParts(value);
+      const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+      return `${values.year}-${values.month}-${values.day}`;
+    }
+    function localDateStart(dateKey, timezone) {
+      const [year, month, day] = dateKey.split("-").map(Number);
+      let instant = new Date(Date.UTC(year, month - 1, day));
+      for (let index = 0; index < 3; index += 1) {
+        const localParts = getLocalParts(instant, timezone);
+        const localAsUtc = Date.UTC(localParts.year, localParts.month - 1, localParts.day, localParts.hour, localParts.minute, localParts.second);
+        const targetAsUtc = Date.UTC(year, month - 1, day);
+        instant = new Date(targetAsUtc - (localAsUtc - instant.getTime()));
+      }
+      return instant;
+    }
+    function getLocalParts(value, timezone) {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      }).formatToParts(value);
+      const values = Object.fromEntries(parts.map((part) => [part.type, Number(part.value)]));
+      return values;
+    }
+    function getWeekStartDate(dateKey, weekStart) {
+      const startDay = WEEK_DAYS[normalizeWeekStart2(weekStart)];
+      const date = /* @__PURE__ */ new Date(`${dateKey}T00:00:00Z`);
+      const currentDay = date.getUTCDay();
+      const offset = (currentDay - startDay + 7) % 7;
+      date.setUTCDate(date.getUTCDate() - offset);
+      return date.toISOString().slice(0, 10);
+    }
+    function normalizeWeekStart2(value) {
+      const normalized = normalizeText2(value).toLowerCase();
+      return Object.prototype.hasOwnProperty.call(WEEK_DAYS, normalized) ? normalized : "monday";
+    }
+    function addDays(dateKey, days) {
+      const date = /* @__PURE__ */ new Date(`${dateKey}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + days);
+      return date.toISOString().slice(0, 10);
+    }
+    function sumMap(values) {
+      return Array.from(values.values()).reduce((sum, value) => sum + value, 0);
+    }
+    function roundMinutes(value) {
+      return Math.round(value * 100) / 100;
+    }
+    function roundHours(value) {
+      return Math.round(value / 60 * 100) / 100;
+    }
+    function normalizeDate3(value) {
+      if (!value) {
+        return null;
+      }
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    function normalizeText2(value) {
+      return String(value || "").trim().replace(/\s+/g, " ");
+    }
+    function clone(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+    var WEEK_DAYS = {
+      sunday: 0,
+      monday: 1,
+      tuesday: 2,
+      wednesday: 3,
+      thursday: 4,
+      friday: 5,
+      saturday: 6
+    };
+    module2.exports = {
+      buildWorkHoursSnapshot: buildWorkHoursSnapshot2,
+      getWeekStartDate,
+      localDateKey,
+      normalizeTimedWorkEntries,
+      splitEntryByLocalDay
+    };
+  }
+});
+
 // src/scrapers/funds_history.ts
 var require_funds_history = __commonJS({
   "src/scrapers/funds_history.ts"(exports2, module2) {
@@ -2480,10 +2858,29 @@ var require_funds_history = __commonJS({
       loadFundsHistoryObservations,
       saveFundsHistoryObservations
     } = require_funds_history_observations();
-    async function scrapeFundsHistory(apiEntries, { observationsPath = null, now = /* @__PURE__ */ new Date() } = {}) {
+    var { buildWorkHoursSnapshot: buildWorkHoursSnapshot2 } = require_work_hours();
+    async function scrapeFundsHistory(apiEntries, {
+      observationsPath = null,
+      workHoursObservationsPath = null,
+      workHoursTimezone = "UTC",
+      workHoursTimezoneSource = "utc_fallback",
+      workHoursWeekStart = "monday",
+      now = /* @__PURE__ */ new Date(),
+      logger = null
+    } = {}) {
       if (!apiEntries || !Array.isArray(apiEntries.workLogs) || !Array.isArray(apiEntries.timedWorkEntries)) {
         return {
           ...summarizeFundsHistoryEntries([], now),
+          ...buildWorkHoursSnapshot2({
+            includeFundsHistory: true,
+            sourceComplete: false,
+            observationsPath: workHoursObservationsPath,
+            timezone: workHoursTimezone,
+            timezoneSource: workHoursTimezoneSource,
+            weekStart: workHoursWeekStart,
+            now,
+            logger
+          }),
           funds_history_complete: false
         };
       }
@@ -2502,6 +2899,17 @@ var require_funds_history = __commonJS({
       }
       return {
         ...summarizeFundsHistoryEntries(merged.entries, now),
+        ...buildWorkHoursSnapshot2({
+          timedWorkEntries: apiEntries.timedWorkEntries,
+          includeFundsHistory: true,
+          sourceComplete: true,
+          observationsPath: workHoursObservationsPath,
+          timezone: workHoursTimezone,
+          timezoneSource: workHoursTimezoneSource,
+          weekStart: workHoursWeekStart,
+          now,
+          logger
+        }),
         funds_history_complete: true
       };
     }
@@ -2833,6 +3241,21 @@ var require_payments = __commonJS({
       next_payout_entries_count = 0,
       pending_payout_entries = [],
       funds_history_complete = null,
+      work_hours_today = 0,
+      work_hours_today_minutes = 0,
+      work_hours_this_week = 0,
+      work_hours_this_week_minutes = 0,
+      work_hours_timezone = "UTC",
+      work_hours_timezone_source = "utc_fallback",
+      work_hours_week_start = "monday",
+      work_hours_today_date = null,
+      work_hours_week_start_date = null,
+      work_hours_entry_count = 0,
+      work_hours_projects = [],
+      work_hours_last_updated = null,
+      work_hours_complete = false,
+      work_hours_stale = true,
+      work_hours_allocation_method = "backfilled_from_created_at",
       scrapedAt = null,
       now = /* @__PURE__ */ new Date()
     }) {
@@ -2921,6 +3344,21 @@ var require_payments = __commonJS({
         next_payout_amount: nextPayoutEntry?.amount || null,
         next_payout_source: nextPayoutEntry?.estimate_source || nextPayoutEntry?.source || null,
         next_payout_confidence: nextPayoutEntry?.estimate_confidence || nextPayoutEntry?.confidence || null,
+        work_hours_today,
+        work_hours_today_minutes,
+        work_hours_this_week,
+        work_hours_this_week_minutes,
+        work_hours_timezone,
+        work_hours_timezone_source,
+        work_hours_week_start,
+        work_hours_today_date,
+        work_hours_week_start_date,
+        work_hours_entry_count,
+        work_hours_projects: Array.isArray(work_hours_projects) ? work_hours_projects : [],
+        work_hours_last_updated,
+        work_hours_complete,
+        work_hours_stale,
+        work_hours_allocation_method,
         scraped_at: normalizeIsoDate(scrapedAt) || null
       };
     }
@@ -3164,7 +3602,16 @@ var require_payments = __commonJS({
       "december"
     ];
     var WITHDRAW_BUTTON_TEXT_PATTERN = /^\$[\d,]+(?:\.\d{2})?\s+available$/i;
-    async function scrapePayments(page, { includeFundsHistory = true, fundsHistoryObservationsPath = null, now = /* @__PURE__ */ new Date() } = {}) {
+    async function scrapePayments(page, {
+      includeFundsHistory = true,
+      fundsHistoryObservationsPath = null,
+      workHoursObservationsPath = null,
+      workHoursTimezone = "UTC",
+      workHoursTimezoneSource = "utc_fallback",
+      workHoursWeekStart = "monday",
+      now = /* @__PURE__ */ new Date(),
+      logger = null
+    } = {}) {
       const rawProps = await page.$eval(
         'div[id="workers/TransferFundsPage-hybrid-root"]',
         (element) => element.getAttribute("data-props") || "{}"
@@ -3271,7 +3718,15 @@ var require_payments = __commonJS({
           };
         }, availableAmountCents);
       }
-      const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(apiEntries, { observationsPath: fundsHistoryObservationsPath, now }) : {
+      const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(apiEntries, {
+        observationsPath: fundsHistoryObservationsPath,
+        workHoursObservationsPath,
+        workHoursTimezone,
+        workHoursTimezoneSource,
+        workHoursWeekStart,
+        now,
+        logger
+      }) : {
         next_payout_days: 0,
         next_payout_entries_count: 0,
         pending_payout_entries: []
@@ -3870,7 +4325,12 @@ var require_dataannotation_client = __commonJS({
           funds_history_complete: null
         } : await scrapeFundsHistory(page.recentWorkEntries, {
           observationsPath: options.fundsHistoryObservationsPath || null,
-          now: new Date(scrapedAt)
+          workHoursObservationsPath: options.workHoursObservationsPath || null,
+          workHoursTimezone: options.workHoursTimezone || "UTC",
+          workHoursTimezoneSource: options.workHoursTimezoneSource || "utc_fallback",
+          workHoursWeekStart: options.workHoursWeekStart || "monday",
+          now: new Date(scrapedAt),
+          logger: this.logger
         });
         const payments = extractPaymentsSnapshot({
           pageProps: page.props,
@@ -3899,7 +4359,12 @@ var require_dataannotation_client = __commonJS({
           await this._loadAuthenticatedPage(page, PAYMENTS_URL, 'div[id="workers/TransferFundsPage-hybrid-root"][data-props]');
           const payments = await scrapePayments(page, {
             includeFundsHistory: options.includeFundsHistory !== false,
-            fundsHistoryObservationsPath: options.fundsHistoryObservationsPath || null
+            fundsHistoryObservationsPath: options.fundsHistoryObservationsPath || null,
+            workHoursObservationsPath: options.workHoursObservationsPath || null,
+            workHoursTimezone: options.workHoursTimezone || "UTC",
+            workHoursTimezoneSource: options.workHoursTimezoneSource || "utc_fallback",
+            workHoursWeekStart: options.workHoursWeekStart || "monday",
+            logger: this.logger
           });
           this.logger.debug(
             `Scraped payments snapshot: available=${payments.available_amount_formatted}, canWithdraw=${payments.can_withdraw}`
@@ -5520,19 +5985,38 @@ function pickFundsHistoryFields(payments) {
     funds_history_complete: payments?.funds_history_complete ?? null,
     last_payout_amount_cents: payments?.last_payout_amount_cents ?? null,
     last_payout_amount: payments?.last_payout_amount ?? null,
-    last_payout_amount_formatted: payments?.last_payout_amount_formatted ?? null
+    last_payout_amount_formatted: payments?.last_payout_amount_formatted ?? null,
+    work_hours_today: payments?.work_hours_today ?? 0,
+    work_hours_today_minutes: payments?.work_hours_today_minutes ?? 0,
+    work_hours_this_week: payments?.work_hours_this_week ?? 0,
+    work_hours_this_week_minutes: payments?.work_hours_this_week_minutes ?? 0,
+    work_hours_timezone: payments?.work_hours_timezone ?? "UTC",
+    work_hours_timezone_source: payments?.work_hours_timezone_source ?? "utc_fallback",
+    work_hours_week_start: payments?.work_hours_week_start ?? "monday",
+    work_hours_today_date: payments?.work_hours_today_date ?? null,
+    work_hours_week_start_date: payments?.work_hours_week_start_date ?? null,
+    work_hours_entry_count: payments?.work_hours_entry_count ?? 0,
+    work_hours_projects: Array.isArray(payments?.work_hours_projects) ? payments.work_hours_projects : [],
+    work_hours_last_updated: payments?.work_hours_last_updated ?? null,
+    work_hours_complete: payments?.work_hours_complete ?? false,
+    work_hours_stale: payments?.work_hours_stale ?? true,
+    work_hours_allocation_method: payments?.work_hours_allocation_method ?? "backfilled_from_created_at"
   };
 }
 function mergePaymentsWithFundsHistory(payments, fundsHistorySnapshot) {
+  const currentPayments = payments || {};
   const merged = {
-    ...payments || {},
+    ...currentPayments,
     ...fundsHistorySnapshot || {}
   };
-  if (payments && Object.prototype.hasOwnProperty.call(payments, "available_amount_cents")) {
-    merged.available_amount_cents = payments.available_amount_cents;
+  if (Object.prototype.hasOwnProperty.call(currentPayments, "available_amount_cents")) {
+    merged.available_amount_cents = currentPayments.available_amount_cents;
   }
-  if (payments && Object.prototype.hasOwnProperty.call(payments, "available_amount")) {
-    merged.available_amount = payments.available_amount;
+  if (Object.prototype.hasOwnProperty.call(currentPayments, "available_amount")) {
+    merged.available_amount = currentPayments.available_amount;
+  }
+  for (const key of Object.keys(currentPayments).filter((key2) => key2.startsWith("work_hours_"))) {
+    merged[key] = currentPayments[key];
   }
   return merged;
 }
@@ -6290,10 +6774,26 @@ async function doSync(client, bridge, config, lastSuccessfulSyncAt, lastSuccessf
     autoAcceptState.lastAttemptSignature = autoAcceptResult.lastAttemptSignature;
     logger.debug(`Auto accept decision completed in ${Date.now() - autoAcceptStartedAt}ms`);
     const paymentsStartedAt = Date.now();
-    const payments = await client.collectPayments({
+    const scrapedPayments = await client.collectPayments({
       includeFundsHistory,
-      fundsHistoryObservationsPath: FUNDS_HISTORY_OBSERVATIONS_PATH
+      fundsHistoryObservationsPath: FUNDS_HISTORY_OBSERVATIONS_PATH,
+      workHoursObservationsPath: WORK_HOURS_OBSERVATIONS_PATH,
+      workHoursTimezone: config.work_hours_timezone,
+      workHoursTimezoneSource: config.work_hours_timezone_source,
+      workHoursWeekStart: config.work_hours_week_start
     });
+    const payments = includeFundsHistory ? scrapedPayments : {
+      ...scrapedPayments,
+      ...buildWorkHoursSnapshot({
+        includeFundsHistory: false,
+        observationsPath: WORK_HOURS_OBSERVATIONS_PATH,
+        timezone: config.work_hours_timezone,
+        timezoneSource: config.work_hours_timezone_source,
+        weekStart: config.work_hours_week_start,
+        now: /* @__PURE__ */ new Date(),
+        logger
+      })
+    };
     logger.debug(`Payments scrape completed in ${Date.now() - paymentsStartedAt}ms`);
     const mergedPayments = includeFundsHistory ? payments?.funds_history_complete === false ? { ...mergePaymentsWithFundsHistory2(payments, lastFundsHistorySnapshot), funds_history_complete: false } : payments : mergePaymentsWithFundsHistory2(payments, lastFundsHistorySnapshot);
     const paymentsForPublish = retainNextWithdrawalAt3(clearExpiredPayoutDetails2(mergedPayments, /* @__PURE__ */ new Date()), lastSuccessfulPayments, /* @__PURE__ */ new Date());
@@ -6368,7 +6868,7 @@ function describeProjectList(projects, limit = 5) {
   }).join(" | ");
   return `${preview}${items.length < total ? ` (+${total - items.length} more)` : ""}`;
 }
-var convertPaymentsForCurrency2, convertProjectsForCurrency, getDisplayCurrency, detectNewTaskProjects2, filterExcludedProjects2, summarizeProjects2, clearExpiredPayoutDetails2, mergePaymentsWithFundsHistory2, pickFundsHistoryFields2, retainNextWithdrawalAt3, maybeAutoAcceptNewTasks2, FUNDS_HISTORY_OBSERVATIONS_PATH;
+var convertPaymentsForCurrency2, convertProjectsForCurrency, getDisplayCurrency, detectNewTaskProjects2, filterExcludedProjects2, summarizeProjects2, buildWorkHoursSnapshot, clearExpiredPayoutDetails2, mergePaymentsWithFundsHistory2, pickFundsHistoryFields2, retainNextWithdrawalAt3, maybeAutoAcceptNewTasks2, FUNDS_HISTORY_OBSERVATIONS_PATH, WORK_HOURS_OBSERVATIONS_PATH;
 var init_sync = __esm({
   "src/app/sync.ts"() {
     "use strict";
@@ -6376,9 +6876,11 @@ var init_sync = __esm({
     ({ detectNewTaskProjects: detectNewTaskProjects2 } = (init_project_delta(), __toCommonJS(project_delta_exports)));
     ({ filterExcludedProjects: filterExcludedProjects2 } = (init_project_filters(), __toCommonJS(project_filters_exports)));
     ({ summarizeProjects: summarizeProjects2 } = (init_projects(), __toCommonJS(projects_exports)));
+    ({ buildWorkHoursSnapshot } = require_work_hours());
     ({ clearExpiredPayoutDetails: clearExpiredPayoutDetails2, mergePaymentsWithFundsHistory: mergePaymentsWithFundsHistory2, pickFundsHistoryFields: pickFundsHistoryFields2, retainNextWithdrawalAt: retainNextWithdrawalAt3 } = (init_sync_policy(), __toCommonJS(sync_policy_exports)));
     ({ maybeAutoAcceptNewTasks: maybeAutoAcceptNewTasks2 } = (init_commands(), __toCommonJS(commands_exports)));
     FUNDS_HISTORY_OBSERVATIONS_PATH = "/data/funds-history-observations.json";
+    WORK_HOURS_OBSERVATIONS_PATH = "/data/work-hours-observations.json";
   }
 });
 
@@ -8483,7 +8985,7 @@ var require_package = __commonJS({
   "package.json"(exports2, module2) {
     module2.exports = {
       name: "dataannotation-projects-ha-addon",
-      version: "0.7.23",
+      version: "0.7.24",
       private: true,
       description: "Home Assistant add-on that scrapes DataAnnotation worker projects and publishes them via MQTT auto-discovery.",
       main: "dist/main.js",

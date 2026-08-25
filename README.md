@@ -24,8 +24,10 @@ A Home Assistant add-on that logs into DataAnnotation, scrapes the worker projec
 | `password` | required | DataAnnotation login password |
 | `poll_cron` | `*/5 * * * *` | Cron schedule for normal polling |
 | `fast_poll_cron` | `*/5 * * * * *` | Cron schedule when Fast Polling is enabled |
-| `funds_history_cron` | `*/30 * * * *` | Cron schedule for Funds History expansion |
+| `funds_history_cron` | `*/30 * * * *` | Cron schedule for the Funds History API refresh |
 | `funds_history_after_task_delay_minutes` | `2` | Delay after a task ends before an expedited Funds History sync |
+| `work_hours_timezone` | `home_assistant` | Timezone for daily and weekly hours; accepts `home_assistant` or an IANA timezone |
+| `work_hours_week_start` | `monday` | First day of the work-hours week |
 | `excluded_project_patterns` | `""` | Newline-separated substrings for projects to ignore |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
 | `log_level` | `info` | Logging level |
@@ -79,16 +81,19 @@ Each project sensor uses the task count as its state and exposes attributes such
 - Withdraw lock state is stored under `/data/withdraw-lock-state.json` and restored on restart.
 - Fast polling state is stored under `/data/fast-polling-state.json` and restored on restart.
 - Auto Accept state is stored under `/data/auto-accept-state.json` and restored on restart.
-- The slow Funds History schedule controls how often `Next Payout` is refreshed; normal payments telemetry still refreshes on the regular poll.
+- The slow Funds History schedule controls how often the authenticated Funds History API is refreshed; normal payments telemetry still refreshes on the regular poll.
+- Work Hours uses the authenticated Funds History API refresh and therefore follows the slow Funds History schedule.
+- `home_assistant` uses Home Assistant's configured timezone; all API timestamps remain UTC internally and are converted only for calendar boundaries.
+- Work intervals are backfilled from `createdAt` by subtracting `timeInMinutes`, then split across local midnight and week boundaries.
+- `Hours Today` and `Hours This Week` expose numeric hours with compact per-project breakdowns in their attributes.
 - When `In Progress Task` flips from ON to OFF, the add-on can schedule one expedited Funds History sync after the configured delay.
 - New pending Funds History rows cache their first-seen estimate so `Next Payout` stays stable between refreshes.
 - If DataAnnotation logs the session out, the add-on will detect the login page, sign back in, and continue scraping.
 - Withdrawal attempts that are blocked create a Home Assistant persistent notification.
 - Home Assistant Core API access is enabled so the add-on can create persistent notifications.
-- Funds History is opened read-only and expanded only to calculate the next payout timestamp.
-- Funds History is expanded read-only to calculate the `Next Payout` sensor and publish compact payout-entry attributes with a human-readable timestamp.
+- Funds History is read from the authenticated recent-work API to calculate payout timestamps and publish compact payout-entry attributes.
 - `Suggested Withdrawal` uses a rolling six-hour window from the last included pending payout after `Next Withdrawal` and exposes the full projected withdrawal amount plus contributing entries.
-- Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
+- Fast polling keeps the lightweight payments scrape enabled and skips the slower Funds History API refresh until its deadline.
 - `In Progress Task` is ON when the live projects page reports at least one active task in its in-progress task list.
 - Frankfurter exchange rates are refreshed daily after the UTC afternoon update window.
 - `Currency to PHP` switches all published money values between USD and PHP using the latest USD/PHP rate.

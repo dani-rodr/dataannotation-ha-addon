@@ -5,11 +5,30 @@ const {
   loadFundsHistoryObservations,
   saveFundsHistoryObservations,
 } = require('../state/funds_history_observations.ts');
+const { buildWorkHoursSnapshot } = require('../state/work_hours.ts');
 
-async function scrapeFundsHistory(apiEntries, { observationsPath = null, now = new Date() } = {}) {
+async function scrapeFundsHistory(apiEntries, {
+  observationsPath = null,
+  workHoursObservationsPath = null,
+  workHoursTimezone = 'UTC',
+  workHoursTimezoneSource = 'utc_fallback',
+  workHoursWeekStart = 'monday',
+  now = new Date(),
+  logger = null,
+} = {}) {
   if (!apiEntries || !Array.isArray(apiEntries.workLogs) || !Array.isArray(apiEntries.timedWorkEntries)) {
     return {
       ...summarizeFundsHistoryEntries([], now),
+      ...buildWorkHoursSnapshot({
+        includeFundsHistory: true,
+        sourceComplete: false,
+        observationsPath: workHoursObservationsPath,
+        timezone: workHoursTimezone,
+        timezoneSource: workHoursTimezoneSource,
+        weekStart: workHoursWeekStart,
+        now,
+        logger,
+      }),
       funds_history_complete: false,
     };
   }
@@ -32,6 +51,17 @@ async function scrapeFundsHistory(apiEntries, { observationsPath = null, now = n
 
   return {
     ...summarizeFundsHistoryEntries(merged.entries, now),
+    ...buildWorkHoursSnapshot({
+      timedWorkEntries: apiEntries.timedWorkEntries,
+      includeFundsHistory: true,
+      sourceComplete: true,
+      observationsPath: workHoursObservationsPath,
+      timezone: workHoursTimezone,
+      timezoneSource: workHoursTimezoneSource,
+      weekStart: workHoursWeekStart,
+      now,
+      logger,
+    }),
     funds_history_complete: true,
   };
 }

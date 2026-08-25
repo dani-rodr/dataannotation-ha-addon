@@ -14,6 +14,21 @@ function extractPaymentsSnapshot({
   next_payout_entries_count = 0,
   pending_payout_entries = [],
   funds_history_complete = null,
+  work_hours_today = 0,
+  work_hours_today_minutes = 0,
+  work_hours_this_week = 0,
+  work_hours_this_week_minutes = 0,
+  work_hours_timezone = 'UTC',
+  work_hours_timezone_source = 'utc_fallback',
+  work_hours_week_start = 'monday',
+  work_hours_today_date = null,
+  work_hours_week_start_date = null,
+  work_hours_entry_count = 0,
+  work_hours_projects = [],
+  work_hours_last_updated = null,
+  work_hours_complete = false,
+  work_hours_stale = true,
+  work_hours_allocation_method = 'backfilled_from_created_at',
   scrapedAt = null,
   now = new Date(),
 }) {
@@ -103,6 +118,21 @@ function extractPaymentsSnapshot({
     next_payout_amount: nextPayoutEntry?.amount || null,
     next_payout_source: nextPayoutEntry?.estimate_source || nextPayoutEntry?.source || null,
     next_payout_confidence: nextPayoutEntry?.estimate_confidence || nextPayoutEntry?.confidence || null,
+    work_hours_today,
+    work_hours_today_minutes,
+    work_hours_this_week,
+    work_hours_this_week_minutes,
+    work_hours_timezone,
+    work_hours_timezone_source,
+    work_hours_week_start,
+    work_hours_today_date,
+    work_hours_week_start_date,
+    work_hours_entry_count,
+    work_hours_projects: Array.isArray(work_hours_projects) ? work_hours_projects : [],
+    work_hours_last_updated,
+    work_hours_complete,
+    work_hours_stale,
+    work_hours_allocation_method,
     scraped_at: normalizeIsoDate(scrapedAt) || null,
   };
 }
@@ -405,7 +435,16 @@ const MONTH_NAMES = [
 
 const WITHDRAW_BUTTON_TEXT_PATTERN = /^\$[\d,]+(?:\.\d{2})?\s+available$/i;
 
-async function scrapePayments(page, { includeFundsHistory = true, fundsHistoryObservationsPath = null, now = new Date() } = {}) {
+async function scrapePayments(page, {
+  includeFundsHistory = true,
+  fundsHistoryObservationsPath = null,
+  workHoursObservationsPath = null,
+  workHoursTimezone = 'UTC',
+  workHoursTimezoneSource = 'utc_fallback',
+  workHoursWeekStart = 'monday',
+  now = new Date(),
+  logger = null,
+} = {}) {
   const rawProps = await page.$eval(
     'div[id="workers/TransferFundsPage-hybrid-root"]',
     (element) => element.getAttribute('data-props') || '{}'
@@ -524,7 +563,15 @@ async function scrapePayments(page, { includeFundsHistory = true, fundsHistoryOb
       };
     }, availableAmountCents);
   }
-  const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(apiEntries, { observationsPath: fundsHistoryObservationsPath, now }) : {
+  const fundsHistory = includeFundsHistory ? await scrapeFundsHistory(apiEntries, {
+    observationsPath: fundsHistoryObservationsPath,
+    workHoursObservationsPath,
+    workHoursTimezone,
+    workHoursTimezoneSource,
+    workHoursWeekStart,
+    now,
+    logger,
+  }) : {
     next_payout_days: 0,
     next_payout_entries_count: 0,
     pending_payout_entries: [],

@@ -107,6 +107,21 @@ test('pickFundsHistoryFields preserves the last history snapshot', () => {
     last_payout_amount_cents: 1234,
     last_payout_amount: 12.34,
     last_payout_amount_formatted: '$12.34',
+    work_hours_today: 7.1,
+    work_hours_today_minutes: 426,
+    work_hours_this_week: 14.2,
+    work_hours_this_week_minutes: 852,
+    work_hours_timezone: 'Asia/Manila',
+    work_hours_timezone_source: 'home_assistant',
+    work_hours_week_start: 'monday',
+    work_hours_today_date: '2026-06-29',
+    work_hours_week_start_date: '2026-06-29',
+    work_hours_entry_count: 2,
+    work_hours_projects: [{ project: 'Example', today_minutes: 426, today_hours: 7.1, week_minutes: 852, week_hours: 14.2 }],
+    work_hours_last_updated: '2026-06-29T16:00:00.000Z',
+    work_hours_complete: true,
+    work_hours_stale: false,
+    work_hours_allocation_method: 'backfilled_from_created_at',
   });
 
   assert.deepEqual(fields, {
@@ -127,6 +142,21 @@ test('pickFundsHistoryFields preserves the last history snapshot', () => {
     last_payout_amount_cents: 1234,
     last_payout_amount: 12.34,
     last_payout_amount_formatted: '$12.34',
+    work_hours_today: 7.1,
+    work_hours_today_minutes: 426,
+    work_hours_this_week: 14.2,
+    work_hours_this_week_minutes: 852,
+    work_hours_timezone: 'Asia/Manila',
+    work_hours_timezone_source: 'home_assistant',
+    work_hours_week_start: 'monday',
+    work_hours_today_date: '2026-06-29',
+    work_hours_week_start_date: '2026-06-29',
+    work_hours_entry_count: 2,
+    work_hours_projects: [{ project: 'Example', today_minutes: 426, today_hours: 7.1, week_minutes: 852, week_hours: 14.2 }],
+    work_hours_last_updated: '2026-06-29T16:00:00.000Z',
+    work_hours_complete: true,
+    work_hours_stale: false,
+    work_hours_allocation_method: 'backfilled_from_created_at',
   });
 });
 
@@ -172,6 +202,49 @@ test('mergePaymentsWithFundsHistory keeps current summary and prior history fiel
   assert.equal(merged.last_payout_amount_cents, 1234);
   assert.equal(merged.last_payout_amount, 12.34);
   assert.equal(merged.last_payout_amount_formatted, '$12.34');
+});
+
+test('mergePaymentsWithFundsHistory keeps freshly recomputed work hours at calendar boundaries', () => {
+  const merged = mergePaymentsWithFundsHistory(
+    {
+      work_hours_today: 0,
+      work_hours_today_minutes: 0,
+      work_hours_this_week: 0,
+      work_hours_this_week_minutes: 0,
+      work_hours_timezone: 'Asia/Manila',
+      work_hours_timezone_source: 'home_assistant',
+      work_hours_week_start: 'monday',
+      work_hours_today_date: '2026-08-24',
+      work_hours_week_start_date: '2026-08-24',
+      work_hours_entry_count: 2,
+      work_hours_projects: [],
+      work_hours_last_updated: '2026-08-23T15:55:00.000Z',
+      work_hours_complete: true,
+      work_hours_stale: true,
+      work_hours_allocation_method: 'backfilled_from_created_at',
+    },
+    {
+      next_payout_days: 2,
+      next_payout_at: '2026-08-29T16:00:00.000Z',
+      work_hours_today: 7.1,
+      work_hours_today_minutes: 426,
+      work_hours_this_week: 14.2,
+      work_hours_this_week_minutes: 852,
+      work_hours_today_date: '2026-08-23',
+      work_hours_week_start_date: '2026-08-17',
+      work_hours_stale: false,
+    }
+  );
+
+  assert.equal(merged.next_payout_days, 2);
+  assert.equal(merged.next_payout_at, '2026-08-29T16:00:00.000Z');
+  assert.equal(merged.work_hours_today, 0);
+  assert.equal(merged.work_hours_today_minutes, 0);
+  assert.equal(merged.work_hours_this_week, 0);
+  assert.equal(merged.work_hours_this_week_minutes, 0);
+  assert.equal(merged.work_hours_today_date, '2026-08-24');
+  assert.equal(merged.work_hours_week_start_date, '2026-08-24');
+  assert.equal(merged.work_hours_stale, true);
 });
 
 test('clearExpiredPayoutDetails clears the complete stale payout schedule atomically', () => {

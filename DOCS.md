@@ -7,7 +7,9 @@
 | `password` | required | DataAnnotation login password |
 | `poll_cron` | `*/5 * * * *` | Cron schedule for normal polling |
 | `fast_poll_cron` | `*/5 * * * * *` | Cron schedule when Fast Polling is enabled |
-| `funds_history_cron` | `*/30 * * * *` | Cron schedule for the slower Funds History refresh |
+| `funds_history_cron` | `*/30 * * * *` | Cron schedule for the slower Funds History API refresh |
+| `work_hours_timezone` | `home_assistant` | Timezone used for daily and weekly work-hour boundaries |
+| `work_hours_week_start` | `monday` | First day of the work-hours week |
 | `funds_history_after_task_delay_minutes` | `2` | Delay after a task ends before an expedited Funds History refresh |
 | `excluded_project_patterns` | `""` | Newline-separated substrings used to hide projects |
 | `mqtt_topic_prefix` | `dataannotation` | Base MQTT topic prefix |
@@ -31,7 +33,7 @@
 - Publishes `USD to PHP Rate` from a daily Frankfurter refresh
 - Publishes one claim button per active project
 - Publishes `In Progress Task` when the live projects payload includes active work
-- Refreshes normal payment telemetry on the regular poll and only expands Funds History on the slower schedule
+- Refreshes normal payment telemetry on the regular poll and only refreshes the Funds History API on the slower schedule
 - Emits a Home Assistant persistent notification if a withdrawal is requested while locked or unavailable
 - Uses Home Assistant Core API access for persistent notifications
 - Publishes retained MQTT entities and discovery payloads
@@ -39,11 +41,18 @@
 
 ## Next Payout
 
-- The add-on opens the Funds History tab read-only.
-- It expands the visible monthly and project rows to inspect pending entries.
+- The add-on reads the authenticated recent-work API for Funds History entries.
 - Normal payment values still refresh on the regular poll; `Next Payout` is refreshed on the slower Funds History schedule.
 - Hourly pending entries use a 7 day wait; task submissions use a 3 day wait.
 - The `Next Payout` sensor reports the earliest pending payout estimate, reuses the first-seen timestamp for new rows, and exposes compact payout-entry attributes plus a human-readable timestamp.
+
+## Work Hours
+
+- `Hours Today` and `Hours This Week` use timed work entries from the authenticated recent-work API.
+- Each entry is assigned by treating `createdAt` as its end time and subtracting `timeInMinutes`; intervals crossing local boundaries are split proportionally.
+- `work_hours_timezone: home_assistant` follows Home Assistant's configured timezone, or an explicit IANA timezone can be supplied.
+- `work_hours_week_start` defaults to Monday and controls the weekly sensor boundary.
+- Work-hour observations are retained in `/data/work-hours-observations.json` so lightweight polls and restarts do not reset current totals.
 
 ## Suggested Withdrawal
 
@@ -52,7 +61,7 @@
 - Its timestamp is the latest included entry, and its amount is the full projected withdrawal total including available funds.
 - Attributes include the contributing pending payout entries and their count.
 - The `Pending Approval` sensor includes payout timing attributes from the payments summary payload.
-- Fast polling keeps the lightweight payments scrape enabled and only skips Funds History expansion.
+- Fast polling keeps the lightweight payments scrape enabled and skips the slower Funds History API refresh until its deadline.
 - Frankfurter exchange rates are refreshed daily after the UTC afternoon update window.
 - `Currency to PHP` republishes money sensors in PHP while keeping the raw scrape as the source of truth.
 - `In Progress Task` reflects `inProgressTasksInfo` from the live projects payload and exposes the active task details as attributes.

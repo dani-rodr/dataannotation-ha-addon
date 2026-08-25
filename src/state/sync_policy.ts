@@ -42,7 +42,7 @@ export function shouldIncludeFundsHistory({
   return Number.isFinite(nextFundsHistoryAt) ? false : !fastPollingEnabled;
 }
 
-export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefined): Pick<PaymentSnapshot, 'available_amount_cents' | 'available_amount' | 'next_payout_days' | 'next_payout_at' | 'next_payout_entries_count' | 'next_payout_at_human' | 'next_payout_entries' | 'next_payout_entries_public' | 'next_payout_amount' | 'next_payout_source' | 'next_payout_confidence' | 'pending_payout_entries' | 'pending_payout_entries_public' | 'funds_history_complete' | 'last_payout_amount_cents' | 'last_payout_amount' | 'last_payout_amount_formatted'> {
+export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefined): Pick<PaymentSnapshot, 'available_amount_cents' | 'available_amount' | 'next_payout_days' | 'next_payout_at' | 'next_payout_entries_count' | 'next_payout_at_human' | 'next_payout_entries' | 'next_payout_entries_public' | 'next_payout_amount' | 'next_payout_source' | 'next_payout_confidence' | 'pending_payout_entries' | 'pending_payout_entries_public' | 'funds_history_complete' | 'last_payout_amount_cents' | 'last_payout_amount' | 'last_payout_amount_formatted' | 'work_hours_today' | 'work_hours_today_minutes' | 'work_hours_this_week' | 'work_hours_this_week_minutes' | 'work_hours_timezone' | 'work_hours_timezone_source' | 'work_hours_week_start' | 'work_hours_today_date' | 'work_hours_week_start_date' | 'work_hours_entry_count' | 'work_hours_projects' | 'work_hours_last_updated' | 'work_hours_complete' | 'work_hours_stale' | 'work_hours_allocation_method'> {
   return {
     available_amount_cents: payments?.available_amount_cents ?? null,
     available_amount: payments?.available_amount ?? null,
@@ -61,21 +61,41 @@ export function pickFundsHistoryFields(payments: PaymentSnapshot | null | undefi
     last_payout_amount_cents: payments?.last_payout_amount_cents ?? null,
     last_payout_amount: payments?.last_payout_amount ?? null,
     last_payout_amount_formatted: payments?.last_payout_amount_formatted ?? null,
+    work_hours_today: payments?.work_hours_today ?? 0,
+    work_hours_today_minutes: payments?.work_hours_today_minutes ?? 0,
+    work_hours_this_week: payments?.work_hours_this_week ?? 0,
+    work_hours_this_week_minutes: payments?.work_hours_this_week_minutes ?? 0,
+    work_hours_timezone: payments?.work_hours_timezone ?? 'UTC',
+    work_hours_timezone_source: payments?.work_hours_timezone_source ?? 'utc_fallback',
+    work_hours_week_start: payments?.work_hours_week_start ?? 'monday',
+    work_hours_today_date: payments?.work_hours_today_date ?? null,
+    work_hours_week_start_date: payments?.work_hours_week_start_date ?? null,
+    work_hours_entry_count: payments?.work_hours_entry_count ?? 0,
+    work_hours_projects: Array.isArray(payments?.work_hours_projects) ? payments.work_hours_projects : [],
+    work_hours_last_updated: payments?.work_hours_last_updated ?? null,
+    work_hours_complete: payments?.work_hours_complete ?? false,
+    work_hours_stale: payments?.work_hours_stale ?? true,
+    work_hours_allocation_method: payments?.work_hours_allocation_method ?? 'backfilled_from_created_at',
   };
 }
 
 export function mergePaymentsWithFundsHistory(payments: PaymentSnapshot | null | undefined, fundsHistorySnapshot: Partial<PaymentSnapshot> | null | undefined): PaymentSnapshot {
+  const currentPayments = payments || {};
   const merged = {
-    ...(payments || {}),
+    ...currentPayments,
     ...(fundsHistorySnapshot || {}),
   };
 
-  if (payments && Object.prototype.hasOwnProperty.call(payments, 'available_amount_cents')) {
-    merged.available_amount_cents = payments.available_amount_cents;
+  if (Object.prototype.hasOwnProperty.call(currentPayments, 'available_amount_cents')) {
+    merged.available_amount_cents = currentPayments.available_amount_cents;
   }
 
-  if (payments && Object.prototype.hasOwnProperty.call(payments, 'available_amount')) {
-    merged.available_amount = payments.available_amount;
+  if (Object.prototype.hasOwnProperty.call(currentPayments, 'available_amount')) {
+    merged.available_amount = currentPayments.available_amount;
+  }
+
+  for (const key of Object.keys(currentPayments).filter((key) => key.startsWith('work_hours_'))) {
+    merged[key] = currentPayments[key];
   }
 
   return merged;

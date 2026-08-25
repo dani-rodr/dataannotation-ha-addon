@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.24
+
+- Add timezone-aware daily and weekly Work Hours sensors from timed Funds History entries.
+- Persist timed work observations, split intervals across local calendar boundaries, and retain totals during lightweight polls or API failures.
+- Add configurable Home Assistant/IANA timezone and week-start settings with compact per-project attributes.
+
 ## 0.7.23
 
 - Add a rolling-window `Suggested Withdrawal` timestamp sensor with projected amount and contributing pending payout attributes.

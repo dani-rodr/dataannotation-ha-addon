@@ -61,6 +61,8 @@ test('readConfig defaults fast polling to 5 seconds and preserves explicit value
   const originalExistsSync = fs.existsSync;
   const originalReadFileSync = fs.readFileSync;
   const originalMqttHost = process.env.MQTT_HOST;
+  const originalWorkHoursTimezone = process.env.WORK_HOURS_TIMEZONE;
+  const originalWorkHoursWeekStart = process.env.WORK_HOURS_WEEK_START;
 
   fs.existsSync = (filePath) => filePath === '/data/options.json' ? true : originalExistsSync(filePath);
   fs.readFileSync = (filePath, encoding) => {
@@ -70,16 +72,23 @@ test('readConfig defaults fast polling to 5 seconds and preserves explicit value
         password: 'secret',
         mqtt_host: 'localhost',
         fast_poll_cron: '*/15 * * * * *',
+        work_hours_timezone: 'Asia/Manila',
+        work_hours_week_start: 'sunday',
       });
     }
 
     return originalReadFileSync(filePath, encoding);
   };
   process.env.MQTT_HOST = 'localhost';
+  delete process.env.WORK_HOURS_TIMEZONE;
+  delete process.env.WORK_HOURS_WEEK_START;
 
   try {
     const config = await readConfig();
     assert.equal(config.fast_poll_cron, '*/15 * * * * *');
+    assert.equal(config.work_hours_timezone, 'Asia/Manila');
+    assert.equal(config.work_hours_timezone_source, 'config');
+    assert.equal(config.work_hours_week_start, 'sunday');
     assert.equal(config.wallet_settlement_adjustment, 0.99985676);
   } finally {
     fs.existsSync = originalExistsSync;
@@ -88,6 +97,16 @@ test('readConfig defaults fast polling to 5 seconds and preserves explicit value
       delete process.env.MQTT_HOST;
     } else {
       process.env.MQTT_HOST = originalMqttHost;
+    }
+    if (originalWorkHoursTimezone === undefined) {
+      delete process.env.WORK_HOURS_TIMEZONE;
+    } else {
+      process.env.WORK_HOURS_TIMEZONE = originalWorkHoursTimezone;
+    }
+    if (originalWorkHoursWeekStart === undefined) {
+      delete process.env.WORK_HOURS_WEEK_START;
+    } else {
+      process.env.WORK_HOURS_WEEK_START = originalWorkHoursWeekStart;
     }
   }
 });

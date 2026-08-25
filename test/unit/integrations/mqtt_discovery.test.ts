@@ -27,6 +27,8 @@ test('mqtt discovery helpers keep the public labels stable', () => {
     withdraw_funds: 'Withdraw Funds',
     rebuild_discovery: 'Rebuild Discovery',
     next_payout: 'Next Payout',
+    hours_today: 'Hours Today',
+    hours_this_week: 'Hours This Week',
     auto_accept_project: 'Auto Accept Priority',
   });
 });
